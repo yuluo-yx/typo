@@ -1,0 +1,45 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - typecheck
+    - revive
+    - misspell
+    - goconst
+    - gocyclo
+    - dupl
+    - prealloc
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/shown/typo
+  gocyclo:
+    min-complexity: 15
+  goconst:
+    min-len: 5
+    min-occurrences: 4
+  dupl:
+    threshold: 100
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - dupl
+        - goconst
+        - errcheck
+        - revive
+    - path: internal/engine/rules\.go
+      linters:
+        - misspell
