@@ -1,4 +1,4 @@
-.PHONY: build build-all install test lint fmt clean coverage help
+.PHONY: build build-all install test lint fmt clean coverage benchmark help
 
 BINARY_NAME := typo
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -24,6 +24,7 @@ help:
 	@echo "  make install            安装到 GOPATH/bin"
 	@echo "  make test               运行测试"
 	@echo "  make coverage           运行测试并生成覆盖率报告"
+	@echo "  make benchmark          运行性能测试"
 	@echo "  make lint               运行 golangci-lint"
 	@echo "  make fmt                格式化代码"
 	@echo "  make clean              清理构建产物"
@@ -90,3 +91,7 @@ clean:
 
 ci: fmt lint test
 	@echo "CI 检查完成"
+
+benchmark:
+	@echo "运行性能测试..."
+	$(GO) test -bench=. -benchmem ./benchmarks/ -run=^$

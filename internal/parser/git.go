@@ -15,7 +15,7 @@ type GitParser struct {
 // NewGitParser creates a new GitParser.
 func NewGitParser() *GitParser {
 	return &GitParser{
-		didYouMeanRegex: regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar command is\s+(\w+)`),
+		didYouMeanRegex: regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
 		noUpstreamRegex: regexp.MustCompile(`--set-upstream-to=([^/\s]+)/([^\s]+)`),
 		notGitRepoRegex: regexp.MustCompile(`fatal: not a git repository`),
 	}
