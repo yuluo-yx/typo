@@ -112,8 +112,8 @@ func TestSaveCache(t *testing.T) {
 		tmpDir := t.TempDir()
 		r := &SubcommandRegistry{
 			cache: map[string]*SubcommandCache{
-				"git":     {Tool: "git", Subcommands: []string{"add", "commit"}, UpdatedAt: time.Now()},
-				"docker":  {Tool: "docker", Subcommands: []string{"build", "run"}, UpdatedAt: time.Now()},
+				"git":    {Tool: "git", Subcommands: []string{"add", "commit"}, UpdatedAt: time.Now()},
+				"docker": {Tool: "docker", Subcommands: []string{"build", "run"}, UpdatedAt: time.Now()},
 			},
 			cacheDir: tmpDir,
 		}
