@@ -3,6 +3,9 @@ name: Release
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     name: Build and Release
