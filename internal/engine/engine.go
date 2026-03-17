@@ -18,12 +18,12 @@ type FixResult struct {
 
 // Engine is the main correction engine.
 type Engine struct {
-	keyboard      KeyboardWeights
-	rules         *Rules
-	history       *History
-	parser        *parser.Registry
-	commands      []string // Known commands from $PATH
-	subcommands   *commands.SubcommandRegistry
+	keyboard    KeyboardWeights
+	rules       *Rules
+	history     *History
+	parser      *parser.Registry
+	commands    []string // Known commands from $PATH
+	subcommands *commands.SubcommandRegistry
 }
 
 // Option is a functional option for Engine.
