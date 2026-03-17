@@ -6,14 +6,35 @@
 
 ## 安装
 
+### 从 Release 下载
+
+从 [Releases](https://github.com/yuluo-yx/typo/releases) 页面下载对应平台的二进制文件：
+
+| 平台 | 文件 |
+|------|------|
+| Linux AMD64 | `typo-linux-amd64` |
+| Linux ARM64 | `typo-linux-arm64` |
+| macOS AMD64 | `typo-darwin-amd64` |
+| macOS ARM64 | `typo-darwin-arm64` |
+| Windows AMD64 | `typo-windows-amd64.exe` |
+
+下载后添加执行权限并移动到 PATH：
+
 ```bash
-go install github.com/shown/typo@latest
+chmod +x typo-linux-amd64
+sudo mv typo-linux-amd64 /usr/local/bin/typo
+```
+
+### 从源码安装
+
+```bash
+go install github.com/yuluo-yx/typo@latest
 ```
 
 或者从源码编译：
 
 ```bash
-git clone https://github.com/shown/typo.git
+git clone https://github.com/yuluo-yx/typo.git
 cd typo
 make install
 ```
