@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/shown/typo/internal/commands"
 	"github.com/shown/typo/internal/parser"
 )
 
@@ -10,17 +12,18 @@ import (
 type FixResult struct {
 	Fixed   bool   // Whether a fix was found
 	Command string // The corrected command
-	Source  string // Where the fix came from (history, rule, parser, distance)
+	Source  string // Where the fix came from (history, rule, parser, distance, subcommand)
 	Message string // Optional message to display
 }
 
 // Engine is the main correction engine.
 type Engine struct {
-	keyboard KeyboardWeights
-	rules    *Rules
-	history  *History
-	parser   *parser.Registry
-	commands []string // Known commands from $PATH
+	keyboard      KeyboardWeights
+	rules         *Rules
+	history       *History
+	parser        *parser.Registry
+	commands      []string // Known commands from $PATH
+	subcommands   *commands.SubcommandRegistry
 }
 
 // Option is a functional option for Engine.
@@ -49,6 +52,11 @@ func WithParser(p *parser.Registry) Option {
 // WithCommands sets the known commands.
 func WithCommands(cmds []string) Option {
 	return func(e *Engine) { e.commands = cmds }
+}
+
+// WithSubcommands sets the subcommand registry.
+func WithSubcommands(s *commands.SubcommandRegistry) Option {
+	return func(e *Engine) { e.subcommands = s }
 }
 
 // NewEngine creates a new correction engine.
@@ -93,7 +101,12 @@ func (e *Engine) Fix(cmd, stderr string) FixResult {
 		return result
 	}
 
-	// 4. Try edit distance
+	// 4. Try subcommand fix
+	if result := e.trySubcommandFix(cmd); result.Fixed {
+		return result
+	}
+
+	// 5. Try edit distance
 	if result := e.tryDistance(cmd); result.Fixed {
 		return result
 	}
@@ -147,23 +160,97 @@ func (e *Engine) tryParser(cmd, stderr string) FixResult {
 }
 
 func (e *Engine) tryHistory(cmd string) FixResult {
-	return tryMatch(cmd, "history", func(s string) (string, bool) {
+	result := tryMatch(cmd, "history", func(s string) (string, bool) {
 		entry, ok := e.history.Lookup(s)
 		if ok {
 			return entry.To, true
 		}
 		return "", false
 	})
+
+	// If history fixed main command, also try to fix subcommand
+	if result.Fixed && e.subcommands != nil {
+		result = e.fixSubcommandInResult(result)
+	}
+
+	return result
 }
 
 func (e *Engine) tryRules(cmd string) FixResult {
-	return tryMatch(cmd, "rule", func(s string) (string, bool) {
+	result := tryMatch(cmd, "rule", func(s string) (string, bool) {
 		rule, ok := e.rules.Match(s)
 		if ok {
 			return rule.To, true
 		}
 		return "", false
 	})
+
+	// If rule fixed main command, also try to fix subcommand
+	if result.Fixed && e.subcommands != nil {
+		result = e.fixSubcommandInResult(result)
+	}
+
+	return result
+}
+
+func (e *Engine) fixSubcommandInResult(result FixResult) FixResult {
+	parts := strings.Fields(result.Command)
+	if len(parts) < 2 {
+		return result
+	}
+
+	mainCmd := parts[0]
+	subcommands := e.subcommands.Get(mainCmd)
+	if len(subcommands) == 0 {
+		return result
+	}
+
+	// Find subcommand position (skip options)
+	subcmdIdx := -1
+	for i, arg := range parts[1:] {
+		if !strings.HasPrefix(arg, "-") {
+			subcmdIdx = i + 1
+			break
+		}
+	}
+
+	if subcmdIdx == -1 {
+		return result
+	}
+
+	subcmd := parts[subcmdIdx]
+
+	// Check if subcommand is already valid
+	if containsString(subcommands, subcmd) {
+		return result
+	}
+
+	// Try to find closest subcommand
+	bestMatch := ""
+	bestDistance := 999
+
+	for _, known := range subcommands {
+		d := Distance(subcmd, known, e.keyboard)
+		if d < bestDistance {
+			bestDistance = d
+			bestMatch = known
+		}
+	}
+
+	if bestMatch != "" && bestDistance <= 2 {
+		similarity := Similarity(subcmd, bestMatch, e.keyboard)
+		if similarity > 0.6 {
+			parts[subcmdIdx] = bestMatch
+			return FixResult{
+				Fixed:   true,
+				Command: strings.Join(parts, " "),
+				Source:  result.Source,
+				Message: fmt.Sprintf("did you mean: %s?", bestMatch),
+			}
+		}
+	}
+
+	return result
 }
 
 type matchFunc func(string) (string, bool)
@@ -229,11 +316,124 @@ func (e *Engine) tryDistance(cmd string) FixResult {
 				result.Command = bestMatch + " " + strings.Join(parts[1:], " ")
 			}
 
+			// Also try to fix subcommand
+			if e.subcommands != nil {
+				result = e.fixSubcommandInResult(result)
+			}
+
 			return result
 		}
 	}
 
 	return FixResult{Fixed: false}
+}
+
+func (e *Engine) trySubcommandFix(cmd string) FixResult {
+	if e.subcommands == nil {
+		return FixResult{Fixed: false}
+	}
+
+	parts := strings.Fields(cmd)
+	if len(parts) < 2 {
+		return FixResult{Fixed: false}
+	}
+
+	mainCmd := parts[0]
+
+	// If main command is not known, try to resolve it first
+	if !containsString(e.commands, mainCmd) {
+		resolved := e.findClosestCommand(mainCmd)
+		if resolved == "" {
+			return FixResult{Fixed: false}
+		}
+		mainCmd = resolved
+	}
+
+	// Get subcommands for this tool
+	subcommands := e.subcommands.Get(mainCmd)
+	if len(subcommands) == 0 {
+		return FixResult{Fixed: false}
+	}
+
+	// Find the subcommand position (skip options)
+	subcmdIdx := -1
+	for i, arg := range parts[1:] {
+		if !strings.HasPrefix(arg, "-") {
+			subcmdIdx = i + 1
+			break
+		}
+	}
+
+	if subcmdIdx == -1 {
+		return FixResult{Fixed: false}
+	}
+
+	subcmd := parts[subcmdIdx]
+
+	// Check if subcommand is already valid
+	if containsString(subcommands, subcmd) {
+		return FixResult{Fixed: false}
+	}
+
+	// Try to find closest subcommand
+	bestMatch := ""
+	bestDistance := 999
+
+	for _, known := range subcommands {
+		d := Distance(subcmd, known, e.keyboard)
+		if d < bestDistance {
+			bestDistance = d
+			bestMatch = known
+		}
+	}
+
+	// Threshold: distance <= 2 and similarity > 60%
+	if bestMatch != "" && bestDistance <= 2 {
+		similarity := Similarity(subcmd, bestMatch, e.keyboard)
+		if similarity > 0.6 {
+			// Update main command if it was resolved
+			parts[0] = mainCmd
+			parts[subcmdIdx] = bestMatch
+			return FixResult{
+				Fixed:   true,
+				Command: strings.Join(parts, " "),
+				Source:  "subcommand",
+				Message: fmt.Sprintf("did you mean: %s?", bestMatch),
+			}
+		}
+	}
+
+	return FixResult{Fixed: false}
+}
+
+func (e *Engine) findClosestCommand(cmd string) string {
+	bestMatch := ""
+	bestDistance := 999
+
+	for _, known := range e.commands {
+		d := Distance(cmd, known, e.keyboard)
+		if d < bestDistance {
+			bestDistance = d
+			bestMatch = known
+		}
+	}
+
+	if bestMatch != "" && bestDistance <= 2 {
+		similarity := Similarity(cmd, bestMatch, e.keyboard)
+		if similarity > 0.6 {
+			return bestMatch
+		}
+	}
+	return ""
+}
+
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) FixResult {
