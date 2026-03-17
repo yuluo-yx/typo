@@ -2,7 +2,7 @@
 
 ![Go Coverage](https://img.shields.io/badge/coverage-97.7%25-brightgreen) ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
 
-一个类似 thefuck 的命令自动修正工具，按两次 ESC 键自动修正输错的命令。
+一个类似 thefuck 的命令自动修正工具，按两次 ff 键自动修正输错的命令。
 
 ## 安装
 
