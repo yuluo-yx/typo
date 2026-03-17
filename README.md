@@ -28,7 +28,7 @@ sudo mv typo-linux-amd64 /usr/local/bin/typo
 ### 从源码安装
 
 ```bash
-go install github.com/yuluo-yx/typo@latest
+go install github.com/yuluo-yx/typo/cmd/typo@latest
 ```
 
 或者从源码编译：

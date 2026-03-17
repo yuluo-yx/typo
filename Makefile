@@ -1,14 +1,14 @@
 .PHONY: build build-all install test lint fmt clean coverage benchmark help
 
 BINARY_NAME := typo
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_DIR := bin
 GO := go
 
 # 支持的平台
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 
-LDFLAGS := -s -w -X main.version=$(VERSION)
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none") -X main.date=$(shell date -u +%Y-%m-%d 2>/dev/null || echo "unknown")
 
 help:
 	@echo "Typo - 命令快速修正工具"
@@ -64,7 +64,7 @@ build-windows:
 
 install:
 	@echo "安装 $(BINARY_NAME)..."
-	$(GO) install ./cmd/typo
+	$(GO) install -ldflags="$(LDFLAGS)" ./cmd/typo
 
 test:
 	@echo "运行测试..."

@@ -23,7 +23,7 @@ jobs:
         run: echo "VERSION=$(date +'%y.%m.%d')" >> $GITHUB_OUTPUT
 
       - name: Build all platforms
-        run: make build-all
+        run: make build-all VERSION=${{ steps.version.outputs.VERSION }}
 
       - name: Rename binaries
         run: |
