@@ -43,6 +43,7 @@ jobs:
           tag_name: v${{ steps.version.outputs.VERSION }}
           name: v${{ steps.version.outputs.VERSION }}
           prerelease: true
+          generate_release_notes: true
           files: |
             bin/*.tar.gz
             bin/*.zip
