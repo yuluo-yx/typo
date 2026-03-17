@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Generate version
+        id: version
+        run: echo "VERSION=$(date +'%y.%m.%d')" >> $GITHUB_OUTPUT
+
+      - name: Build all platforms
+        run: make build-all
+
+      - name: Create archives
+        run: |
+          cd bin
+          for dir in */; do
+            dir=${dir%/}
+            if [ "$dir" = "windows-amd64" ]; then
+              zip -r typo-${dir}.zip $dir
+            else
+              tar -czvf typo-${dir}.tar.gz $dir
+            fi
+          done
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: v${{ steps.version.outputs.VERSION }}
+          prerelease: true
+          files: |
+            bin/*.tar.gz
+            bin/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
