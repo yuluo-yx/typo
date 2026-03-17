@@ -3,7 +3,7 @@ package engine
 import (
 	"testing"
 
-	"github.com/shown/typo/internal/parser"
+	"github.com/yuluo-yx/typo/internal/parser"
 )
 
 func TestEngine_Fix(t *testing.T) {

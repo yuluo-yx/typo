@@ -1,3 +1,3 @@
-module github.com/shown/typo
+module github.com/yuluo-yx/typo
 
 go 1.24.4

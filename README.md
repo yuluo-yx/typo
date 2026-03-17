@@ -47,7 +47,7 @@ make install
 eval "$(typo init zsh)"
 ```
 
-重启终端后，按 `ESC ESC` 即可修正当前命令。
+重启终端后，按 `ff` 即可修正当前命令。
 
 ## 子命令
 

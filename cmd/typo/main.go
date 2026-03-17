@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/shown/typo/internal/commands"
-	"github.com/shown/typo/internal/config"
-	"github.com/shown/typo/internal/engine"
-	"github.com/shown/typo/internal/parser"
+	"github.com/yuluo-yx/typo/internal/commands"
+	"github.com/yuluo-yx/typo/internal/config"
+	"github.com/yuluo-yx/typo/internal/engine"
+	"github.com/yuluo-yx/typo/internal/parser"
 )
 
 var (

@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/shown/typo/internal/config"
+	"github.com/yuluo-yx/typo/internal/config"
 )
 
 func TestRun(t *testing.T) {

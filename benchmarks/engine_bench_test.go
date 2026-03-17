@@ -3,7 +3,7 @@ package benchmarks
 import (
 	"testing"
 
-	"github.com/shown/typo/internal/engine"
+	"github.com/yuluo-yx/typo/internal/engine"
 )
 
 func BenchmarkDistance(b *testing.B) {

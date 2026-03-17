@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shown/typo/internal/commands"
-	"github.com/shown/typo/internal/parser"
+	"github.com/yuluo-yx/typo/internal/commands"
+	"github.com/yuluo-yx/typo/internal/parser"
 )
 
 // FixResult represents the result of a fix attempt.

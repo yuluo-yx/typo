@@ -23,7 +23,7 @@ linters-settings:
   gofmt:
     simplify: true
   goimports:
-    local-prefixes: github.com/shown/typo
+    local-prefixes: github.com/yuluo-yx/typo
   gocyclo:
     min-complexity: 15
   goconst:
