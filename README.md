@@ -194,14 +194,36 @@ Typo 按以下优先级尝试修正命令：
 - **docker**: 未知命令建议
 - **npm**: 命令未找到建议
 
+## 子命令智能修正
+
+Typo 会自动解析工具的子命令，用于智能修正：
+
+```bash
+$ typo fix "git stattus"
+git status
+typo: did you mean: status?
+
+$ typo fix "docker biuld"
+docker build
+typo: did you mean: build?
+```
+
+**工作原理**：
+1. 首次使用时，自动运行 `git help -a`、`docker --help` 等命令解析子命令
+2. 解析结果缓存到 `~/.typo/subcommands.json`，有效期 7 天
+3. 修正命令时，会同时检查子命令是否正确并给出建议
+
+**支持的工具**：git, docker, npm, yarn, kubectl, cargo, go, pip, brew, terraform, helm 等
+
 ## 配置文件
 
 配置文件存储在 `~/.typo/` 目录：
 
 ```
 ~/.typo/
-├── history.json    # 修正历史
-└── rules.json      # 用户自定义规则
+├── history.json       # 修正历史
+├── rules.json         # 用户自定义规则
+└── subcommands.json   # 子命令缓存
 ```
 
 ## 编译
