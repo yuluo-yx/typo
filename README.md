@@ -209,7 +209,7 @@ typo: did you mean: build?
 ```
 
 **工作原理**：
-1. 首次使用时，自动运行 `git help -a`、`docker --help` 等命令解析子命令
+1. 当你首次修正某个工具的命令时（如 `typo fix "git stattus"`），typo 会自动运行 `git help -a` 解析子命令
 2. 解析结果缓存到 `~/.typo/subcommands.json`，有效期 7 天
 3. 修正命令时，会同时检查子命令是否正确并给出建议
 
