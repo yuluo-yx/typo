@@ -673,3 +673,164 @@ func TestPrintZshIntegration(t *testing.T) {
 		t.Error("Expected zsh integration to contain 'bindkey'")
 	}
 }
+
+func TestDoctor(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 1 {
+		t.Errorf("Expected exit code 1 (shell integration not loaded), got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("Checking typo configuration")) {
+		t.Error("Expected doctor output to contain 'Checking typo configuration'")
+	}
+	if !bytes.Contains([]byte(output), []byte("typo command")) {
+		t.Error("Expected doctor output to contain 'typo command'")
+	}
+	if !bytes.Contains([]byte(output), []byte("shell integration")) {
+		t.Error("Expected doctor output to contain 'shell integration'")
+	}
+}
+
+func TestDoctorWithShellIntegration(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
+	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Errorf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("shell integration: ✓ loaded")) {
+		t.Errorf("Expected shell integration to be loaded, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("All checks passed")) {
+		t.Errorf("Expected 'All checks passed', got: %s", output)
+	}
+}
+
+func TestUninstall(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// Create a temp config directory
+	tmpDir, err := os.MkdirTemp("", "typo-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Create ~/.typo directory
+	typoDir := tmpDir + "/.typo"
+	if err := os.MkdirAll(typoDir, 0755); err != nil {
+		t.Fatalf("Failed to create .typo dir: %v", err)
+	}
+
+	os.Args = []string{"typo", "uninstall"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Errorf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("Uninstalling typo")) {
+		t.Error("Expected output to contain 'Uninstalling typo'")
+	}
+	if !bytes.Contains([]byte(output), []byte("Removing config directory")) {
+		t.Error("Expected output to contain 'Removing config directory'")
+	}
+	if !bytes.Contains([]byte(output), []byte("Uninstallation complete")) {
+		t.Error("Expected output to contain 'Uninstallation complete'")
+	}
+
+	// Verify config directory was removed
+	if _, err := os.Stat(typoDir); !os.IsNotExist(err) {
+		t.Error("Expected .typo directory to be removed")
+	}
+}
+
+func TestUninstallNonexistentConfig(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpDir, err := os.MkdirTemp("", "typo-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Don't create .typo directory
+
+	os.Args = []string{"typo", "uninstall"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Errorf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("Uninstallation complete")) {
+		t.Errorf("Expected 'Uninstallation complete', got: %s", output)
+	}
+}
