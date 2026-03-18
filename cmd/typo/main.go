@@ -42,6 +42,10 @@ func run() int {
 	case "version":
 		cmdVersion()
 		return 0
+	case "doctor":
+		return cmdDoctor()
+	case "uninstall":
+		return cmdUninstall()
 	case "help", "-h", "--help":
 		printUsage()
 		return 0
@@ -65,6 +69,8 @@ Usage:
   typo history list            List correction history
   typo history clear           Clear correction history
   typo init zsh                Print zsh integration script
+  typo doctor                  Check configuration status
+  typo uninstall               Uninstall typo completely
   typo version                 Print version
 
 Examples:
@@ -74,7 +80,7 @@ Examples:
   eval "$(typo init zsh)"
 
 Zsh Integration:
-  After running 'eval "$(typo init zsh)"', press 'ff' to fix the current command.`)
+  After running 'eval "$(typo init zsh)"', press <Esc><Esc> to fix the current command.`)
 }
 
 func cmdFix(args []string) int {
@@ -232,6 +238,113 @@ func cmdVersion() {
 	fmt.Printf("typo %s (commit: %s, built: %s)\n", version, commit, date)
 }
 
+func cmdDoctor() int {
+	fmt.Println("Checking typo configuration...")
+	fmt.Println()
+
+	hasError := false
+
+	// Check if typo is in PATH
+	fmt.Print("[1/3] typo command: ")
+	if _, err := os.Executable(); err == nil {
+		fmt.Println("✓ available")
+	} else {
+		fmt.Println("✗ not found in PATH")
+		hasError = true
+	}
+
+	// Check config directory
+	fmt.Print("[2/3] config directory: ")
+	cfg := config.Load()
+	if info, err := os.Stat(cfg.ConfigDir); err == nil && info.IsDir() {
+		fmt.Printf("✓ %s\n", cfg.ConfigDir)
+	} else {
+		fmt.Printf("✗ %s (will be created on first use)\n", cfg.ConfigDir)
+	}
+
+	// Check shell integration
+	fmt.Print("[3/3] shell integration: ")
+	shellIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
+	if shellIntegration == "1" {
+		fmt.Println("✓ loaded")
+	} else {
+		fmt.Println("✗ not loaded")
+		fmt.Println()
+		fmt.Println("To enable shell integration, add to your ~/.zshrc:")
+		fmt.Println("  eval \"$(typo init zsh)\"")
+		fmt.Println()
+		fmt.Println("Then restart your shell or run: source ~/.zshrc")
+		hasError = true
+	}
+
+	fmt.Println()
+	if hasError {
+		fmt.Println("Some checks failed. Please fix the issues above.")
+		return 1
+	}
+
+	fmt.Println("All checks passed!")
+	return 0
+}
+
+func cmdUninstall() int {
+	fmt.Println("Uninstalling typo...")
+	fmt.Println()
+
+	cfg := config.Load()
+	hasError := false
+
+	// Remove ~/.typo directory
+	fmt.Print("[1/3] Removing config directory: ")
+	if cfg.ConfigDir != "" {
+		if err := os.RemoveAll(cfg.ConfigDir); err != nil {
+			fmt.Printf("✗ failed: %v\n", err)
+			hasError = true
+		} else {
+			fmt.Printf("✓ removed %s\n", cfg.ConfigDir)
+		}
+	} else {
+		fmt.Println("⊘ not found")
+	}
+
+	// Print zsh config cleanup instructions
+	fmt.Print("[2/3] Zsh integration: ")
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("✗ cannot determine home directory")
+		hasError = true
+	} else {
+		zshrc := homeDir + "/.zshrc"
+		if _, err := os.Stat(zshrc); err == nil {
+			fmt.Printf("please remove the following line from ~/.zshrc:\n")
+			fmt.Println()
+			fmt.Println("    eval \"$(typo init zsh)\"")
+			fmt.Println()
+		} else {
+			fmt.Println("✓ no .zshrc found")
+		}
+	}
+
+	// Print binary removal instructions
+	fmt.Print("[3/3] Binary: ")
+	execPath, err := os.Executable()
+	if err != nil {
+		fmt.Println("✗ cannot determine binary location")
+		hasError = true
+	} else {
+		fmt.Printf("please remove the binary manually:\n")
+		fmt.Println()
+		fmt.Printf("    rm %s\n", execPath)
+		fmt.Println()
+	}
+
+	fmt.Println("Uninstallation complete.")
+	if hasError {
+		return 1
+	}
+	return 0
+}
+
 func printZshIntegration() {
 	fmt.Println(`# typo - Command auto-correction for zsh
 #
@@ -243,13 +356,13 @@ func printZshIntegration() {
 #     eval "$(typo init zsh)"
 #
 # Usage:
-#   1. Type a wrong command, press 'ff' to fix before executing
-#   2. After executing a failed command, press 'ff' to fix last command
+#   1. Type a wrong command, press <Esc><Esc> to fix before executing
+#   2. After executing a failed command, press <Esc><Esc> to fix last command
 #
 # Example:
-#   $ gut stattus<ff>  →  git status
+#   $ gut stattus<Esc><Esc>  →  git status
 #   $ gut stattus      →  command not found
-#   $ <ff>             →  git status
+#   $ <Esc><Esc>       →  git status
 
 _typo_fix_command() {
     local cmd="${BUFFER}"
@@ -278,8 +391,8 @@ _typo_fix_command() {
 
 zle -N _typo_fix_command
 
-# ff to fix command
-bindkey 'ff' _typo_fix_command
+# Esc+Esc to fix command
+bindkey '\e\e' _typo_fix_command
 
 # stderr capture hook
 _typo_preexec() {
@@ -288,7 +401,10 @@ _typo_preexec() {
 }
 
 autoload -Uz add-zsh-hook
-add-zsh-hook preexec _typo_preexec`)
+add-zsh-hook preexec _typo_preexec
+
+# Mark shell integration as loaded
+export TYPO_SHELL_INTEGRATION=1`)
 }
 
 func createEngine(cfg *config.Config) *engine.Engine {

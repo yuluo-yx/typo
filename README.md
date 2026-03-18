@@ -2,7 +2,7 @@
 
 ![Go Coverage](https://img.shields.io/badge/coverage-97.7%25-brightgreen) ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
 
-一个类似 thefuck 的命令自动修正工具，按两次 ff 键自动修正输错的命令。
+一个类似 thefuck 的命令自动修正工具，按两次 Esc 键自动修正输错的命令。
 
 ## 安装
 
@@ -47,7 +47,7 @@ make install
 eval "$(typo init zsh)"
 ```
 
-重启终端后，按 `ff` 即可修正当前命令。
+重启终端后，按 `Esc` `Esc` 即可修正当前命令。
 
 ## 子命令
 
@@ -131,6 +131,23 @@ History cleared
 typo init zsh    # 打印 zsh 集成脚本
 ```
 
+### typo doctor
+
+检查配置状态，诊断常见问题。
+
+```bash
+$ typo doctor
+Checking typo configuration...
+
+[1/3] typo command: ✓ available
+[2/3] config directory: ✓ /home/user/.typo
+[3/3] shell integration: ✓ loaded
+
+All checks passed!
+```
+
+如果 shell integration 显示未加载，请确保已在 `~/.zshrc` 中添加 `eval "$(typo init zsh)"` 并重启终端。
+
 ### typo version
 
 打印版本信息。
@@ -139,6 +156,28 @@ typo init zsh    # 打印 zsh 集成脚本
 $ typo version
 typo dev (commit: 68572a5, built: unknown)
 ```
+
+### typo uninstall
+
+彻底卸载 typo，包括配置目录和清理指引。
+
+```bash
+$ typo uninstall
+Uninstalling typo...
+
+[1/3] Removing config directory: ✓ removed /home/user/.typo
+[2/3] Zsh integration: please remove the following line from ~/.zshrc:
+
+    eval "$(typo init zsh)"
+
+[3/3] Binary: please remove the binary manually:
+
+    rm /usr/local/bin/typo
+
+Uninstallation complete.
+```
+
+**注意**：出于安全考虑，程序不会自动修改 `~/.zshrc` 或删除二进制文件，请根据提示手动完成。
 
 ## 修正策略
 

@@ -8,13 +8,13 @@
 #     eval "$(typo init zsh)"
 #
 # Usage:
-#   1. Type a wrong command, press 'ff' to fix before executing
-#   2. After executing a failed command, press 'ff' to fix last command
+#   1. Type a wrong command, press <Esc><Esc> to fix before executing
+#   2. After executing a failed command, press <Esc><Esc> to fix last command
 #
 # Example:
-#   $ gut stattus<ff>  →  git status
+#   $ gut stattus<Esc><Esc>  →  git status
 #   $ gut stattus      →  command not found
-#   $ <ff>             →  git status
+#   $ <Esc><Esc>       →  git status
 
 _typo_fix_command() {
     local cmd="${BUFFER}"
@@ -43,8 +43,8 @@ _typo_fix_command() {
 
 zle -N _typo_fix_command
 
-# ff to fix command
-bindkey 'ff' _typo_fix_command
+# Esc+Esc to fix command
+bindkey '\e\e' _typo_fix_command
 
 # stderr capture hook
 _typo_preexec() {
@@ -54,3 +54,6 @@ _typo_preexec() {
 
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _typo_preexec
+
+# Mark shell integration as loaded
+export TYPO_SHELL_INTEGRATION=1
