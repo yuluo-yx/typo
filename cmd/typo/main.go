@@ -245,25 +245,35 @@ func cmdDoctor() int {
 	hasError := false
 
 	// Check if typo is in PATH
-	fmt.Print("[1/3] typo command: ")
-	if _, err := os.Executable(); err == nil {
-		fmt.Println("✓ available")
+	fmt.Print("[1/4] typo command: ")
+	execPath, err := os.Executable()
+	if err == nil {
+		fmt.Printf("✓ available (%s)\n", execPath)
 	} else {
 		fmt.Println("✗ not found in PATH")
+		// Check if typo exists in Go bin
+		goBinPath := checkGoBinTypo()
+		if goBinPath != "" {
+			fmt.Println()
+			fmt.Println("  Found typo in Go bin directory but not in PATH.")
+			fmt.Println("  Add the following to your ~/.zshrc or ~/.bashrc:")
+			fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinPath)
+			fmt.Println()
+		}
 		hasError = true
 	}
 
 	// Check config directory
-	fmt.Print("[2/3] config directory: ")
+	fmt.Print("[2/4] config directory: ")
 	cfg := config.Load()
 	if info, err := os.Stat(cfg.ConfigDir); err == nil && info.IsDir() {
 		fmt.Printf("✓ %s\n", cfg.ConfigDir)
 	} else {
-		fmt.Printf("✗ %s (will be created on first use)\n", cfg.ConfigDir)
+		fmt.Printf("⊘ %s (will be created on first use)\n", cfg.ConfigDir)
 	}
 
 	// Check shell integration
-	fmt.Print("[3/3] shell integration: ")
+	fmt.Print("[3/4] shell integration: ")
 	shellIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
 	if shellIntegration == "1" {
 		fmt.Println("✓ loaded")
@@ -277,6 +287,24 @@ func cmdDoctor() int {
 		hasError = true
 	}
 
+	// Check Go bin in PATH
+	fmt.Print("[4/4] Go bin PATH: ")
+	goBinDir := getGoBinDir()
+	if goBinDir == "" {
+		fmt.Println("⊘ Go not installed or GOPATH not set")
+	} else {
+		pathEnv := os.Getenv("PATH")
+		if strings.Contains(pathEnv, goBinDir) {
+			fmt.Println("✓ configured")
+		} else {
+			fmt.Printf("✗ %s not in PATH\n", goBinDir)
+			fmt.Println()
+			fmt.Println("  If you installed typo with 'go install', add to your shell config:")
+			fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinDir)
+			hasError = true
+		}
+	}
+
 	fmt.Println()
 	if hasError {
 		fmt.Println("Some checks failed. Please fix the issues above.")
@@ -285,6 +313,32 @@ func cmdDoctor() int {
 
 	fmt.Println("All checks passed!")
 	return 0
+}
+
+func getGoBinDir() string {
+	// Try GOPATH first
+	goPath := os.Getenv("GOPATH")
+	if goPath == "" {
+		// Try default GOPATH
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		goPath = homeDir + "/go"
+	}
+	return goPath + "/bin"
+}
+
+func checkGoBinTypo() string {
+	goBinDir := getGoBinDir()
+	if goBinDir == "" {
+		return ""
+	}
+	typoPath := goBinDir + "/typo"
+	if _, err := os.Stat(typoPath); err == nil {
+		return goBinDir
+	}
+	return ""
 }
 
 func cmdUninstall() int {

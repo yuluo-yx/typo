@@ -739,6 +739,46 @@ func TestDoctorWithShellIntegration(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("All checks passed")) {
 		t.Errorf("Expected 'All checks passed', got: %s", output)
 	}
+	if !bytes.Contains([]byte(output), []byte("Go bin PATH")) {
+		t.Error("Expected doctor output to contain 'Go bin PATH'")
+	}
+}
+
+func TestDoctorGoBinNotInPath(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
+	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+	// Set PATH without go bin
+	os.Setenv("PATH", "/usr/bin:/bin")
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should fail because Go bin not in PATH
+	if code != 1 {
+		t.Errorf("Expected exit code 1, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("not in PATH")) {
+		t.Errorf("Expected 'not in PATH', got: %s", output)
+	}
 }
 
 func TestUninstall(t *testing.T) {

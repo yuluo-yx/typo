@@ -139,14 +139,19 @@ typo init zsh    # 打印 zsh 集成脚本
 $ typo doctor
 Checking typo configuration...
 
-[1/3] typo command: ✓ available
-[2/3] config directory: ✓ /home/user/.typo
-[3/3] shell integration: ✓ loaded
+[1/4] typo command: ✓ available (/usr/local/bin/typo)
+[2/4] config directory: ✓ /home/user/.typo
+[3/4] shell integration: ✓ loaded
+[4/4] Go bin PATH: ✓ configured
 
 All checks passed!
 ```
 
-如果 shell integration 显示未加载，请确保已在 `~/.zshrc` 中添加 `eval "$(typo init zsh)"` 并重启终端。
+如果发现问题，doctor 会给出具体的修复建议：
+
+- **typo command 未找到**：检查是否已安装，或 Go bin 目录是否在 PATH 中
+- **shell integration 未加载**：在 `~/.zshrc` 中添加 `eval "$(typo init zsh)"`
+- **Go bin PATH 未配置**：如果你使用 `go install` 安装，需要添加 `export PATH="$PATH:$(go env GOPATH)/bin"`
 
 ### typo version
 
