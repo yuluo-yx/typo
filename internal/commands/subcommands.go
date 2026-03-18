@@ -334,6 +334,7 @@ func parseBrewHelp(output string) []string {
 	// install
 	// list
 	subcommands := []string{}
+	re := regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -347,7 +348,7 @@ func parseBrewHelp(output string) []string {
 			continue
 		}
 		// Only accept valid command names (letters, numbers, hyphens)
-		if matched, _ := regexp.MatchString(`^[a-z][a-z0-9-]*$`, line); matched {
+		if re.MatchString(line) {
 			subcommands = append(subcommands, line)
 		}
 	}
