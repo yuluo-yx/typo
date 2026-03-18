@@ -1,37 +1,39 @@
-# Typo - 命令快速修正工具
+# Typo - Command Auto-Correction Tool
 
-![Go Coverage](https://img.shields.io/badge/coverage-97.7%25-brightgreen) ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
+[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/yuluo-yx/typo/branch/main/graph/badge.svg)](https://codecov.io/gh/yuluo-yx/typo) [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org)
 
-一个类似 thefuck 的命令自动修正工具，按两次 Esc 键自动修正输错的命令。
+English | **[简体中文](README_CN.md)**
 
-## 安装
+A command auto-correction tool similar to thefuck. Press `Esc` `Esc` to fix typos automatically.
 
-### 从 Release 下载
+## Installation
 
-从 [Releases](https://github.com/yuluo-yx/typo/releases) 页面下载对应平台的二进制文件：
+### Download from Release
 
-| 平台 | 文件 |
-|------|------|
+Download the binary for your platform from the [Releases](https://github.com/yuluo-yx/typo/releases) page:
+
+| Platform | File |
+|----------|------|
 | Linux AMD64 | `typo-linux-amd64` |
 | Linux ARM64 | `typo-linux-arm64` |
 | macOS AMD64 | `typo-darwin-amd64` |
 | macOS ARM64 | `typo-darwin-arm64` |
 | Windows AMD64 | `typo-windows-amd64.exe` |
 
-下载后添加执行权限并移动到 PATH：
+After downloading, add execute permission and move to PATH:
 
 ```bash
 chmod +x typo-linux-amd64
 sudo mv typo-linux-amd64 /usr/local/bin/typo
 ```
 
-### 从源码安装
+### Install from Source
 
 ```bash
 go install github.com/yuluo-yx/typo/cmd/typo@latest
 ```
 
-或者从源码编译：
+Or build from source:
 
 ```bash
 git clone https://github.com/yuluo-yx/typo.git
@@ -39,28 +41,28 @@ cd typo
 make install
 ```
 
-## Zsh 集成
+## Zsh Integration
 
-将以下内容添加到 `~/.zshrc`：
+Add the following to your `~/.zshrc`:
 
 ```bash
 eval "$(typo init zsh)"
 ```
 
-重启终端后，按 `Esc` `Esc` 即可修正当前命令。
+After restarting your terminal, press `Esc` `Esc` to fix the current command.
 
-## 子命令
+## Commands
 
 ### typo fix
 
-修正命令。
+Fix a command.
 
 ```bash
-typo fix <command>              # 修正命令
-typo fix -s <file> <command>    # 使用 stderr 文件进行错误解析修正
+typo fix <command>              # Fix a command
+typo fix -s <file> <command>    # Fix with stderr file for error parsing
 ```
 
-示例：
+Examples:
 ```bash
 $ typo fix "gut stauts"
 git status
@@ -71,13 +73,13 @@ docker ps
 
 ### typo learn
 
-手动学习一条修正规则，保存到历史记录中。
+Learn a correction rule and save it to history.
 
 ```bash
 typo learn <from> <to>
 ```
 
-示例：
+Example:
 ```bash
 $ typo learn "gut" "git"
 Learned: gut -> git
@@ -85,15 +87,15 @@ Learned: gut -> git
 
 ### typo rules
 
-管理修正规则。
+Manage correction rules.
 
 ```bash
-typo rules list              # 列出所有规则
-typo rules add <from> <to>   # 添加用户规则
-typo rules remove <from>     # 删除用户规则
+typo rules list              # List all rules
+typo rules add <from> <to>   # Add a user rule
+typo rules remove <from>     # Remove a user rule
 ```
 
-示例：
+Example:
 ```bash
 $ typo rules add "mytypo" "mycommand"
 Added rule: mytypo -> mycommand
@@ -106,14 +108,14 @@ mytypo -> mycommand [user] (enabled)
 
 ### typo history
 
-管理修正历史。
+Manage correction history.
 
 ```bash
-typo history list    # 列出修正历史
-typo history clear   # 清除修正历史
+typo history list    # List correction history
+typo history clear   # Clear correction history
 ```
 
-示例：
+Example:
 ```bash
 $ typo history list
 gut -> git (used 5 times)
@@ -125,15 +127,15 @@ History cleared
 
 ### typo init
 
-打印 shell 集成脚本。
+Print shell integration script.
 
 ```bash
-typo init zsh    # 打印 zsh 集成脚本
+typo init zsh    # Print zsh integration script
 ```
 
 ### typo doctor
 
-检查配置状态，诊断常见问题。
+Check configuration status and diagnose common issues.
 
 ```bash
 $ typo doctor
@@ -147,15 +149,15 @@ Checking typo configuration...
 All checks passed!
 ```
 
-如果发现问题，doctor 会给出具体的修复建议：
+If issues are found, doctor provides specific fix suggestions:
 
-- **typo command 未找到**：检查是否已安装，或 Go bin 目录是否在 PATH 中
-- **shell integration 未加载**：在 `~/.zshrc` 中添加 `eval "$(typo init zsh)"`
-- **Go bin PATH 未配置**：如果你使用 `go install` 安装，需要添加 `export PATH="$PATH:$(go env GOPATH)/bin"`
+- **typo command not found**: Check if installed, or if Go bin directory is in PATH
+- **shell integration not loaded**: Add `eval "$(typo init zsh)"` to `~/.zshrc`
+- **Go bin PATH not configured**: If installed via `go install`, add `export PATH="$PATH:$(go env GOPATH)/bin"`
 
 ### typo version
 
-打印版本信息。
+Print version information.
 
 ```bash
 $ typo version
@@ -164,7 +166,7 @@ typo dev (commit: 68572a5, built: unknown)
 
 ### typo uninstall
 
-彻底卸载 typo，包括配置目录和清理指引。
+Completely uninstall typo, including config directory and cleanup instructions.
 
 ```bash
 $ typo uninstall
@@ -182,26 +184,26 @@ Uninstalling typo...
 Uninstallation complete.
 ```
 
-**注意**：出于安全考虑，程序不会自动修改 `~/.zshrc` 或删除二进制文件，请根据提示手动完成。
+**Note**: For safety reasons, the program won't automatically modify `~/.zshrc` or delete the binary. Please follow the instructions to complete manually.
 
-## 修正策略
+## Correction Strategy
 
-Typo 按以下优先级尝试修正命令：
+Typo tries to correct commands in the following priority order:
 
-1. **错误解析** - 解析 stderr 中的 "did you mean" 等建议
-2. **历史记录** - 使用之前学习过的修正
-3. **规则匹配** - 内置和用户自定义规则
-4. **编辑距离** - 基于键盘布局的模糊匹配
+1. **Error Parsing** - Parse suggestions like "did you mean" from stderr
+2. **History** - Use previously learned corrections
+3. **Rule Matching** - Built-in and user-defined rules
+4. **Edit Distance** - Fuzzy matching based on keyboard layout
 
-## 支持的错误解析
+## Supported Error Parsing
 
-- **git**: `did you mean...`、无 upstream 分支等
-- **docker**: 未知命令建议
-- **npm**: 命令未找到建议
+- **git**: `did you mean...`, no upstream branch, etc.
+- **docker**: Unknown command suggestions
+- **npm**: Command not found suggestions
 
-## 子命令智能修正
+## Smart Subcommand Correction
 
-Typo 会自动解析工具的子命令，用于智能修正：
+Typo automatically parses tool subcommands for smart correction:
 
 ```bash
 $ typo fix "git stattus"
@@ -213,32 +215,32 @@ docker build
 typo: did you mean: build?
 ```
 
-**工作原理**：
-1. 当你首次修正某个工具的命令时（如 `typo fix "git stattus"`），typo 会自动运行 `git help -a` 解析子命令
-2. 解析结果缓存到 `~/.typo/subcommands.json`，有效期 7 天
-3. 修正命令时，会同时检查子命令是否正确并给出建议
+**How it works**:
+1. When you first fix a command for a tool (e.g., `typo fix "git stattus"`), typo automatically runs `git help -a` to parse subcommands
+2. Results are cached in `~/.typo/subcommands.json` with a 7-day validity period
+3. When fixing commands, it also checks if subcommands are correct and provides suggestions
 
-**支持的工具**：git, docker, npm, yarn, kubectl, cargo, go, pip, brew, terraform, helm 等
+**Supported tools**: git, docker, npm, yarn, kubectl, cargo, go, pip, brew, terraform, helm, etc.
 
-## 配置文件
+## Configuration Files
 
-配置文件存储在 `~/.typo/` 目录：
+Configuration files are stored in the `~/.typo/` directory:
 
 ```
 ~/.typo/
-├── history.json       # 修正历史
-├── rules.json         # 用户自定义规则
-└── subcommands.json   # 子命令缓存
+├── history.json       # Correction history
+├── rules.json         # User-defined rules
+└── subcommands.json   # Subcommand cache
 ```
 
-## 编译
+## Build
 
 ```bash
-make build              # 编译当前平台
-make build-all          # 编译所有平台
-make test               # 运行测试
-make lint               # 运行代码检查
-make ci                 # 运行 CI 检查 (fmt, lint, test)
+make build              # Build for current platform
+make build-all          # Build for all platforms
+make test               # Run tests
+make lint               # Run linter
+make ci                 # Run CI checks (fmt, lint, test)
 ```
 
 ## License
