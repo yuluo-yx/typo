@@ -95,6 +95,8 @@ func (r *SubcommandRegistry) fetchSubcommands(tool string) []string {
 		return parseCargoHelp(helpOutput)
 	case "go":
 		return parseGoHelp(helpOutput)
+	case "brew":
+		return parseBrewHelp(helpOutput)
 	default:
 		return parseGenericHelp(helpOutput)
 	}
@@ -104,6 +106,15 @@ func (r *SubcommandRegistry) getHelpOutput(tool string) (string, error) {
 	// Special handling for git - use 'help -a' for all commands
 	if tool == "git" {
 		cmd := exec.Command("git", "help", "-a")
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			return string(output), nil
+		}
+	}
+
+	// Special handling for brew - use 'commands' to get command list
+	if tool == "brew" {
+		cmd := exec.Command("brew", "commands")
 		output, err := cmd.CombinedOutput()
 		if err == nil {
 			return string(output), nil
@@ -309,6 +320,35 @@ func parseGoHelp(output string) []string {
 		line := scanner.Text()
 		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
 			subcommands = append(subcommands, matches[1])
+		}
+	}
+
+	return subcommands
+}
+
+func parseBrewHelp(output string) []string {
+	// brew commands format:
+	// ==> Built-in commands
+	// --cache
+	// --caskroom
+	// install
+	// list
+	subcommands := []string{}
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Skip empty lines and section headers (==> ...)
+		if line == "" || strings.HasPrefix(line, "==>") {
+			continue
+		}
+		// Skip internal commands starting with --
+		if strings.HasPrefix(line, "--") {
+			continue
+		}
+		// Only accept valid command names (letters, numbers, hyphens)
+		if matched, _ := regexp.MatchString(`^[a-z][a-z0-9-]*$`, line); matched {
+			subcommands = append(subcommands, line)
 		}
 	}
 
