@@ -290,7 +290,16 @@ func cmdDoctor() int {
 	// Check Go bin in PATH
 	fmt.Print("[4/4] Go bin PATH: ")
 	goBinDir := getGoBinDir()
-	if goBinDir == "" {
+
+	// Check if typo was installed via go install (in Go bin directory)
+	typoInGoBin := false
+	if execPath, err := os.Executable(); err == nil {
+		typoInGoBin = strings.HasPrefix(execPath, goBinDir)
+	}
+
+	if !typoInGoBin {
+		fmt.Println("⊘ skipped (installed from release)")
+	} else if goBinDir == "" {
 		fmt.Println("⊘ Go not installed or GOPATH not set")
 	} else {
 		pathEnv := os.Getenv("PATH")

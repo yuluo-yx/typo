@@ -20,9 +20,16 @@ Download the binary for your platform from the [Releases](https://github.com/yul
 | macOS ARM64 | `typo-darwin-arm64` |
 | Windows AMD64 | `typo-windows-amd64.exe` |
 
-After downloading, add execute permission and move to PATH:
+Quick download (example for Linux AMD64):
 
 ```bash
+# using wget
+wget https://github.com/yuluo-yx/typo/releases/latest/download/typo-linux-amd64
+chmod +x typo-linux-amd64
+sudo mv typo-linux-amd64 /usr/local/bin/typo
+
+# or using curl
+curl -LO https://github.com/yuluo-yx/typo/releases/latest/download/typo-linux-amd64
 chmod +x typo-linux-amd64
 sudo mv typo-linux-amd64 /usr/local/bin/typo
 ```

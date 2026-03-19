@@ -20,9 +20,16 @@
 | macOS ARM64 | `typo-darwin-arm64` |
 | Windows AMD64 | `typo-windows-amd64.exe` |
 
-下载后添加执行权限并移动到 PATH：
+快速下载（以 Linux AMD64 为例）：
 
 ```bash
+# 使用 wget
+wget https://github.com/yuluo-yx/typo/releases/latest/download/typo-linux-amd64
+chmod +x typo-linux-amd64
+sudo mv typo-linux-amd64 /usr/local/bin/typo
+
+# 或使用 curl
+curl -LO https://github.com/yuluo-yx/typo/releases/latest/download/typo-linux-amd64
 chmod +x typo-linux-amd64
 sudo mv typo-linux-amd64 /usr/local/bin/typo
 ```

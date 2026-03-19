@@ -678,6 +678,10 @@ func TestDoctor(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
+	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
+	os.Unsetenv("TYPO_SHELL_INTEGRATION")
+
 	os.Args = []string{"typo", "doctor"}
 
 	oldStdout := os.Stdout
@@ -772,12 +776,13 @@ func TestDoctorGoBinNotInPath(t *testing.T) {
 	buf.ReadFrom(r)
 	output := buf.String()
 
-	// Should fail because Go bin not in PATH
-	if code != 1 {
-		t.Errorf("Expected exit code 1, got %d", code)
+	// When typo is not installed in Go bin directory (e.g., from release),
+	// the Go bin PATH check should be skipped
+	if code != 0 {
+		t.Errorf("Expected exit code 0, got %d", code)
 	}
-	if !bytes.Contains([]byte(output), []byte("not in PATH")) {
-		t.Errorf("Expected 'not in PATH', got: %s", output)
+	if !bytes.Contains([]byte(output), []byte("skipped (installed from release)")) {
+		t.Errorf("Expected 'skipped (installed from release)', got: %s", output)
 	}
 }
 
