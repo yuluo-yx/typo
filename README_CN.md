@@ -6,7 +6,9 @@
 
 按两次 `Esc` 键自动修正输错的命令。
 
-![Typo Demo](typo-demo.gif)
+<p align="center">
+  <img src="typo-demo.gif" alt="Typo Demo">
+</p>
 
 ## 快速开始
 

@@ -6,7 +6,9 @@ English | **[简体中文](README_CN.md)**
 
 Press `Esc` `Esc` to fix typos automatically.
 
-![Typo Demo](typo-demo.gif)
+<p align="center">
+  <img src="typo-demo.gif" alt="Typo Demo">
+</p>
 
 ## Quick Start
 
