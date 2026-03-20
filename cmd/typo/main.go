@@ -486,4 +486,3 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithSubcommands(subcmdRegistry),
 	)
 }
-
