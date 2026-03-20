@@ -4,4 +4,4 @@
 
 按照下图取消 esc 绑定即可。
 
-![IDEA Config](idea.png)
+![IDEA Config](./imgs/idea.png)
