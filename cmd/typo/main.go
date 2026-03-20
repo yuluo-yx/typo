@@ -471,11 +471,9 @@ export TYPO_SHELL_INTEGRATION=1`)
 }
 
 func createEngine(cfg *config.Config) *engine.Engine {
-	// Discover commands from PATH
+	// Discover commands from PATH and merge with builtins
 	cmds := commands.Discover()
-	if len(cmds) == 0 {
-		cmds = commands.DiscoverCommon()
-	}
+	cmds = append(cmds, commands.ShellBuiltins()...)
 
 	// Create subcommand registry
 	subcmdRegistry := commands.NewSubcommandRegistry(cfg.ConfigDir)
@@ -488,3 +486,4 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithSubcommands(subcmdRegistry),
 	)
 }
+
