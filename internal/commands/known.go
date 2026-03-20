@@ -83,6 +83,23 @@ func DiscoverCommon() []string {
 	}
 }
 
+// ShellBuiltins returns a list of shell builtin commands.
+// These commands are built into the shell and not found in PATH.
+func ShellBuiltins() []string {
+	return []string{
+		"source", ".", "alias", "unalias", "exit", "return", "test",
+		"cd", "pushd", "popd", "dirs", "echo", "printf",
+		"export", "unset", "readonly", "read",
+		"set", "shift", "break", "continue",
+		"true", "false", ":", "[", "[[",
+		"eval", "exec", "trap", "wait",
+		"jobs", "fg", "bg", "disown",
+		"history", "logout", "login",
+		"type", "hash", "help", "local",
+		"times", "ulimit", "umask",
+	}
+}
+
 // Filter filters commands by prefix.
 func Filter(commands []string, prefix string) []string {
 	if prefix == "" {
@@ -129,3 +146,4 @@ func GetPath(name string) string {
 
 	return ""
 }
+
