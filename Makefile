@@ -77,6 +77,7 @@ coverage:
 
 lint:
 	@echo "Running golangci-lint..."
+	@golangci-lint version | grep -Eq "version (v)?2\\." || (echo "golangci-lint v2 is required"; exit 1)
 	golangci-lint run ./...
 
 fmt:
