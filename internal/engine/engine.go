@@ -239,7 +239,7 @@ func (e *Engine) fixSubcommandInResult(result FixResult) FixResult {
 
 	if bestMatch != "" && bestDistance <= 2 {
 		similarity := Similarity(subcmd, bestMatch, e.keyboard)
-		if similarity > 0.6 {
+		if similarity >= 0.6 {
 			parts[subcmdIdx] = bestMatch
 			return FixResult{
 				Fixed:   true,
@@ -304,7 +304,7 @@ func (e *Engine) tryDistance(cmd string) FixResult {
 	// Threshold: distance <= 2 and similarity > 60%
 	if bestMatch != "" && bestDistance <= 2 {
 		similarity := Similarity(cmdWord, bestMatch, e.keyboard)
-		if similarity > 0.6 {
+		if similarity >= 0.6 {
 			result := FixResult{
 				Fixed:   true,
 				Command: bestMatch,
@@ -390,7 +390,7 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	// Threshold: distance <= 2 and similarity > 60%
 	if bestMatch != "" && bestDistance <= 2 {
 		similarity := Similarity(subcmd, bestMatch, e.keyboard)
-		if similarity > 0.6 {
+		if similarity >= 0.6 {
 			// Update main command if it was resolved
 			parts[0] = mainCmd
 			parts[subcmdIdx] = bestMatch
@@ -420,7 +420,7 @@ func (e *Engine) findClosestCommand(cmd string) string {
 
 	if bestMatch != "" && bestDistance <= 2 {
 		similarity := Similarity(cmd, bestMatch, e.keyboard)
-		if similarity > 0.6 {
+		if similarity >= 0.6 {
 			return bestMatch
 		}
 	}

@@ -1,6 +1,11 @@
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
+# macOS
+.DS_Store
+.DS_Store?
+._*
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
@@ -33,3 +38,6 @@ go.work.sum
 
 # bin
 bin/
+
+# local caches
+.cache/

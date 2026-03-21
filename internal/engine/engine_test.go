@@ -1,8 +1,13 @@
 package engine
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
 )
 
@@ -347,5 +352,293 @@ func TestNewEngine(t *testing.T) {
 	eng = NewEngine(WithKeyboard(kb))
 	if eng.keyboard == nil {
 		t.Error("Expected keyboard to be set")
+	}
+}
+
+func TestEngine_FixSubcommand_SimilarityBoundary(t *testing.T) {
+	// Test case: "gti cloen" should be fixed to "git clone" or "git clean"
+	// Both have distance=2 and similarity=0.6, so either is acceptable
+
+	tmpDir := t.TempDir()
+
+	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry.Get("git")
+
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"git"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithSubcommands(subcmdRegistry),
+	)
+
+	tests := []struct {
+		name     string
+		cmd      string
+		wantFix  bool
+		wantCmds []string // acceptable results
+	}{
+		{
+			name:     "gti cloen - similarity exactly 0.6 (ambiguous: clean/clone)",
+			cmd:      "gti cloen",
+			wantFix:  true,
+			wantCmds: []string{"git clone", "git clean"},
+		},
+		{
+			name:     "gti clnoe - distance 2, similarity 0.6",
+			cmd:      "gti clnoe",
+			wantFix:  true,
+			wantCmds: []string{"git clone"},
+		},
+		{
+			name:     "gti colne - distance 2, similarity 0.6",
+			cmd:      "gti colne",
+			wantFix:  true,
+			wantCmds: []string{"git clone"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if result.Fixed != tt.wantFix {
+				t.Errorf("Fix().Fixed = %v, want %v", result.Fixed, tt.wantFix)
+			}
+			if tt.wantFix {
+				found := false
+				for _, wantCmd := range tt.wantCmds {
+					if result.Command == wantCmd {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Fix().Command = %q, want one of %v", result.Command, tt.wantCmds)
+				}
+			}
+		})
+	}
+}
+
+func TestEngine_GitCommands_CommonTypos(t *testing.T) {
+	// Comprehensive test for common git command typos
+
+	tmpDir := t.TempDir()
+	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry.Get("git")
+
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"git"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithSubcommands(subcmdRegistry),
+	)
+
+	tests := []struct {
+		name     string
+		cmd      string
+		wantFix  bool
+		wantCmds []string
+	}{
+		// Main command typos (handled by rules)
+		{"gti -> git", "gti status", true, []string{"git status"}},
+		{"gut -> git", "gut status", true, []string{"git status"}},
+		{"got -> git", "got status", true, []string{"git status"}},
+
+		// push/pull typos
+		{"gti pus -> git push", "gti pus", true, []string{"git push"}},
+		{"gti pll -> git pull", "gti pll", true, []string{"git pull"}},
+		{"gti pul -> git pull", "gti pul", true, []string{"git pull"}},
+		// psuh -> push has distance 3, similarity 0.25, too low to fix
+
+		// commit typos
+		{"gti comit -> git commit", "gti comit", true, []string{"git commit"}},
+		{"gti commt -> git commit", "gti commt", true, []string{"git commit"}},
+		{"gti commiti -> git commit", "gti commiti", true, []string{"git commit"}},
+
+		// clone typos
+		{"gti clon -> git clone", "gti clon", true, []string{"git clone"}},
+		{"gti clnoe -> git clone", "gti clnoe", true, []string{"git clone"}},
+
+		// checkout typos
+		{"gti chckout -> git checkout", "gti chckout", true, []string{"git checkout"}},
+		{"gti chekcout -> git checkout", "gti chekcout", true, []string{"git checkout"}},
+
+		// branch typos
+		{"gti brnach -> git branch", "gti brnach", true, []string{"git branch"}},
+		{"gti brnch -> git branch", "gti brnch", true, []string{"git branch"}},
+
+		// merge typos
+		{"gti mrge -> git merge", "gti mrge", true, []string{"git merge"}},
+		{"gti merg -> git merge", "gti merg", true, []string{"git merge"}},
+
+		// rebase typos
+		{"gti reabse -> git rebase", "gti reabse", true, []string{"git rebase"}},
+		{"gti rbase -> git rebase", "gti rbase", true, []string{"git rebase"}},
+
+		// stash typos
+		{"gti stahs -> git stash", "gti stahs", true, []string{"git stash"}},
+		{"gti stsh -> git stash", "gti stsh", true, []string{"git stash"}},
+
+		// fetch typos
+		{"gti fethc -> git fetch", "gti fethc", true, []string{"git fetch"}},
+		{"gti fetc -> git fetch", "gti fetc", true, []string{"git fetch"}},
+
+		// remote typos
+		{"gti remtoe -> git restore", "gti remtoe", true, []string{"git remote", "git restore"}}, // restore has higher similarity
+		{"gti remoe -> git remote", "gti remoe", true, []string{"git remote"}},
+
+		// add typos
+		{"gti ad -> git add", "gti ad", true, []string{"git add"}},
+
+		// status typos
+		{"gti stauts -> git status", "gti stauts", true, []string{"git status"}},
+		{"gti statu -> git status", "gti statu", true, []string{"git status"}},
+
+		// log typos
+		{"gti lo -> git log", "gti lo", true, []string{"git log"}},
+
+		// diff typos
+		{"gti dif -> git diff", "gti dif", true, []string{"git diff"}},
+
+		// reset typos
+		{"gti rset -> git reset", "gti rset", true, []string{"git reset"}},
+
+		// With arguments
+		{"gti pus origin main", "gti pus origin main", true, []string{"git push origin main"}},
+		{"gti comit -m 'test'", "gti comit -m 'test'", true, []string{"git commit -m 'test'"}},
+		{"gti chckout main", "gti chckout main", true, []string{"git checkout main"}},
+		{"gti ad .", "gti ad .", true, []string{"git add ."}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if result.Fixed != tt.wantFix {
+				t.Errorf("Fix().Fixed = %v, want %v", result.Fixed, tt.wantFix)
+			}
+			if tt.wantFix {
+				found := false
+				for _, wantCmd := range tt.wantCmds {
+					if result.Command == wantCmd {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Fix().Command = %q, want one of %v", result.Command, tt.wantCmds)
+				}
+			}
+		})
+	}
+}
+
+func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	cache := []commands.SubcommandCache{
+		{
+			Tool:        "docker",
+			Subcommands: []string{"build", "run", "ps", "images", "logs", "compose"},
+			UpdatedAt:   time.Now(),
+		},
+		{
+			Tool:        "npm",
+			Subcommands: []string{"install", "run", "test", "publish", "ci"},
+			UpdatedAt:   time.Now(),
+		},
+		{
+			Tool:        "kubectl",
+			Subcommands: []string{"get", "describe", "apply", "delete", "logs"},
+			UpdatedAt:   time.Now(),
+		},
+		{
+			Tool:        "brew",
+			Subcommands: []string{"install", "update", "upgrade", "list", "search"},
+			UpdatedAt:   time.Now(),
+		},
+	}
+
+	data, err := json.Marshal(cache)
+	if err != nil {
+		t.Fatalf("Failed to marshal subcommand cache: %v", err)
+	}
+
+	cacheFile := filepath.Join(tmpDir, "subcommands.json")
+	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
+		t.Fatalf("Failed to write subcommand cache: %v", err)
+	}
+
+	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+
+	return NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithHistory(NewHistory(tmpDir)),
+		WithCommands([]string{"git", "docker", "npm", "kubectl", "brew"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithSubcommands(subcmdRegistry),
+	)
+}
+
+func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{
+			name:    "docker main command and subcommand typo",
+			cmd:     "dcoker biuld -t app .",
+			wantCmd: "docker build -t app .",
+		},
+		{
+			name:    "docker subcommand typo",
+			cmd:     "docker imgaes",
+			wantCmd: "docker images",
+		},
+		{
+			name:    "npm main command and subcommand typo",
+			cmd:     "nmp isntall react",
+			wantCmd: "npm install react",
+		},
+		{
+			name:    "npm subcommand typo",
+			cmd:     "npm rn test",
+			wantCmd: "npm run test",
+		},
+		{
+			name:    "kubectl main command and subcommand typo",
+			cmd:     "kubctl desribe pod/nginx",
+			wantCmd: "kubectl describe pod/nginx",
+		},
+		{
+			name:    "kubectl subcommand typo",
+			cmd:     "kubectl aplly -f deployment.yaml",
+			wantCmd: "kubectl apply -f deployment.yaml",
+		},
+		{
+			name:    "brew main command and subcommand typo",
+			cmd:     "bre instlal wget",
+			wantCmd: "brew install wget",
+		},
+		{
+			name:    "brew subcommand typo",
+			cmd:     "brew upgarde",
+			wantCmd: "brew upgrade",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if !result.Fixed {
+				t.Fatalf("Expected to fix %q, but got no fix", tt.cmd)
+			}
+			if result.Command != tt.wantCmd {
+				t.Errorf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
 	}
 }
