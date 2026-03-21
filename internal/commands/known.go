@@ -122,7 +122,9 @@ func AddFileExtension(name string) string {
 
 // IsExecutable checks if a file is executable.
 func IsExecutable(path string) bool {
-	info, err := os.Stat(path)
+	cleanPath := filepath.Clean(path)
+	// #nosec G703 -- path is normalized and only checked for executable bit.
+	info, err := os.Stat(cleanPath)
 	if err != nil {
 		return false
 	}

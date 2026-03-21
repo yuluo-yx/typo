@@ -625,7 +625,7 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 		},
 		{
 			name:    "brew subcommand typo",
-			cmd:     "brew upgarde",
+			cmd:     "brew upgarde", //nolint:misspell // intentional typo for correction test
 			wantCmd: "brew upgrade",
 		},
 	}

@@ -378,7 +378,7 @@ func cmdUninstall() int {
 		hasError = true
 	} else {
 		zshrc := homeDir + "/.zshrc"
-		if _, err := os.Stat(zshrc); err == nil {
+		if _, statErr := os.Stat(zshrc); statErr == nil {
 			fmt.Printf("please remove the following line from ~/.zshrc:\n")
 			fmt.Println()
 			fmt.Println("    eval \"$(typo init zsh)\"")

@@ -173,7 +173,7 @@ func (r *SubcommandRegistry) saveCache() {
 
 	_ = os.MkdirAll(r.cacheDir, 0755)
 	cacheFile := filepath.Join(r.cacheDir, "subcommands.json")
-	_ = os.WriteFile(cacheFile, data, 0644)
+	_ = os.WriteFile(cacheFile, data, 0600)
 }
 
 // Parser functions for different tools

@@ -140,5 +140,5 @@ func (h *History) save() error {
 	}
 
 	historyFile := filepath.Join(h.configDir, "history.json")
-	return os.WriteFile(historyFile, data, 0644)
+	return os.WriteFile(historyFile, data, 0600)
 }

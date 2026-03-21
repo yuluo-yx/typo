@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -239,7 +240,7 @@ func TestRules_RemoveUserRule_Nonexistent(t *testing.T) {
 	r := NewRules(tmpDir)
 
 	err := r.RemoveUserRule("nonexistentrule12345")
-	if err != ErrRuleNotFound {
+	if !errors.Is(err, ErrRuleNotFound) {
 		t.Errorf("Expected ErrRuleNotFound, got %v", err)
 	}
 }

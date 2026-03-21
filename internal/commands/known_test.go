@@ -99,10 +99,8 @@ func TestGetPath(t *testing.T) {
 	path := GetPath("ls")
 	if path == "" {
 		t.Log("Warning: 'ls' not found in PATH")
-	} else {
-		if !filepath.IsAbs(path) {
-			t.Errorf("Expected absolute path, got %s", path)
-		}
+	} else if !filepath.IsAbs(path) {
+		t.Errorf("Expected absolute path, got %s", path)
 	}
 
 	// Test with non-existent command
