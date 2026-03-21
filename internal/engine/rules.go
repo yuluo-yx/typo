@@ -8,6 +8,7 @@ import (
 	"sync"
 )
 
+// ErrRuleNotFound is returned when attempting to remove a rule that does not exist.
 var ErrRuleNotFound = errors.New("rule not found")
 
 // Rule represents a single correction rule.
@@ -282,5 +283,5 @@ func (r *Rules) saveUserRules() error {
 	}
 
 	rulesFile := filepath.Join(r.configDir, "rules.json")
-	return os.WriteFile(rulesFile, data, 0644)
+	return os.WriteFile(rulesFile, data, 0600)
 }

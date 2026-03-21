@@ -80,6 +80,7 @@ formatters:
     gofmt:
       simplify: true
     goimports:
-      local-prefixes: github.com/yuluo-yx/typo
+      local-prefixes:
+        - github.com/yuluo-yx/typo
   exclusions:
     generated: lax
