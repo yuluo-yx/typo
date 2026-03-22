@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" width="280" height="80">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ADD8"/>
+      <stop offset="100%" style="stop-color:#00A29C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon: T with correction arrow -->
+  <g id="icon">
+    <rect fill="url(#grad)" x="10" y="15" width="40" height="8" rx="2"/>
+    <rect fill="url(#grad)" x="26" y="15" width="8" height="50" rx="2"/>
+
+    <!-- Correction arrow -->
+    <path
+      d="M42 25 Q58 35 42 50"
+      fill="none"
+      stroke="#10B981"
+      stroke-width="4"
+      stroke-linecap="round"
+    />
+    <polygon
+      points="42,50 36,42 48,42"
+      fill="#10B981"
+    />
+  </g>
+
+  <!-- Wordmark: typo -->
+  <text
+    x="70"
+    y="55"
+    font-family="Inter, -apple-system, sans-serif"
+    font-size="42"
+    font-weight="600"
+    fill="#1F2937"
+  >
+    typo
+  </text>
+</svg>

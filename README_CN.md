@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="docs/logo.gif" alt="Typo Logo" width="120">
+  <img src="docs/logo.svg" alt="Typo" width="280">
 </p>
-
-<h1 align="center">Typo</h1>
 
 <p align="center">命令自动修正工具</p>
 
