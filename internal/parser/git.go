@@ -7,17 +7,19 @@ import (
 
 // GitParser parses git command errors.
 type GitParser struct {
-	didYouMeanRegex *regexp.Regexp
-	noUpstreamRegex *regexp.Regexp
-	notGitRepoRegex *regexp.Regexp
+	didYouMeanRegex  *regexp.Regexp
+	noUpstreamRegex  *regexp.Regexp
+	placeholderRegex *regexp.Regexp
+	notGitRepoRegex  *regexp.Regexp
 }
 
 // NewGitParser creates a new GitParser.
 func NewGitParser() *GitParser {
 	return &GitParser{
-		didYouMeanRegex: regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
-		noUpstreamRegex: regexp.MustCompile(`--set-upstream-to=([^/\s]+)/([^\s]+)`),
-		notGitRepoRegex: regexp.MustCompile(`fatal: not a git repository`),
+		didYouMeanRegex:  regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
+		noUpstreamRegex:  regexp.MustCompile(`git branch --set-upstream-to=([^/\s]+)/([^\s]+)(?:\s+([^\s]+))?`),
+		placeholderRegex: regexp.MustCompile(`^<[^>\s]+>$`),
+		notGitRepoRegex:  regexp.MustCompile(`fatal: not a git repository`),
 	}
 }
 
@@ -72,7 +74,19 @@ func (p *GitParser) parseNoUpstream(cmd, stderr string) Result {
 	}
 
 	remote := matches[1]
-	branch := matches[2]
+	upstreamBranch := matches[2]
+	localBranch := ""
+	if len(matches) >= 4 {
+		localBranch = matches[3]
+	}
+
+	branch := upstreamBranch
+	if p.placeholderRegex.MatchString(branch) && localBranch != "" {
+		branch = localBranch
+	}
+	if p.placeholderRegex.MatchString(branch) {
+		return Result{Fixed: false}
+	}
 
 	// Add --set-upstream flag to the command
 	return Result{

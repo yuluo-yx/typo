@@ -36,6 +36,13 @@ func TestGitParser_Parse(t *testing.T) {
 			wantCmd: "git pull --set-upstream origin main",
 		},
 		{
+			name:    "no upstream branch with placeholder in upstream hint",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to rebase against.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check\n",
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
+		},
+		{
 			name:    "non-git command",
 			cmd:     "npm install",
 			stderr:  "some error",
