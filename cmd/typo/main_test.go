@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"runtime/debug"
 	"testing"
 
 	"github.com/yuluo-yx/typo/internal/config"
@@ -652,6 +653,72 @@ func TestCmdVersion(t *testing.T) {
 
 	if !bytes.Contains([]byte(output), []byte("typo")) {
 		t.Error("Expected version output to contain 'typo'")
+	}
+}
+
+func TestResolveVersionInfoUsesBuildInfoFallback(t *testing.T) {
+	oldVersion, oldCommit, oldDate := version, commit, date
+	oldReadBuildInfo := readBuildInfo
+	t.Cleanup(func() {
+		version = oldVersion
+		commit = oldCommit
+		date = oldDate
+		readBuildInfo = oldReadBuildInfo
+	})
+
+	version = "dev"
+	commit = "none"
+	date = "unknown"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			Main: debug.Module{Version: "v1.2.3"},
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "abcdef1234567890"},
+				{Key: "vcs.time", Value: "2026-03-24T14:13:08Z"},
+			},
+		}, true
+	}
+
+	gotVersion, gotCommit, gotDate := resolveVersionInfo()
+
+	if gotVersion != "v1.2.3" {
+		t.Fatalf("resolveVersionInfo() version = %q, want %q", gotVersion, "v1.2.3")
+	}
+	if gotCommit != "abcdef1" {
+		t.Fatalf("resolveVersionInfo() commit = %q, want %q", gotCommit, "abcdef1")
+	}
+	if gotDate != "2026-03-24" {
+		t.Fatalf("resolveVersionInfo() date = %q, want %q", gotDate, "2026-03-24")
+	}
+}
+
+func TestResolveVersionInfoKeepsInjectedValues(t *testing.T) {
+	oldVersion, oldCommit, oldDate := version, commit, date
+	oldReadBuildInfo := readBuildInfo
+	t.Cleanup(func() {
+		version = oldVersion
+		commit = oldCommit
+		date = oldDate
+		readBuildInfo = oldReadBuildInfo
+	})
+
+	version = "v9.9.9"
+	commit = "1234567"
+	date = "2026-03-01"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			Main: debug.Module{Version: "v1.2.3"},
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "abcdef1234567890"},
+				{Key: "vcs.time", Value: "2026-03-24T14:13:08Z"},
+			},
+		}, true
+	}
+
+	gotVersion, gotCommit, gotDate := resolveVersionInfo()
+
+	if gotVersion != "v9.9.9" || gotCommit != "1234567" || gotDate != "2026-03-01" {
+		t.Fatalf("resolveVersionInfo() = (%q, %q, %q), want (%q, %q, %q)", gotVersion, gotCommit, gotDate, "v9.9.9", "1234567", "2026-03-01")
 	}
 }
 
