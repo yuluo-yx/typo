@@ -1,18 +1,63 @@
-# 问题排查
+# Troubleshooting
 
-## 1. 在 IDEA 终端中使用时，esc 键会跳出终端？
+English | [简体中文](troubleshooting_CN.md)
 
-按照下图取消 esc 绑定即可。
+## 1. Why does pressing the `Esc` key exit the terminal in IDEA?
+
+Remove the `Esc` key binding as shown below.
 
 ![IDEA Config](imgs/idea.png)
 
-## 2. Ghostty 终端模拟器 ssh 连接时运行失败且终端异常？
+## 2. Why does typo fail or the terminal behave abnormally when using Ghostty over SSH?
 
-> 严格来说，这不是 typo 的问题，是 Ghostty 终端模拟器的问题。
+> Strictly speaking, this is a Ghostty terminal issue rather than a typo issue.
 
-- 输入重复；
-- delete 变插入空格等。
+Common symptoms:
 
-原因是：ghostty 的 terminfo 问题，在服务器的 zsh 配置中加入 `export TERM=xterm-256color` 即可。
+- Repeated input characters
+- Pressing `Delete` inserts spaces or behaves unexpectedly
+- `missing or unsuitable terminal: xterm-ghostty`
+- `Error opening terminal: xterm-ghostty`
+- `WARNING: terminal is not fully functional`
+
+Root cause:
+
+- Ghostty prefers `TERM=xterm-ghostty` to advertise its terminal capabilities.
+- If the remote machine does not have the `xterm-ghostty` `terminfo` entry installed, terminal applications over SSH may fail or behave incorrectly.
+
+Recommended fixes:
+
+1. Prefer installing Ghostty's `terminfo` entry on the remote host:
+
+   ```bash
+   infocmp -x xterm-ghostty | ssh YOUR-SERVER -- tic -x -
+   ```
+
+2. If installing `terminfo` is not practical, configure SSH to fall back to a widely supported terminal type in `~/.ssh/config`:
+
+   ```sshconfig
+   Host example.com
+     SetEnv TERM=xterm-256color
+   ```
+
+Additional notes:
+
+- The fallback approach requires OpenSSH 8.7 or newer.
+- `xterm-256color` is only a compatibility fallback and does not expose all Ghostty-specific terminal features.
+- If you use Ghostty shell integration, `shell-integration-features = ssh-terminfo` can install the remote `terminfo` automatically, and `shell-integration-features = ssh-env` can configure the SSH fallback automatically.
+- If both `ssh-terminfo,ssh-env` are enabled, Ghostty tries to install the `terminfo` entry first and falls back only if installation fails.
+- On macOS versions earlier than Sonoma, the bundled `infocmp` is too old for this workflow. Install a newer `ncurses` via Homebrew and use `/opt/homebrew/opt/ncurses/bin/infocmp` or `/usr/local/opt/ncurses/bin/infocmp` instead.
 
 See: https://ghostty.org/docs/help/terminfo#ssh
+
+## 3. Why doesn't the `Esc` binding work in a JetBrains Remote IDE terminal launched via Gateway?
+
+This appears to be a JetBrains IDE limitation. Change the binding in `typo init zsh` to another key, and it should work again.
+
+```shell
+bindkey '\e\e' _typo_fix_command
+
+->
+
+bindkey '^T' _typo_fix_command
+```
