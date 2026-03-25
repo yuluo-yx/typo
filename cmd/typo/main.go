@@ -4,10 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
 
+	"github.com/yuluo-yx/typo/install"
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/config"
 	"github.com/yuluo-yx/typo/internal/engine"
@@ -20,6 +23,7 @@ var (
 	date    = "unknown"
 
 	readBuildInfo = debug.ReadBuildInfo
+	lookPath      = exec.LookPath
 )
 
 func main() {
@@ -114,6 +118,12 @@ func cmdFix(args []string) int {
 	result := eng.Fix(cmd, stderr)
 
 	if result.Fixed {
+		if result.Command != cmd {
+			if err := eng.RecordHistory(cmd, result.Command); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				return 1
+			}
+		}
 		fmt.Println(result.Command)
 		if result.Message != "" {
 			fmt.Fprintf(os.Stderr, "typo: %s\n", result.Message)
@@ -243,7 +253,7 @@ func cmdVersion() {
 	fmt.Printf("typo %s (commit: %s, built: %s)\n", resolvedVersion, resolvedCommit, resolvedDate)
 }
 
-// 优先使用发布流程注入的信息；缺失时回退到 Go 二进制内嵌的 VCS 元数据。
+// Prefer release metadata injected by the build pipeline; fall back to VCS metadata embedded in the Go binary when needed.
 func resolveVersionInfo() (string, string, string) {
 	resolvedVersion := version
 	resolvedCommit := commit
@@ -303,9 +313,9 @@ func cmdDoctor() int {
 
 	// Check if typo is in PATH
 	fmt.Print("[1/4] typo command: ")
-	execPath, err := os.Executable()
+	typoPath, err := lookPath("typo")
 	if err == nil {
-		fmt.Printf("✓ available (%s)\n", execPath)
+		fmt.Printf("✓ available in PATH (%s)\n", typoPath)
 	} else {
 		fmt.Println("✗ not found in PATH")
 		// Check if typo exists in Go bin
@@ -313,7 +323,7 @@ func cmdDoctor() int {
 		if goBinPath != "" {
 			fmt.Println()
 			fmt.Println("  Found typo in Go bin directory but not in PATH.")
-			fmt.Println("  Add the following to your ~/.zshrc or ~/.bashrc:")
+			fmt.Println("  Add the following to your ~/.zshrc:")
 			fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinPath)
 			fmt.Println()
 		}
@@ -350,8 +360,8 @@ func cmdDoctor() int {
 
 	// Check if typo was installed via go install (in Go bin directory)
 	typoInGoBin := false
-	if execPath, err := os.Executable(); err == nil {
-		typoInGoBin = strings.HasPrefix(execPath, goBinDir)
+	if typoPath != "" {
+		typoInGoBin = sameDir(filepath.Dir(typoPath), goBinDir)
 	}
 
 	if !typoInGoBin {
@@ -359,8 +369,7 @@ func cmdDoctor() int {
 	} else if goBinDir == "" {
 		fmt.Println("⊘ Go not installed or GOPATH not set")
 	} else {
-		pathEnv := os.Getenv("PATH")
-		if strings.Contains(pathEnv, goBinDir) {
+		if pathContainsDir(os.Getenv("PATH"), goBinDir) {
 			fmt.Println("✓ configured")
 		} else {
 			fmt.Printf("✗ %s not in PATH\n", goBinDir)
@@ -384,6 +393,10 @@ func cmdDoctor() int {
 func getGoBinDir() string {
 	// Try GOPATH first
 	goPath := os.Getenv("GOPATH")
+	goBin := os.Getenv("GOBIN")
+	if goBin != "" {
+		return filepath.Clean(goBin)
+	}
 	if goPath == "" {
 		// Try default GOPATH
 		homeDir, err := os.UserHomeDir()
@@ -392,7 +405,7 @@ func getGoBinDir() string {
 		}
 		goPath = homeDir + "/go"
 	}
-	return goPath + "/bin"
+	return filepath.Join(goPath, "bin")
 }
 
 func checkGoBinTypo() string {
@@ -400,7 +413,7 @@ func checkGoBinTypo() string {
 	if goBinDir == "" {
 		return ""
 	}
-	typoPath := goBinDir + "/typo"
+	typoPath := filepath.Join(goBinDir, "typo")
 	if _, err := os.Stat(typoPath); err == nil {
 		return goBinDir
 	}
@@ -466,65 +479,10 @@ func cmdUninstall() int {
 }
 
 func printZshIntegration() {
-	fmt.Println(`# typo - Command auto-correction for zsh
-#
-# Installation:
-#   Add to ~/.zshrc:
-#     source /path/to/typo/install/typo.zsh
-#
-#   Or use:
-#     eval "$(typo init zsh)"
-#
-# Usage:
-#   1. Type a wrong command, press <Esc><Esc> to fix before executing
-#   2. After executing a failed command, press <Esc><Esc> to fix last command
-#
-# Example:
-#   $ gut stattus<Esc><Esc>  →  git status
-#   $ gut stattus      →  command not found
-#   $ <Esc><Esc>       →  git status
-
-_typo_fix_command() {
-    local cmd="${BUFFER}"
-    local stderr_file="${TYPO_STDERR_CACHE:-/tmp/typo-stderr-$$}"
-
-    # If buffer is empty, get last command from history
-    if [[ -z "$cmd" ]]; then
-        cmd=$(fc -ln -1 | sed 's/^[[:space:]]*//')
-    fi
-
-    [[ -z "$cmd" ]] && return
-
-    local fixed
-    if [[ -f "$stderr_file" && -s "$stderr_file" ]]; then
-        fixed=$(typo fix -s "$stderr_file" "$cmd" 2>/dev/null)
-    else
-        fixed=$(typo fix "$cmd" 2>/dev/null)
-    fi
-
-    if [[ -n "$fixed" && "$fixed" != "$cmd" ]]; then
-        BUFFER="$fixed"
-        CURSOR=${#BUFFER}
-        zle reset-prompt
-    fi
-}
-
-zle -N _typo_fix_command
-
-# Esc+Esc to fix command
-bindkey '\e\e' _typo_fix_command
-
-# stderr capture hook
-_typo_preexec() {
-    TYPO_STDERR_CACHE="/tmp/typo-stderr-$$"
-    exec 2> >(tee "$TYPO_STDERR_CACHE" >&2)
-}
-
-autoload -Uz add-zsh-hook
-add-zsh-hook preexec _typo_preexec
-
-# Mark shell integration as loaded
-export TYPO_SHELL_INTEGRATION=1`)
+	fmt.Print(install.ZshScript)
+	if !strings.HasSuffix(install.ZshScript, "\n") {
+		fmt.Println()
+	}
 }
 
 func createEngine(cfg *config.Config) *engine.Engine {
@@ -542,4 +500,20 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithCommands(cmds),
 		engine.WithSubcommands(subcmdRegistry),
 	)
+}
+
+func sameDir(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func pathContainsDir(pathValue, dir string) bool {
+	for _, item := range filepath.SplitList(pathValue) {
+		if sameDir(item, dir) {
+			return true
+		}
+	}
+	return false
 }

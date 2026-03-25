@@ -61,3 +61,30 @@ bindkey '\e\e' _typo_fix_command
 
 bindkey '^T' _typo_fix_command
 ```
+
+## 4. 为什么 `/tmp` 或 `$TMPDIR` 里会出现 `typo-stderr-*` 文件？为什么有时退出后还会残留？
+
+这是 zsh 集成脚本的正常工作机制。
+
+根因说明：
+
+- typo 会把上一条命令的 `stderr` 暂存到 `typo-stderr-*` 文件里。
+- 当你按下 `<Esc><Esc>` 时，`typo fix -s <file>` 会读取这份缓存，用真实报错信息辅助纠错。
+- 所以在 shell 运行过程中看到 `typo-stderr-*` 文件是正常现象，不代表异常。
+
+什么时候属于正常：
+
+- 当前 shell 还在运行，缓存文件仍然存在。
+- 看到类似 `typo-stderr-AbCdEf` 这类随机后缀文件名，这是优先使用 `mktemp` 创建临时文件的正常路径。
+- 某些环境里如果 `mktemp` 不可用或创建失败，会回退成 `typo-stderr-20357` 这种带当前 shell PID 的文件名。
+
+什么时候才算问题：
+
+- shell 已经正常退出，但对应的 `typo-stderr-*` 文件还一直留在 `/tmp` 或 `$TMPDIR` 中。
+- 打开嵌套 shell 后，父 shell 和子 shell 互相覆盖或误删对方的缓存文件。
+
+补充说明：
+
+- 正常退出时，typo 会在 `zshexit` 钩子里删除当前 shell 自己的缓存文件。
+- 如果终端崩溃、shell 被强制杀死，或者系统异常中断，退出钩子可能来不及执行，这种场景下残留旧文件是可以接受的。
+- typo 会在后续 shell 启动时清理一天前遗留的旧缓存，避免 `/tmp` 长期堆积。

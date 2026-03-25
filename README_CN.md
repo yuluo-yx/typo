@@ -39,7 +39,6 @@ eval "$(typo init zsh)"
 | Linux ARM64 | `typo-linux-arm64` |
 | macOS AMD64 | `typo-darwin-amd64` |
 | macOS ARM64 | `typo-darwin-arm64` |
-| Windows AMD64 | `typo-windows-amd64.exe` |
 
 ```bash
 # 以 macOS ARM64 为例
@@ -110,8 +109,8 @@ typo uninstall         # 卸载 typo
 Typo 按以下优先级修正命令：
 
 1. **错误解析** - 从 stderr 提取 "did you mean" 建议
-2. **历史记录** - 使用之前学习过的修正
-3. **规则匹配** - 内置和用户自定义规则
+2. **历史记录** - 复用之前接受过的真实修正
+3. **规则匹配** - 内置、learn 生成与用户自定义规则
 4. **编辑距离** - 基于键盘布局的模糊匹配
 
 ### 支持的错误解析
@@ -137,9 +136,9 @@ typo fix "docker biuld"  # → docker build
 
 ```
 ~/.typo/
-├── history.json       # 修正历史
-├── rules.json         # 用户规则
-└── subcommands.json   # 子命令缓存
+├── rules.json                   # learn 结果与用户规则
+├── usage_history.json           # 真实修正历史
+└── subcommands.json             # 子命令缓存
 ```
 
 ## 编译

@@ -450,9 +450,9 @@ func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) Fi
 	return result
 }
 
-// Learn records a correction in history.
+// Learn stores a user-taught correction as a rule instead of history.
 func (e *Engine) Learn(from, to string) error {
-	return e.history.Record(from, to)
+	return e.rules.AddUserRule(Rule{From: from, To: to})
 }
 
 // AddRule adds a user rule.
@@ -468,4 +468,9 @@ func (e *Engine) ListRules() []Rule {
 // ListHistory returns all history entries.
 func (e *Engine) ListHistory() []HistoryEntry {
 	return e.history.List()
+}
+
+// RecordHistory records a correction that actually happened.
+func (e *Engine) RecordHistory(from, to string) error {
+	return e.history.Record(from, to)
 }

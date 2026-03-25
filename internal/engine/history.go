@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"time"
 )
+
+const usageHistoryFileName = "usage_history.json"
 
 // HistoryEntry represents a single correction history entry.
 type HistoryEntry struct {
@@ -40,12 +44,14 @@ func (h *History) Record(from, to string) error {
 	if entry, exists := h.entries[from]; exists {
 		entry.Count++
 		entry.To = to // Update in case user changed preference
+		entry.Timestamp = time.Now().Unix()
 		h.entries[from] = entry
 	} else {
 		h.entries[from] = HistoryEntry{
-			From:  from,
-			To:    to,
-			Count: 1,
+			From:      from,
+			To:        to,
+			Timestamp: time.Now().Unix(),
+			Count:     1,
 		}
 	}
 
@@ -88,6 +94,15 @@ func (h *History) List() []HistoryEntry {
 	for _, entry := range h.entries {
 		entries = append(entries, entry)
 	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Timestamp == entries[j].Timestamp {
+			if entries[i].Count == entries[j].Count {
+				return entries[i].From < entries[j].From
+			}
+			return entries[i].Count > entries[j].Count
+		}
+		return entries[i].Timestamp > entries[j].Timestamp
+	})
 	return entries
 }
 
@@ -104,7 +119,7 @@ func (h *History) load() {
 		return
 	}
 
-	historyFile := filepath.Join(h.configDir, "history.json")
+	historyFile := filepath.Join(h.configDir, usageHistoryFileName)
 	data, err := os.ReadFile(historyFile)
 	if err != nil {
 		return // No history file yet
@@ -139,6 +154,6 @@ func (h *History) save() error {
 		return err
 	}
 
-	historyFile := filepath.Join(h.configDir, "history.json")
+	historyFile := filepath.Join(h.configDir, usageHistoryFileName)
 	return os.WriteFile(historyFile, data, 0600)
 }

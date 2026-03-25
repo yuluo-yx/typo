@@ -39,7 +39,6 @@ Download the binary for your platform from the [Releases](https://github.com/yul
 | Linux ARM64 | `typo-linux-arm64` |
 | macOS AMD64 | `typo-darwin-amd64` |
 | macOS ARM64 | `typo-darwin-arm64` |
-| Windows AMD64 | `typo-windows-amd64.exe` |
 
 ```bash
 # Example for macOS ARM64
@@ -110,8 +109,8 @@ typo uninstall         # Uninstall typo
 Typo corrects commands in this priority:
 
 1. **Error Parsing** - Extracts "did you mean" suggestions from stderr
-2. **History** - Uses previously learned corrections
-3. **Rules** - Built-in and user-defined patterns
+2. **History** - Reuses previously accepted corrections
+3. **Rules** - Built-in, learned, and user-defined patterns
 4. **Edit Distance** - Fuzzy matching based on keyboard layout
 
 ### Supported Error Parsing
@@ -137,9 +136,9 @@ Files stored in `~/.typo/`:
 
 ```
 ~/.typo/
-├── history.json       # Correction history
-├── rules.json         # User rules
-└── subcommands.json   # Subcommand cache
+├── rules.json                  # Built-in extensions and learned rules
+├── usage_history.json          # Actual correction history
+└── subcommands.json            # Subcommand cache
 ```
 
 ## Build

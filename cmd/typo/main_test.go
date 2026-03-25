@@ -3,11 +3,56 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime/debug"
 	"testing"
 
+	installscript "github.com/yuluo-yx/typo/install"
 	"github.com/yuluo-yx/typo/internal/config"
 )
+
+func TestMain(m *testing.M) {
+	tmpHome, err := os.MkdirTemp("", "typo-main-test-home-*")
+	if err != nil {
+		panic(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		panic(err)
+	}
+
+	code := m.Run()
+	_ = os.Setenv("HOME", oldHome)
+	_ = os.RemoveAll(tmpHome)
+	os.Exit(code)
+}
+
+func runZshIntegrationScript(t *testing.T, script string, extraEnv ...string) []byte {
+	t.Helper()
+
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh is not available")
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "typo.zsh")
+	if err := os.WriteFile(scriptPath, []byte(installscript.ZshScript), 0600); err != nil {
+		t.Fatalf("Failed to write zsh script: %v", err)
+	}
+
+	cmd := exec.Command("zsh", "-f", "-c", script, "zsh", scriptPath)
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir, "HOME="+tmpDir, "ZDOTDIR="+tmpDir)
+	cmd.Env = append(cmd.Env, extraEnv...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsh integration regression failed: %v\noutput:\n%s", err, output)
+	}
+
+	return output
+}
 
 func TestRun(t *testing.T) {
 	oldArgs := os.Args
@@ -736,14 +781,22 @@ func TestPrintZshIntegration(t *testing.T) {
 	buf.ReadFrom(r)
 	output := buf.String()
 
-	if !bytes.Contains([]byte(output), []byte("bindkey")) {
-		t.Error("Expected zsh integration to contain 'bindkey'")
+	if output != installscript.ZshScript {
+		t.Error("Expected zsh integration output to match embedded install script")
+	}
+	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
+		t.Error("Expected zsh integration to include stale cache cleanup")
 	}
 }
 
 func TestDoctor(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
 	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
@@ -781,6 +834,11 @@ func TestDoctor(t *testing.T) {
 func TestDoctorWithShellIntegration(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
 	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
@@ -818,15 +876,30 @@ func TestDoctorWithShellIntegration(t *testing.T) {
 func TestDoctorGoBinNotInPath(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
 	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
 	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
 
+	tmpDir := t.TempDir()
+	goBinDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(goBinDir, 0755); err != nil {
+		t.Fatalf("Failed to create go bin dir: %v", err)
+	}
+
+	oldGoBin := os.Getenv("GOBIN")
+	defer os.Setenv("GOBIN", oldGoBin)
+	os.Setenv("GOBIN", goBinDir)
+
 	oldPath := os.Getenv("PATH")
 	defer os.Setenv("PATH", oldPath)
-	// Set PATH without go bin
 	os.Setenv("PATH", "/usr/bin:/bin")
+
+	lookPath = func(file string) (string, error) {
+		return filepath.Join(goBinDir, "typo"), nil
+	}
 
 	os.Args = []string{"typo", "doctor"}
 
@@ -843,14 +916,201 @@ func TestDoctorGoBinNotInPath(t *testing.T) {
 	buf.ReadFrom(r)
 	output := buf.String()
 
-	// When typo is not installed in Go bin directory (e.g., from release),
-	// the Go bin PATH check should be skipped
+	if code != 1 {
+		t.Errorf("Expected exit code 1, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("not in PATH")) {
+		t.Errorf("Expected Go bin PATH warning, got: %s", output)
+	}
+}
+
+func TestDoctorTypoMissingFromPath(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+
+	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
+	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 1 {
+		t.Errorf("Expected exit code 1, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("not found in PATH")) {
+		t.Errorf("Expected missing PATH message, got: %s", output)
+	}
+}
+
+func TestFixWritesUsageHistory(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "gut", "status"}
+
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
 	if code != 0 {
-		t.Errorf("Expected exit code 0, got %d", code)
+		t.Fatalf("Expected exit code 0, got %d", code)
 	}
-	if !bytes.Contains([]byte(output), []byte("skipped (installed from release)")) {
-		t.Errorf("Expected 'skipped (installed from release)', got: %s", output)
+
+	cfg := config.Load()
+	if _, err := os.Stat(filepath.Join(cfg.ConfigDir, "usage_history.json")); err != nil {
+		t.Fatalf("Expected usage_history.json to exist, got %v", err)
 	}
+}
+
+func TestLearnSurvivesHistoryClear(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "learn", "gut", "mygit"}
+	if code := run(); code != 0 {
+		t.Fatalf("Expected learn to succeed, got %d", code)
+	}
+
+	os.Args = []string{"typo", "history", "clear"}
+	if code := run(); code != 0 {
+		t.Fatalf("Expected history clear to succeed, got %d", code)
+	}
+
+	os.Args = []string{"typo", "fix", "gut", "status"}
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected fix to succeed, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("mygit status")) {
+		t.Fatalf("Expected learned rule to survive history clear, got %q", output)
+	}
+}
+
+func TestZshIntegrationCleansAndRotatesStderrCache(t *testing.T) {
+	runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+
+stale="${TMPDIR:-/tmp}/typo-stderr-stale-test"
+print -n "old" > "$stale"
+touch -t 202401010101 "$stale"
+_typo_cleanup_stale_caches
+[[ -e "$stale" ]] && exit 21
+
+_typo_preexec
+print -u2 "first"
+_typo_precmd
+sleep 0.1
+
+_typo_preexec
+print -u2 "second"
+_typo_precmd
+sleep 0.1
+
+grep -q "second" "$TYPO_STDERR_CACHE" || exit 22
+grep -q "first" "$TYPO_STDERR_CACHE" && exit 23
+
+cache="$TYPO_STDERR_CACHE"
+_typo_zshexit
+if [[ -e "$cache" ]]; then
+    exit 24
+fi
+`)
+}
+
+func TestZshIntegrationIsolatesParentAndChildCaches(t *testing.T) {
+	runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+
+env | grep -q '^TYPO_STDERR_CACHE=' && exit 31
+env | grep -q '^TYPO_ORIG_STDERR_FD=' && exit 32
+
+parent_cache="$TYPO_STDERR_CACHE"
+[[ -n "$parent_cache" ]] || exit 33
+[[ -f "$parent_cache" ]] || exit 34
+
+child_cache=$(zsh -f -c '
+zle() { true; }
+bindkey() { true; }
+source "$1"
+print -r -- "$TYPO_STDERR_CACHE"
+_typo_zshexit
+' zsh "$1")
+
+[[ -n "$child_cache" ]] || exit 35
+[[ "$child_cache" == "$parent_cache" ]] && exit 36
+[[ -e "$parent_cache" ]] || exit 37
+
+_typo_preexec
+print -u2 "parent-still-works"
+_typo_precmd
+sleep 0.1
+grep -q "parent-still-works" "$parent_cache" || exit 38
+
+_typo_zshexit
+[[ ! -e "$parent_cache" ]] || exit 39
+`)
+}
+
+func TestZshIntegrationFallsBackWhenMktempFails(t *testing.T) {
+	runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+mktemp() { return 1; }
+source "$1"
+
+expected="${TMPDIR:-/tmp}/typo-stderr-$$"
+[[ "$TYPO_STDERR_CACHE" == "$expected" ]] || exit 41
+[[ "$TYPO_STDERR_CACHE_OWNER" == "$$" ]] || exit 42
+[[ -f "$expected" ]] || exit 43
+
+_typo_preexec
+print -u2 "fallback-stderr"
+_typo_precmd
+sleep 0.1
+grep -q "fallback-stderr" "$expected" || exit 44
+
+_typo_zshexit
+[[ ! -e "$expected" ]] || exit 45
+`)
 }
 
 func TestUninstall(t *testing.T) {

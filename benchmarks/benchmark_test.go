@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// BenchmarkTypoCLI 测试完整 CLI 的性能
+// BenchmarkTypoCLI measures the performance of the full CLI.
 func BenchmarkTypoCLI(b *testing.B) {
 	b.Run("fix-rule-match", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {

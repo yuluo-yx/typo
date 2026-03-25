@@ -30,11 +30,7 @@ jobs:
           cd bin
           for dir in */; do
             dir=${dir%/}
-            if [ "$dir" = "windows-amd64" ]; then
-              mv $dir/typo.exe typo-$dir.exe
-            else
-              mv $dir/typo typo-$dir
-            fi
+            mv "$dir/typo" "typo-$dir"
           done
 
       - name: Create prerelease

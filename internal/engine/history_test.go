@@ -35,9 +35,9 @@ func TestHistory_Record(t *testing.T) {
 	}
 
 	// Verify it was saved to file
-	historyFile := filepath.Join(tmpDir, "history.json")
+	historyFile := filepath.Join(tmpDir, usageHistoryFileName)
 	if _, err := os.Stat(historyFile); os.IsNotExist(err) {
-		t.Error("Expected history.json to be created")
+		t.Error("Expected usage history file to be created")
 	}
 }
 
@@ -156,12 +156,12 @@ func TestHistory_UpdatePreference(t *testing.T) {
 func TestHistory_LoadExisting(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Pre-create history.json
+	// Pre-create usage history file
 	existing := []HistoryEntry{
-		{From: "existing", To: "correct", Count: 5},
+		{From: "existing", To: "correct", Timestamp: 100, Count: 5},
 	}
 	data, _ := jsonMarshalHistory(existing)
-	historyFile := filepath.Join(tmpDir, "history.json")
+	historyFile := filepath.Join(tmpDir, usageHistoryFileName)
 	os.WriteFile(historyFile, data, 0644)
 
 	// Load history
@@ -195,17 +195,14 @@ func TestHistory_EmptyConfigDir(t *testing.T) {
 }
 
 func jsonMarshalHistory(v interface{}) ([]byte, error) {
-	// Use actual JSON marshal for proper test
-	importjson := `import "encoding/json"`
-	_ = importjson // suppress unused warning
-	return []byte(`[{"from":"existing","to":"correct","count":5}]`), nil
+	return []byte(`[{"from":"existing","to":"correct","timestamp":100,"count":5}]`), nil
 }
 
 func TestHistory_LoadInvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Write invalid JSON
-	historyFile := filepath.Join(tmpDir, "history.json")
+	historyFile := filepath.Join(tmpDir, usageHistoryFileName)
 	os.WriteFile(historyFile, []byte("invalid json {"), 0644)
 
 	// Load history - should not panic
@@ -249,5 +246,21 @@ func TestHistory_ClearError(t *testing.T) {
 	err = h.Clear()
 	if err == nil {
 		t.Error("Expected error when clearing with invalid path")
+	}
+}
+
+func TestHistory_ListSortedByTimestamp(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHistory(tmpDir)
+
+	h.entries["older"] = HistoryEntry{From: "older", To: "git", Timestamp: 10, Count: 1}
+	h.entries["newer"] = HistoryEntry{From: "newer", To: "docker", Timestamp: 20, Count: 1}
+
+	entries := h.List()
+	if len(entries) != 2 {
+		t.Fatalf("Expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].From != "newer" {
+		t.Fatalf("Expected newest entry first, got %q", entries[0].From)
 	}
 }

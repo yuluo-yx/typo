@@ -16,7 +16,6 @@ func TestEngine_Fix(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(
 		WithRules(NewRules(tmpDir)),
-		WithHistory(NewHistory(tmpDir)),
 		WithParser(parser.NewRegistry()),
 		WithCommands([]string{"git", "docker", "npm", "ls", "cat", "grep"}),
 	)
@@ -242,8 +241,8 @@ func TestEngine_TryDistance_WithArgs(t *testing.T) {
 
 func TestEngine_Learn(t *testing.T) {
 	tmpDir := t.TempDir()
-	history := NewHistory(tmpDir)
-	eng := NewEngine(WithHistory(history))
+	rules := NewRules(tmpDir)
+	eng := NewEngine(WithRules(rules))
 
 	// Learn a correction
 	if err := eng.Learn("mytypo", "mycommand"); err != nil {
@@ -295,8 +294,12 @@ func TestEngine_ListHistory(t *testing.T) {
 	eng := NewEngine(WithHistory(history))
 
 	// Add some history
-	eng.Learn("typo1", "correct1")
-	eng.Learn("typo2", "correct2")
+	if err := eng.RecordHistory("typo1", "correct1"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
+	if err := eng.RecordHistory("typo2", "correct2"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
 
 	entries := eng.ListHistory()
 	if len(entries) != 2 {
@@ -573,7 +576,6 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 
 	return NewEngine(
 		WithRules(NewRules(tmpDir)),
-		WithHistory(NewHistory(tmpDir)),
 		WithCommands([]string{"git", "docker", "npm", "kubectl", "brew"}),
 		WithKeyboard(NewQWERTYKeyboard()),
 		WithSubcommands(subcmdRegistry),
