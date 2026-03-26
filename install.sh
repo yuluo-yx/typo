@@ -5,6 +5,7 @@ set -euo pipefail
 REPO="yuluo-yx/typo"
 BINARY_NAME="typo"
 VERSION_SELECTOR=""
+BUILD_FROM_SOURCE=0
 TMP_DIR=""
 
 usage() {
@@ -13,11 +14,12 @@ Install typo on macOS or Linux.
 
 Usage:
   install.sh
-  install.sh -s latest
   install.sh -s 26.03.24
+  install.sh -b
 
 Options:
-  -s VERSION   latest 表示构建 main 分支代码；其余值按 Release 版本安装
+  -s VERSION   按 Release 版本安装；latest 表示最新 Release
+  -b           从 main 分支源码构建（需要 go）
   -h           Show help
 
 Environment:
@@ -25,10 +27,13 @@ Environment:
 EOF
 }
 
-while getopts ":s:h" opt; do
+while getopts ":s:bh" opt; do
   case "$opt" in
     s)
       VERSION_SELECTOR="$OPTARG"
+      ;;
+    b)
+      BUILD_FROM_SOURCE=1
       ;;
     h)
       usage
@@ -46,6 +51,12 @@ while getopts ":s:h" opt; do
       ;;
   esac
 done
+
+if [[ "$BUILD_FROM_SOURCE" -eq 1 && -n "$VERSION_SELECTOR" ]]; then
+  echo "Options -b and -s cannot be used together." >&2
+  usage >&2
+  exit 1
+fi
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -74,7 +85,7 @@ normalize_arch() {
 normalize_tag() {
   local input="$1"
 
-  if [[ -z "$input" ]]; then
+  if [[ -z "$input" || "$input" == "latest" ]]; then
     echo ""
     return
   fi
@@ -207,7 +218,7 @@ main() {
 
   local binary_path="${TMP_DIR}/${BINARY_NAME}"
 
-  if [[ "$VERSION_SELECTOR" == "latest" ]]; then
+  if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
     build_main_binary "$TMP_DIR" "$binary_path"
   else
     download_release_binary "$platform" "$(normalize_tag "$VERSION_SELECTOR")" "$binary_path"

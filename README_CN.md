@@ -26,14 +26,19 @@ Coming soon.
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash
 ```
 
+脚本默认下载预编译的 Release 二进制。只有在从 `main` 分支源码构建时才需要 `Go`。
+
 可选参数：
 
 ```bash
-# 安装 main 分支最新代码
+# 显式安装最新 Release
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
 
 # 安装指定 Release 版本
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 26.03.24
+
+# 从 main 分支源码构建（需要 Go）
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -b
 ```
 
 说明：安装脚本当前支持 macOS 和 Linux。
@@ -45,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bas
 eval "$(typo init zsh)"
 ```
 
-重启终端后，输错命令按 `Esc` `Esc` 即可修正。
+重启终端后，输错命令按 `Esc` `Esc` 即可修正。（不用回车也可！）
 
 ## 命令
 

@@ -26,14 +26,19 @@ Coming soon.
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash
 ```
 
+The script downloads a prebuilt Release binary by default. `Go` is only required when building from the `main` branch source.
+
 Optional arguments:
 
 ```bash
-# Install from the main branch
+# Install the latest release explicitly
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
 
 # Install a specific release
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 26.03.24
+
+# Build from the main branch source (requires Go)
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -b
 ```
 
 Note: The install script currently supports macOS and Linux.
@@ -45,7 +50,7 @@ Note: The install script currently supports macOS and Linux.
 eval "$(typo init zsh)"
 ```
 
-Restart your terminal, then press `Esc` `Esc` after a typo.
+Restart your terminal, then press `Esc` `Esc` after a typo. (No Enter can!)
 
 ## Commands
 
