@@ -15,15 +15,17 @@ benchmarks/
 ## What Is Covered
 
 - CLI benchmarks that spawn the `typo` executable and measure full process cost.
+- CLI benchmarks for shell-aware fixes, including compound commands, pipelines, wrappers, parser-assisted fixes, and no-op exits.
 - Engine benchmarks that measure the hot path inside the correction engine.
+- Engine benchmarks for shell-aware multi-fix flows, wrapper-prefixed commands, subcommand repair, and parser-assisted compound commands.
 - Utility benchmarks for distance, similarity, rule lookup, history lookup, and keyboard adjacency checks.
 
 ## Prerequisites
 
 - Go `1.25+`
-- A runnable `typo` binary available on `PATH` for `BenchmarkTypoCLI`
 
-The CLI benchmarks call `exec.Command("typo", ...)`, so they measure process startup, argument parsing, and the correction flow together.
+The CLI benchmarks build the local `./cmd/typo` binary into a temporary directory before the timer starts, then execute that binary in an isolated `HOME` and `PATH`.
+This keeps the benchmark self-contained while still measuring process startup, argument parsing, command discovery, and the correction flow together.
 
 ## How To Run
 
@@ -46,6 +48,8 @@ go test -bench=BenchmarkTypoCLI -benchmem ./benchmarks/ -run=^$ -count=1
 ```
 
 ## Latest Sample Report
+
+This sample report is illustrative and may not list every benchmark currently defined in the suite.
 
 Date: `2026-03-25`
 

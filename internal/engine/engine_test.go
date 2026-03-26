@@ -137,6 +137,177 @@ func TestEngine_FixWithDistance(t *testing.T) {
 	}
 }
 
+func TestEngine_Fix_DoesNotReportNoopAsFix(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "docker", "npm"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	tests := []string{
+		"git status",
+		"docker ps",
+		"npm test",
+	}
+
+	for _, cmd := range tests {
+		t.Run(cmd, func(t *testing.T) {
+			result := eng.Fix(cmd, "")
+			if result.Fixed {
+				t.Fatalf("Expected no fix for valid command %q, got %+v", cmd, result)
+			}
+		})
+	}
+}
+
+func TestEngine_Fix_WithWrapperPrefixes(t *testing.T) {
+	tmpDir := t.TempDir()
+	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry.Get("git")
+
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"git", "sudo", "env"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithSubcommands(subcmdRegistry),
+	)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{
+			name:    "sudo wrapped command",
+			cmd:     "sudo gti status",
+			wantCmd: "sudo git status",
+		},
+		{
+			name:    "shell assignment before command",
+			cmd:     "FOO=1 gut status",
+			wantCmd: "FOO=1 git status",
+		},
+		{
+			name:    "env wrapper with assignment",
+			cmd:     "env FOO=1 gut status",
+			wantCmd: "env FOO=1 git status",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if !result.Fixed {
+				t.Fatalf("Expected to fix %q, got no fix", tt.cmd)
+			}
+			if result.Command != tt.wantCmd {
+				t.Fatalf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_Fix_PreservesQuotedArguments(t *testing.T) {
+	tmpDir := t.TempDir()
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"git"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	result := eng.Fix("gut commit -m 'a   b'", "")
+	if !result.Fixed {
+		t.Fatal("Expected quoted command to be fixed")
+	}
+	if result.Command != "git commit -m 'a   b'" {
+		t.Fatalf("Expected quoted argument spacing to be preserved, got %q", result.Command)
+	}
+}
+
+func TestEngine_Fix_PreservesCompoundCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry.Get("git")
+
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"git", "sudo"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithSubcommands(subcmdRegistry),
+	)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{
+			name:    "semicolon command preserves separator",
+			cmd:     "gut status; echo ok",
+			wantCmd: "git status; echo ok",
+		},
+		{
+			name:    "wrapped command in and-list",
+			cmd:     "sudo gti status && echo ok",
+			wantCmd: "sudo git status && echo ok",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if !result.Fixed {
+				t.Fatalf("Expected to fix %q, got no fix", tt.cmd)
+			}
+			if result.Command != tt.wantCmd {
+				t.Fatalf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_Fix_CanCorrectMultipleTyposInOneCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry.Get("git")
+	subcmdRegistry.Get("docker")
+
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"git", "docker", "sudo"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithSubcommands(subcmdRegistry),
+	)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{
+			name:    "two command typos in and-list",
+			cmd:     "gti status && dcoker ps",
+			wantCmd: "git status && docker ps",
+		},
+		{
+			name:    "mixed wrapper and subcommand typo",
+			cmd:     "sudo git -C repo stauts || dcoker ps",
+			wantCmd: "sudo git -C repo status || docker ps",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if !result.Fixed {
+				t.Fatalf("Expected to fix %q, got no fix", tt.cmd)
+			}
+			if result.Command != tt.wantCmd {
+				t.Fatalf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
 func TestEngine_FixCommand(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(
@@ -601,6 +772,11 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			wantCmd: "docker images",
 		},
 		{
+			name:    "docker subcommand typo after global option with value",
+			cmd:     "docker --context prod biuld -t app .",
+			wantCmd: "docker --context prod build -t app .",
+		},
+		{
 			name:    "npm main command and subcommand typo",
 			cmd:     "nmp isntall react",
 			wantCmd: "npm install react",
@@ -619,6 +795,11 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			name:    "kubectl subcommand typo",
 			cmd:     "kubectl aplly -f deployment.yaml",
 			wantCmd: "kubectl apply -f deployment.yaml",
+		},
+		{
+			name:    "git subcommand typo after global option with value",
+			cmd:     "git -C repo stauts",
+			wantCmd: "git -C repo status",
 		},
 		{
 			name:    "brew main command and subcommand typo",

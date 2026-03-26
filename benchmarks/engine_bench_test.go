@@ -1,9 +1,15 @@
 package benchmarks
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/engine"
+	"github.com/yuluo-yx/typo/internal/parser"
 )
 
 func BenchmarkDistance(b *testing.B) {
@@ -56,17 +62,26 @@ func BenchmarkEngine_Fix(b *testing.B) {
 	keyboard := engine.DefaultKeyboard
 	rules := engine.NewRules("")
 	history := engine.NewHistory("")
-	commands := []string{"git", "docker", "npm", "go", "python", "kubectl", "make", "ls", "cd", "grep"}
-
-	b.ResetTimer()
+	commandList := []string{"git", "docker", "npm", "go", "python", "kubectl", "make", "ls", "cd", "grep", "sudo", "env", "echo", "true"}
+	parserRegistry := parser.NewRegistry()
+	subcommands := newBenchmarkSubcommandRegistry(b, map[string][]string{
+		"git":     {"status", "remote", "commit", "checkout", "branch", "pull", "push"},
+		"docker":  {"build", "ps", "images", "run", "logs", "compose"},
+		"npm":     {"install", "list", "run", "test", "ci"},
+		"kubectl": {"apply", "describe", "get", "logs"},
+	})
+	gitStderr := "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"
 
 	b.Run("exact-match-rule", func(b *testing.B) {
 		eng := engine.NewEngine(
 			engine.WithKeyboard(keyboard),
 			engine.WithRules(rules),
 			engine.WithHistory(history),
-			engine.WithCommands(commands),
+			engine.WithCommands(commandList),
+			engine.WithParser(parserRegistry),
+			engine.WithSubcommands(subcommands),
 		)
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			eng.Fix("gut status", "")
 		}
@@ -77,10 +92,73 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithKeyboard(keyboard),
 			engine.WithRules(rules),
 			engine.WithHistory(history),
-			engine.WithCommands(commands),
+			engine.WithCommands(commandList),
+			engine.WithParser(parserRegistry),
+			engine.WithSubcommands(subcommands),
 		)
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			eng.Fix("gti status", "")
+		}
+	})
+
+	b.Run("compound-multi-match", func(b *testing.B) {
+		eng := engine.NewEngine(
+			engine.WithKeyboard(keyboard),
+			engine.WithRules(rules),
+			engine.WithHistory(history),
+			engine.WithCommands(commandList),
+			engine.WithParser(parserRegistry),
+			engine.WithSubcommands(subcommands),
+		)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			eng.Fix("gti stauts && dcoker ps", "")
+		}
+	})
+
+	b.Run("pipeline-compound-match", func(b *testing.B) {
+		eng := engine.NewEngine(
+			engine.WithKeyboard(keyboard),
+			engine.WithRules(rules),
+			engine.WithHistory(history),
+			engine.WithCommands(commandList),
+			engine.WithParser(parserRegistry),
+			engine.WithSubcommands(subcommands),
+		)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			eng.Fix("gut status | grep main && dcoker ps", "")
+		}
+	})
+
+	b.Run("wrapper-subcommand-match", func(b *testing.B) {
+		eng := engine.NewEngine(
+			engine.WithKeyboard(keyboard),
+			engine.WithRules(rules),
+			engine.WithHistory(history),
+			engine.WithCommands(commandList),
+			engine.WithParser(parserRegistry),
+			engine.WithSubcommands(subcommands),
+		)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			eng.Fix("sudo git -C repo stauts || dcoker ps", "")
+		}
+	})
+
+	b.Run("parser-compound-match", func(b *testing.B) {
+		eng := engine.NewEngine(
+			engine.WithKeyboard(keyboard),
+			engine.WithRules(rules),
+			engine.WithHistory(history),
+			engine.WithCommands(commandList),
+			engine.WithParser(parserRegistry),
+			engine.WithSubcommands(subcommands),
+		)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			eng.Fix("sudo git remove -v && dcoker ps", gitStderr)
 		}
 	})
 
@@ -89,8 +167,11 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithKeyboard(keyboard),
 			engine.WithRules(rules),
 			engine.WithHistory(history),
-			engine.WithCommands(commands),
+			engine.WithCommands(commandList),
+			engine.WithParser(parserRegistry),
+			engine.WithSubcommands(subcommands),
 		)
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			eng.Fix("xyzabc", "")
 		}
@@ -163,4 +244,32 @@ func BenchmarkEngine_Fix_WithCommands(b *testing.B) {
 			eng.Fix("dkcer ps", "")
 		}
 	})
+}
+
+func newBenchmarkSubcommandRegistry(b *testing.B, tools map[string][]string) *commands.SubcommandRegistry {
+	b.Helper()
+
+	cacheDir := b.TempDir()
+	caches := make([]commands.SubcommandCache, 0, len(tools))
+	now := time.Now()
+
+	for tool, subcommands := range tools {
+		caches = append(caches, commands.SubcommandCache{
+			Tool:        tool,
+			Subcommands: subcommands,
+			UpdatedAt:   now,
+		})
+	}
+
+	data, err := json.MarshalIndent(caches, "", "  ")
+	if err != nil {
+		b.Fatalf("failed to marshal benchmark subcommands: %v", err)
+	}
+
+	cacheFile := filepath.Join(cacheDir, "subcommands.json")
+	if err := os.WriteFile(cacheFile, data, 0600); err != nil {
+		b.Fatalf("failed to write benchmark subcommand cache: %v", err)
+	}
+
+	return commands.NewSubcommandRegistry(cacheDir)
 }

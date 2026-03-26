@@ -1,9 +1,10 @@
-.PHONY: build build-all install test lint fmt clean coverage benchmark help
+.PHONY: build build-all install test test-e2e test-e2e-docker lint fmt clean coverage benchmark help
 
 BINARY_NAME := typo
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_DIR := bin
 GO := go
+E2E_DOCKER_IMAGE ?= typo-e2e:local
 
 # Supported platforms
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
@@ -22,6 +23,8 @@ help:
 	@echo "  make build-darwin-arm64 Build for macOS ARM64"
 	@echo "  make install            Install to GOPATH/bin"
 	@echo "  make test               Run tests"
+	@echo "  make test-e2e           Run end-to-end tests"
+	@echo "  make test-e2e-docker    Run end-to-end tests in Docker"
 	@echo "  make coverage           Run tests with coverage"
 	@echo "  make benchmark          Run benchmarks"
 	@echo "  make lint               Run golangci-lint"
@@ -63,6 +66,16 @@ install:
 test:
 	@echo "Running tests..."
 	$(GO) test ./... -v -race
+
+test-e2e:
+	@echo "Running end-to-end tests..."
+	$(GO) test ./e2e -v
+
+test-e2e-docker:
+	@echo "Building end-to-end test image..."
+	docker build -f e2e/Dockerfile -t $(E2E_DOCKER_IMAGE) .
+	@echo "Running end-to-end tests in Docker..."
+	docker run --rm $(E2E_DOCKER_IMAGE)
 
 coverage:
 	@echo "Running tests with coverage..."

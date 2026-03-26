@@ -58,3 +58,15 @@ jobs:
 
       - name: Build
         run: make build
+
+  e2e-docker:
+    name: E2E Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build e2e image
+        run: docker build -f e2e/Dockerfile -t typo-e2e-ci .
+
+      - name: Run e2e tests in Docker
+        run: docker run --rm typo-e2e-ci

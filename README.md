@@ -16,49 +16,36 @@ Press `Esc` `Esc` to fix typos automatically.
 
 ## Quick Start
 
-```bash
-# Install
-go install github.com/yuluo-yx/typo/cmd/typo@latest
+### Install via Homebrew
 
+Coming soon.
+
+### Or via script
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash
+```
+
+Optional arguments:
+
+```bash
+# Install from the main branch
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
+
+# Install a specific release
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 26.03.24
+```
+
+Note: The install script currently supports macOS and Linux.
+
+### Run
+
+```bash
 # Add to ~/.zshrc
 eval "$(typo init zsh)"
 ```
 
 Restart your terminal, then press `Esc` `Esc` after a typo.
-
-## Installation
-
-<details>
-<summary>Download from Release</summary>
-
-Download the binary for your platform from the [Releases](https://github.com/yuluo-yx/typo/releases) page:
-
-| Platform | File |
-|----------|------|
-| Linux AMD64 | `typo-linux-amd64` |
-| Linux ARM64 | `typo-linux-arm64` |
-| macOS AMD64 | `typo-darwin-amd64` |
-| macOS ARM64 | `typo-darwin-arm64` |
-
-```bash
-# Example for macOS ARM64
-curl -LO https://github.com/yuluo-yx/typo/releases/latest/download/typo-darwin-arm64
-chmod +x typo-darwin-arm64
-sudo mv typo-darwin-arm64 /usr/local/bin/typo
-```
-
-</details>
-
-<details>
-<summary>Build from Source</summary>
-
-```bash
-git clone https://github.com/yuluo-yx/typo.git
-cd typo
-make install
-```
-
-</details>
 
 ## Commands
 

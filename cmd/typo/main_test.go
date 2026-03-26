@@ -225,6 +225,41 @@ func TestFixNoMatch(t *testing.T) {
 	}
 }
 
+func TestFixValidCommandDoesNotReturnSuccess(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "git", "status"}
+
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	rOut, wOut, _ := os.Pipe()
+	rErr, wErr, _ := os.Pipe()
+	os.Stdout = wOut
+	os.Stderr = wErr
+
+	code := run()
+
+	wOut.Close()
+	wErr.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	var bufOut, bufErr bytes.Buffer
+	bufOut.ReadFrom(rOut)
+	bufErr.ReadFrom(rErr)
+
+	if code != 1 {
+		t.Fatalf("Expected exit code 1 for unchanged valid command, got %d", code)
+	}
+	if bufOut.Len() != 0 {
+		t.Fatalf("Expected no stdout for unchanged valid command, got %q", bufOut.String())
+	}
+	if !bytes.Contains(bufErr.Bytes(), []byte("no correction found")) {
+		t.Fatalf("Expected no correction message, got %q", bufErr.String())
+	}
+}
+
 func TestFixWithStderrFile(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -260,6 +295,168 @@ func TestFixWithStderrFile(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("remote")) {
 		t.Errorf("Expected fix output to contain 'remote', got %q", output)
+	}
+}
+
+func TestFixWithGlobalOptionBeforeSubcommand(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "git", "-C", "repo", "stauts"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("git -C repo status")) {
+		t.Fatalf("Expected corrected command, got %q", output)
+	}
+}
+
+func TestFixWithSudoWrappedCommand(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "sudo gti status"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("sudo git status")) {
+		t.Fatalf("Expected wrapped command to be corrected, got %q", output)
+	}
+}
+
+func TestFixPreservesQuotedArguments(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "gut commit -m 'a   b'"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("git commit -m 'a   b'")) {
+		t.Fatalf("Expected quoted argument spacing to be preserved, got %q", output)
+	}
+}
+
+func TestFixPreservesCompoundCommandWithSemicolon(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "gut status; echo ok"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("git status; echo ok")) {
+		t.Fatalf("Expected semicolon command to be preserved, got %q", output)
+	}
+}
+
+func TestFixWithSudoWrappedCompoundCommand(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "sudo gti status && echo ok"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("sudo git status && echo ok")) {
+		t.Fatalf("Expected wrapped compound command to be corrected, got %q", output)
+	}
+}
+
+func TestFixCanCorrectMultipleTyposInCompoundCommand(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"typo", "fix", "gti status && dcoker ps"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("git status && docker ps")) {
+		t.Fatalf("Expected both typos to be corrected, got %q", output)
 	}
 }
 

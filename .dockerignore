@@ -1,0 +1,6 @@
+.cache
+.git
+.github
+.idea
+bin
+coverage.out

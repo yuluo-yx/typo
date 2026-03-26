@@ -16,49 +16,36 @@
 
 ## 快速开始
 
-```bash
-# 安装
-go install github.com/yuluo-yx/typo/cmd/typo@latest
+### 通过 Homebrew 安装
 
+Coming soon.
+
+### 或通过脚本安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash
+```
+
+可选参数：
+
+```bash
+# 安装 main 分支最新代码
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
+
+# 安装指定 Release 版本
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 26.03.24
+```
+
+说明：安装脚本当前支持 macOS 和 Linux。
+
+### 运行
+
+```bash
 # 添加到 ~/.zshrc
 eval "$(typo init zsh)"
 ```
 
 重启终端后，输错命令按 `Esc` `Esc` 即可修正。
-
-## 安装
-
-<details>
-<summary>从 Release 下载</summary>
-
-从 [Releases](https://github.com/yuluo-yx/typo/releases) 页面下载对应平台的二进制文件：
-
-| 平台 | 文件 |
-|------|------|
-| Linux AMD64 | `typo-linux-amd64` |
-| Linux ARM64 | `typo-linux-arm64` |
-| macOS AMD64 | `typo-darwin-amd64` |
-| macOS ARM64 | `typo-darwin-arm64` |
-
-```bash
-# 以 macOS ARM64 为例
-curl -LO https://github.com/yuluo-yx/typo/releases/latest/download/typo-darwin-arm64
-chmod +x typo-darwin-arm64
-sudo mv typo-darwin-arm64 /usr/local/bin/typo
-```
-
-</details>
-
-<details>
-<summary>从源码编译</summary>
-
-```bash
-git clone https://github.com/yuluo-yx/typo.git
-cd typo
-make install
-```
-
-</details>
 
 ## 命令
 
