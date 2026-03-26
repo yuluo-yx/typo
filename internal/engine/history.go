@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -73,6 +74,30 @@ func (h *History) Remove(from string) error {
 	defer h.mu.Unlock()
 
 	delete(h.entries, from)
+	return h.save()
+}
+
+// RemoveEntriesForCommandWord removes history entries whose executable command word matches the target.
+func (h *History) RemoveEntriesForCommandWord(commandWord string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if commandWord == "" {
+		return nil
+	}
+
+	removed := false
+	for from := range h.entries {
+		if historyEntryMatchesCommandWord(from, commandWord) {
+			delete(h.entries, from)
+			removed = true
+		}
+	}
+
+	if !removed {
+		return nil
+	}
+
 	return h.save()
 }
 
@@ -156,4 +181,19 @@ func (h *History) save() error {
 
 	historyFile := filepath.Join(h.configDir, usageHistoryFileName)
 	return os.WriteFile(historyFile, data, 0600)
+}
+
+func historyEntryMatchesCommandWord(raw, target string) bool {
+	lines, err := parseShellCommandLines(raw)
+	if err == nil {
+		for _, line := range lines {
+			if line.commandWord() == target {
+				return true
+			}
+		}
+		return false
+	}
+
+	parts := strings.Fields(raw)
+	return len(parts) > 0 && parts[0] == target
 }

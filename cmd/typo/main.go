@@ -189,10 +189,14 @@ func cmdRules(args []string) int {
 			fmt.Fprintln(os.Stderr, "Error: <from> required")
 			return 1
 		}
-		// Need to access rules directly for removal
 		r := engine.NewRules(cfg.ConfigDir)
 		if err := r.RemoveUserRule(args[1]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+		h := engine.NewHistory(cfg.ConfigDir)
+		if err := h.RemoveEntriesForCommandWord(args[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: removed rule but failed to clear related history: %v\n", err)
 			return 1
 		}
 		fmt.Printf("Removed rule: %s\n", args[1])

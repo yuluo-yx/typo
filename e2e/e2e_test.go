@@ -371,6 +371,11 @@ func TestE2ERulesWorkflow(t *testing.T) {
 		t.Fatalf("rules list still contains removed custom rule: stdout=%q stderr=%q code=%d", rulesListAfterRemove.stdout, rulesListAfterRemove.stderr, rulesListAfterRemove.code)
 	}
 
+	historyAfterRemove := env.run(t, "history", "list")
+	if historyAfterRemove.code != 0 || strings.Contains(historyAfterRemove.stdout, customTypo+" status -> mytool status") {
+		t.Fatalf("history still contains removed rule correction: stdout=%q stderr=%q code=%d", historyAfterRemove.stdout, historyAfterRemove.stderr, historyAfterRemove.code)
+	}
+
 	fixAfterRemove := env.run(t, "fix", customTypo+" status")
 	if fixAfterRemove.stdout == "mytool status\n" {
 		t.Fatalf("removed rule still wins after deletion: stdout=%q stderr=%q code=%d", fixAfterRemove.stdout, fixAfterRemove.stderr, fixAfterRemove.code)

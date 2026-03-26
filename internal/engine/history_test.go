@@ -76,6 +76,35 @@ func TestHistory_Remove(t *testing.T) {
 	}
 }
 
+func TestHistory_RemoveEntriesForCommandWord(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHistory(tmpDir)
+
+	if err := h.Record("gut status", "git status"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+	if err := h.Record("sudo gut status", "sudo git status"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+	if err := h.Record("docker ps", "docker ps"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+
+	if err := h.RemoveEntriesForCommandWord("gut"); err != nil {
+		t.Fatalf("RemoveEntriesForCommandWord failed: %v", err)
+	}
+
+	if _, ok := h.Lookup("gut status"); ok {
+		t.Fatal("Expected direct command history entry to be removed")
+	}
+	if _, ok := h.Lookup("sudo gut status"); ok {
+		t.Fatal("Expected wrapped command history entry to be removed")
+	}
+	if _, ok := h.Lookup("docker ps"); !ok {
+		t.Fatal("Expected unrelated history entry to remain")
+	}
+}
+
 func TestHistory_Clear(t *testing.T) {
 	tmpDir := t.TempDir()
 	h := NewHistory(tmpDir)
