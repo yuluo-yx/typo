@@ -255,6 +255,10 @@ func (r *Rules) initBuiltinRules() {
 		{From: "gerp", To: "grep", Scope: "system"},
 		{From: "grpe", To: "grep", Scope: "system"},
 
+		// echo rules
+		{From: "ehco", To: "echo", Scope: "system"},
+		{From: "ehoc", To: "echo", Scope: "system"},
+
 		// sudo rules
 		{From: "sduo", To: "sudo", Scope: "system"},
 		{From: "sodo", To: "sudo", Scope: "system"},

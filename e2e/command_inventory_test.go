@@ -12,6 +12,7 @@ func TestE2EInventory_BuiltinsAndSystemCommands(t *testing.T) {
 	}{
 		{name: "source builtin", command: "sourc ~/.zshrc", want: "source ~/.zshrc\n"},
 		{name: "echo builtin", command: "echp ok", want: "echo ok\n"},
+		{name: "echo builtin transposition", command: "ehco ok", want: "echo ok\n"},
 		{name: "printf builtin", command: `printff "%s" ok`, want: "printf \"%s\" ok\n"},
 		{name: "export builtin", command: "exportt VAR=1", want: "export VAR=1\n"},
 		{name: "unset builtin", command: "unsett VAR", want: "unset VAR\n"},

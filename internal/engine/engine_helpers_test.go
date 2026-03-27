@@ -150,6 +150,7 @@ func TestEngine_SystemAndBuiltinCommands_CanBeFixed(t *testing.T) {
 		//nolint:misspell // Intentional typo for correction coverage.
 		{name: "source typo", cmd: "soruce ~/.zshrc", wantCmd: "source ~/.zshrc"},
 		{name: "echo typo", cmd: "echp hello", wantCmd: "echo hello"},
+		{name: "echo transposition typo", cmd: "ehco hello", wantCmd: "echo hello"},
 		{name: "cat typo", cmd: "cta /tmp/file", wantCmd: "cat /tmp/file"},
 		{name: "grep typo", cmd: "gerp main app.log", wantCmd: "grep main app.log"},
 		{name: "tail typo", cmd: "taill -n 20 app.log", wantCmd: "tail -n 20 app.log"},
