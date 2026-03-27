@@ -84,6 +84,14 @@ func (c *shellCommandLine) replaceCommandSuffix(replacement string) string {
 	return c.raw[:start] + replacement + c.raw[end:]
 }
 
+func (c *shellCommandLine) replaceCommandSuffixDedup(replacement string) string {
+	normalized := trimShellWordPrefix(replacement, c.wrapperWords())
+	if normalized == "" {
+		normalized = replacement
+	}
+	return c.replaceCommandSuffix(normalized)
+}
+
 func (c *shellCommandLine) replaceWord(index int, replacement string) string {
 	start, end := wordRange(c.args[index], len(c.raw))
 	return c.raw[:start] + replacement + c.raw[end:]
@@ -116,6 +124,18 @@ func (c *shellCommandLine) commandSuffixRange() (int, int) {
 	return start, end
 }
 
+func (c *shellCommandLine) wrapperWords() []string {
+	if c.commandIdx <= 0 {
+		return nil
+	}
+
+	wrappers := make([]string, 0, c.commandIdx)
+	for i := 0; i < c.commandIdx; i++ {
+		wrappers = append(wrappers, c.args[i].Lit())
+	}
+	return wrappers
+}
+
 func (c *shellCommandLine) hasWrapper(name string) bool {
 	for i := 0; i < c.commandIdx; i++ {
 		if c.args[i].Lit() == name {
@@ -139,6 +159,31 @@ func offsetToIndex(offset uint, rawLen int) int {
 		return rawLen
 	}
 	return idx
+}
+
+func trimShellWordPrefix(raw string, prefixWords []string) string {
+	if len(prefixWords) == 0 {
+		return raw
+	}
+
+	lines, err := parseShellCommandLines(raw)
+	if err != nil || len(lines) != 1 {
+		return raw
+	}
+
+	line := lines[0]
+	if len(line.args) < len(prefixWords) {
+		return raw
+	}
+
+	for i, want := range prefixWords {
+		if line.args[i].Lit() != want {
+			return raw
+		}
+	}
+
+	_, end := wordRange(line.args[len(prefixWords)-1], len(line.raw))
+	return strings.TrimLeft(line.raw[end:], " \t")
 }
 
 func findExecutableArgIndex(args []*syntax.Word) int {

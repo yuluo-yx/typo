@@ -139,6 +139,47 @@ func TestEngine_FixWithPermissionParser(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithPermissionHistory_DoesNotDuplicateSudo(t *testing.T) {
+	tmpDir := t.TempDir()
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+		WithHistory(NewHistory(tmpDir)),
+	)
+
+	if err := eng.RecordHistory("mkdir 1", "sudo mkdir 1"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
+
+	result := eng.Fix("sudo mkdir 1", "")
+	if result.Fixed {
+		t.Fatalf("Expected wrapped permission command to stay unchanged, got %+v", result)
+	}
+}
+
+func TestEngine_FixWithPermissionParserAndHistory_DoesNotEscalateRepeatedly(t *testing.T) {
+	tmpDir := t.TempDir()
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+		WithHistory(NewHistory(tmpDir)),
+	)
+
+	if err := eng.RecordHistory("mkdir 1", "sudo mkdir 1"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
+
+	result := eng.FixWithContext(parser.Context{
+		Command:  "mkdir 1",
+		Stderr:   "mkdir: 1: Permission denied\n",
+		ExitCode: 1,
+	})
+	if !result.Fixed {
+		t.Fatal("Expected permission parser to keep working")
+	}
+	if result.Command != "sudo mkdir 1" {
+		t.Fatalf("Expected single sudo wrapper, got %q", result.Command)
+	}
+}
+
 func TestEngine_FixWithPermissionParser_SkipsRedirection(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),

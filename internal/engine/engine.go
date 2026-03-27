@@ -408,7 +408,7 @@ func (e *Engine) tryMatchOnCommand(cmd, source string, match matchFunc) FixResul
 			if replacement, ok := match(line.commandSuffixRaw()); ok {
 				return FixResult{
 					Fixed:   true,
-					Command: line.replaceCommandSuffix(replacement),
+					Command: line.replaceCommandSuffixDedup(replacement),
 					Source:  source,
 				}
 			}
