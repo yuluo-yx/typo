@@ -19,17 +19,22 @@
 _typo_fix_command() {
     local cmd="${BUFFER}"
     local stderr_file="${TYPO_STDERR_CACHE:-}"
+    local fixed=""
+    local last_exit_code="${TYPO_LAST_EXIT_CODE:-0}"
+    local use_last_command=0
 
     # If buffer is empty, get last command from history
     if [[ -z "$cmd" ]]; then
+        use_last_command=1
         cmd=$(fc -ln -1 | sed 's/^[[:space:]]*//')
     fi
 
     [[ -z "$cmd" ]] && return
 
-    local fixed
-    if [[ -f "$stderr_file" && -s "$stderr_file" ]]; then
-        fixed=$(typo fix -s "$stderr_file" "$cmd" 2>/dev/null)
+    if [[ "$use_last_command" -eq 1 && -f "$stderr_file" && -s "$stderr_file" ]]; then
+        fixed=$(typo fix --exit-code "$last_exit_code" -s "$stderr_file" "$cmd" 2>/dev/null)
+    elif [[ "$use_last_command" -eq 1 ]]; then
+        fixed=$(typo fix --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
     else
         fixed=$(typo fix "$cmd" 2>/dev/null)
     fi
@@ -139,6 +144,7 @@ _typo_preexec() {
 }
 
 _typo_precmd() {
+    TYPO_LAST_EXIT_CODE=$?
     _typo_restore_stderr
 }
 

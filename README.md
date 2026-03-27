@@ -4,7 +4,7 @@
 
 <p align="center">Command Auto-Correction Tool</p>
 
-[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/yuluo-yx/typo/branch/main/graph/badge.svg)](https://codecov.io/gh/yuluo-yx/typo) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
+[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
 
 English | **[简体中文](README_CN.md)**
 
@@ -57,22 +57,25 @@ Restart your terminal, then press `Esc` `Esc` after a typo. (No Enter can!)
 ### `typo fix` - Fix a command
 
 ```bash
-typo fix "gut stauts"     # → git status
-typo fix "dcoker ps"      # → docker ps
+typo fix "gut stauts"                 # → git status
+typo fix "gut status && dcoker ps"    # → git status && docker ps
+typo fix "gut status | grep main"     # → git status | grep main
 ```
 
 ### `typo learn` - Learn a correction
 
 ```bash
-typo learn "gut" "git"    # Save rule for future use
+typo learn "gst" "git status"         # Recommended for recurring personal fixes
 ```
+
+Use `learn` for normal day-to-day teaching. `typo learn` and `typo rules add` both add the same user rule and clear conflicting history; `learn` is the simpler user-facing command, while `rules add` fits explicit rule management alongside `rules list` and `rules remove`.
 
 ### `typo rules` - Manage rules
 
 ```bash
 typo rules list                    # List all rules
-typo rules add "gut" "git"         # Add custom rule
-typo rules remove "gut"            # Remove rule
+typo rules add "gst" "git status"  # Same effect as `learn`, but in rule-management flow
+typo rules remove "gst"            # Remove rule
 ```
 
 ### `typo history` - View correction history
@@ -100,16 +103,29 @@ typo uninstall         # Uninstall typo
 
 Typo corrects commands in this priority:
 
-1. **Error Parsing** - Extracts "did you mean" suggestions from stderr
-2. **History** - Reuses previously accepted corrections
-3. **Rules** - Built-in, learned, and user-defined patterns
-4. **Edit Distance** - Fuzzy matching based on keyboard layout
+1. **Error Parsing** - Extracts command-specific suggestions from stderr when available
+2. **User Rules** - Applies learned and user-defined overrides first
+3. **History** - Reuses previously accepted corrections
+4. **Built-in Rules** - Applies bundled typo mappings
+5. **Subcommand Repair** - Tries known tool subcommands before falling back further
+6. **Edit Distance** - Uses keyboard-aware fuzzy matching with lower cost for adjacent-key substitutions
 
 ### Supported Error Parsing
 
 - **git**: `did you mean...`, missing upstream, etc.
 - **docker**: Unknown command suggestions
 - **npm**: Command not found suggestions
+
+`-s <file>` tells `typo fix` to read stderr from a file. This is mainly for parser-based fixes and is usually passed automatically by the zsh integration after a command fails.
+
+Examples:
+
+```bash
+typo fix -s git.stderr "git remove -v"      # → git remote -v
+typo fix -s git.stderr "git pull"           # → git pull --set-upstream origin main
+typo fix -s docker.stderr "docker psa"      # → docker ps
+typo fix -s npm.stderr "npm isntall react"  # → npm install react
+```
 
 ### Smart Subcommand Correction
 
@@ -128,7 +144,7 @@ Files stored in `~/.typo/`:
 
 ```
 ~/.typo/
-├── rules.json                  # Built-in extensions and learned rules
+├── rules.json                  # Learned and user-defined rules
 ├── usage_history.json          # Actual correction history
 └── subcommands.json            # Subcommand cache
 ```
@@ -139,6 +155,7 @@ Files stored in `~/.typo/`:
 make build      # Build for current platform
 make build-all  # Build for all platforms
 make test       # Run tests
+make coverage   # Run tests with coverage
 make lint       # Run linter
 ```
 

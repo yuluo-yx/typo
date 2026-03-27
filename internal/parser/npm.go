@@ -25,7 +25,10 @@ func (p *NpmParser) Name() string {
 }
 
 // Parse parses npm error output.
-func (p *NpmParser) Parse(cmd, stderr string) Result {
+func (p *NpmParser) Parse(ctx Context) Result {
+	cmd := ctx.Command
+	stderr := ctx.Stderr
+
 	if !isNpmCommand(cmd) {
 		return Result{Fixed: false}
 	}

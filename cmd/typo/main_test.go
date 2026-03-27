@@ -10,6 +10,7 @@ import (
 
 	installscript "github.com/yuluo-yx/typo/install"
 	"github.com/yuluo-yx/typo/internal/config"
+	"github.com/yuluo-yx/typo/internal/engine"
 )
 
 func TestMain(m *testing.M) {
@@ -171,6 +172,24 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestMainProcess(t *testing.T) {
+	if os.Getenv("TYPO_TEST_MAIN_PROCESS") == "1" {
+		os.Args = []string{"typo", "version"}
+		main()
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestMainProcess")
+	cmd.Env = append(os.Environ(), "TYPO_TEST_MAIN_PROCESS=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("main subprocess failed: %v\noutput:\n%s", err, output)
+	}
+	if !bytes.Contains(output, []byte("typo")) {
+		t.Fatalf("Expected main subprocess output to contain version text, got %q", output)
+	}
+}
+
 func TestFixCommand(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -198,6 +217,55 @@ func TestFixCommand(t *testing.T) {
 	}
 }
 
+func TestFixDokcerPrefersDocker(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	oldHome := os.Getenv("HOME")
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("HOME", oldHome)
+	defer os.Setenv("PATH", oldPath)
+
+	tmpHome := t.TempDir()
+	tmpBin := t.TempDir()
+
+	for _, name := range []string{"docker", "colcrt"} {
+		path := filepath.Join(tmpBin, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatalf("Failed to create command stub %s: %v", name, err)
+		}
+	}
+
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+	if err := os.Setenv("PATH", tmpBin); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
+
+	os.Args = []string{"typo", "fix", "dokcer", "ps"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("docker ps")) {
+		t.Fatalf("Expected docker ps, got %q", output)
+	}
+}
+
 func TestFixNoMatch(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -222,6 +290,44 @@ func TestFixNoMatch(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("no correction")) {
 		t.Errorf("Expected 'no correction' message, got %q", output)
+	}
+}
+
+func TestFixHistoryWriteError(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpFile, err := os.CreateTemp("", "typo-home-file-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tmpFile.Name())
+
+	os.Args = []string{"typo", "fix", "gut", "status"}
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	code := run()
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 1 {
+		t.Fatalf("Expected exit code 1 when history write fails, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("Error:")) {
+		t.Fatalf("Expected history write error output, got %q", output)
 	}
 }
 
@@ -295,6 +401,46 @@ func TestFixWithStderrFile(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("remote")) {
 		t.Errorf("Expected fix output to contain 'remote', got %q", output)
+	}
+}
+
+func TestFixWithExitCodeAndPermissionDenied(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpFile, err := os.CreateTemp("", "typo-permission-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString("mkdir: 1: Permission denied\n"); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	os.Args = []string{"typo", "fix", "--exit-code", "1", "-s", tmpFile.Name(), "mkdir", "1"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("sudo mkdir 1")) {
+		t.Fatalf("Expected permission fix output, got %q", output)
 	}
 }
 
@@ -964,6 +1110,24 @@ func TestResolveVersionInfoKeepsInjectedValues(t *testing.T) {
 	}
 }
 
+func TestShortRevision(t *testing.T) {
+	if got := shortRevision("abcdef123456"); got != "abcdef1" {
+		t.Fatalf("shortRevision() = %q, want %q", got, "abcdef1")
+	}
+	if got := shortRevision("abc123"); got != "abc123" {
+		t.Fatalf("shortRevision() short input = %q, want %q", got, "abc123")
+	}
+}
+
+func TestFormatBuildDate(t *testing.T) {
+	if got := formatBuildDate("2026-03-24T14:13:08Z"); got != "2026-03-24" {
+		t.Fatalf("formatBuildDate() = %q, want %q", got, "2026-03-24")
+	}
+	if got := formatBuildDate("not-a-date"); got != "not-a-date" {
+		t.Fatalf("formatBuildDate() invalid input = %q, want raw input", got)
+	}
+}
+
 func TestPrintZshIntegration(t *testing.T) {
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -983,6 +1147,142 @@ func TestPrintZshIntegration(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
 		t.Error("Expected zsh integration to include stale cache cleanup")
+	}
+}
+
+func TestPrintZshIntegrationAddsTrailingNewline(t *testing.T) {
+	original := installscript.ZshScript
+	installscript.ZshScript = "echo test"
+	t.Cleanup(func() {
+		installscript.ZshScript = original
+	})
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printZshIntegration()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	if buf.String() != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+	}
+}
+
+func TestGetGoBinDir(t *testing.T) {
+	oldGoBin := os.Getenv("GOBIN")
+	oldGoPath := os.Getenv("GOPATH")
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("GOBIN", oldGoBin)
+	defer os.Setenv("GOPATH", oldGoPath)
+	defer os.Setenv("HOME", oldHome)
+
+	if err := os.Setenv("GOBIN", "/tmp/custom-bin"); err != nil {
+		t.Fatalf("Setenv GOBIN failed: %v", err)
+	}
+	if got := getGoBinDir(); got != "/tmp/custom-bin" {
+		t.Fatalf("getGoBinDir() with GOBIN = %q", got)
+	}
+
+	os.Unsetenv("GOBIN")
+	if err := os.Setenv("GOPATH", "/tmp/custom-gopath"); err != nil {
+		t.Fatalf("Setenv GOPATH failed: %v", err)
+	}
+	if got := getGoBinDir(); got != "/tmp/custom-gopath/bin" {
+		t.Fatalf("getGoBinDir() with GOPATH = %q", got)
+	}
+
+	os.Unsetenv("GOPATH")
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+	if got := getGoBinDir(); got != filepath.Join(tmpHome, "go", "bin") {
+		t.Fatalf("getGoBinDir() default = %q", got)
+	}
+}
+
+func TestGetGoBinDir_UserHomeError(t *testing.T) {
+	oldGoBin := os.Getenv("GOBIN")
+	oldGoPath := os.Getenv("GOPATH")
+	oldUserHomeDir := userHomeDir
+	defer os.Setenv("GOBIN", oldGoBin)
+	defer os.Setenv("GOPATH", oldGoPath)
+	defer func() { userHomeDir = oldUserHomeDir }()
+
+	os.Unsetenv("GOBIN")
+	os.Unsetenv("GOPATH")
+	userHomeDir = func() (string, error) {
+		return "", os.ErrNotExist
+	}
+
+	if got := getGoBinDir(); got != "" {
+		t.Fatalf("Expected empty go bin dir on home lookup error, got %q", got)
+	}
+}
+
+func TestCheckGoBinTypo(t *testing.T) {
+	oldGoBin := os.Getenv("GOBIN")
+	oldGoPath := os.Getenv("GOPATH")
+	defer os.Setenv("GOBIN", oldGoBin)
+	defer os.Setenv("GOPATH", oldGoPath)
+
+	goBinDir := t.TempDir()
+	os.Unsetenv("GOPATH")
+	if err := os.Setenv("GOBIN", goBinDir); err != nil {
+		t.Fatalf("Setenv GOBIN failed: %v", err)
+	}
+
+	if got := checkGoBinTypo(); got != "" {
+		t.Fatalf("Expected empty path when typo binary is missing, got %q", got)
+	}
+
+	typoPath := filepath.Join(goBinDir, "typo")
+	if err := os.WriteFile(typoPath, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatalf("Failed to write typo stub: %v", err)
+	}
+
+	if got := checkGoBinTypo(); got != goBinDir {
+		t.Fatalf("Expected go bin dir %q, got %q", goBinDir, got)
+	}
+}
+
+func TestCheckGoBinTypo_EmptyGoBinDir(t *testing.T) {
+	oldGoBin := os.Getenv("GOBIN")
+	oldGoPath := os.Getenv("GOPATH")
+	oldUserHomeDir := userHomeDir
+	defer os.Setenv("GOBIN", oldGoBin)
+	defer os.Setenv("GOPATH", oldGoPath)
+	defer func() { userHomeDir = oldUserHomeDir }()
+
+	os.Unsetenv("GOBIN")
+	os.Unsetenv("GOPATH")
+	userHomeDir = func() (string, error) {
+		return "", os.ErrNotExist
+	}
+
+	if got := checkGoBinTypo(); got != "" {
+		t.Fatalf("Expected empty go bin dir result, got %q", got)
+	}
+}
+
+func TestSameDirAndPathContainsDir(t *testing.T) {
+	if !sameDir("/tmp/dir", "/tmp/dir/") {
+		t.Fatal("Expected directories with trailing slash to match")
+	}
+	if sameDir("", "/tmp/dir") {
+		t.Fatal("Expected empty dir to not match")
+	}
+	if !pathContainsDir("/usr/bin:/tmp/dir:/bin", "/tmp/dir") {
+		t.Fatal("Expected path to contain directory")
+	}
+	if pathContainsDir("/usr/bin:/bin", "/tmp/dir") {
+		t.Fatal("Expected path to not contain directory")
 	}
 }
 
@@ -1218,6 +1518,70 @@ func TestLearnSurvivesHistoryClear(t *testing.T) {
 	}
 }
 
+func TestLearnOverridesConflictingHistory(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	oldHome := os.Getenv("HOME")
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("HOME", oldHome)
+	defer os.Setenv("PATH", oldPath)
+
+	tmpHome := t.TempDir()
+	tmpBin := t.TempDir()
+
+	for _, name := range []string{"docker", "colcrt"} {
+		path := filepath.Join(tmpBin, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatalf("Failed to create command stub %s: %v", name, err)
+		}
+	}
+
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+	if err := os.Setenv("PATH", tmpBin); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
+
+	cfg := config.Load()
+	history := engine.NewHistory(cfg.ConfigDir)
+	if err := history.Record("dokcer ps", "colcrt ps"); err != nil {
+		t.Fatalf("Seed history failed: %v", err)
+	}
+
+	os.Args = []string{"typo", "learn", "dokcer", "docker"}
+	if code := run(); code != 0 {
+		t.Fatalf("Expected learn to succeed, got %d", code)
+	}
+
+	history = engine.NewHistory(cfg.ConfigDir)
+	if _, ok := history.Lookup("dokcer ps"); ok {
+		t.Fatal("Expected conflicting history to be cleared after learn")
+	}
+
+	os.Args = []string{"typo", "fix", "dokcer", "ps"}
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected fix to succeed, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("docker ps")) {
+		t.Fatalf("Expected learned rule to override old history, got %q", output)
+	}
+}
+
 func TestZshIntegrationCleansAndRotatesStderrCache(t *testing.T) {
 	runZshIntegrationScript(t, `
 zle() { true; }
@@ -1401,5 +1765,132 @@ func TestUninstallNonexistentConfig(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("Uninstallation complete")) {
 		t.Errorf("Expected 'Uninstallation complete', got: %s", output)
+	}
+}
+
+func TestUninstallWithZshrcHint(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpDir, err := os.MkdirTemp("", "typo-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tmpDir)
+
+	if err := os.WriteFile(filepath.Join(tmpDir, ".zshrc"), []byte("eval \"$(typo init zsh)\"\n"), 0600); err != nil {
+		t.Fatalf("Failed to create .zshrc: %v", err)
+	}
+
+	os.Args = []string{"typo", "uninstall"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected uninstall to succeed, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("please remove the following line from ~/.zshrc")) {
+		t.Fatalf("Expected .zshrc cleanup hint, got %q", output)
+	}
+}
+
+func TestUninstallConfigRemoveFailure(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpFile, err := os.CreateTemp("", "typo-home-file-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tmpFile.Name())
+
+	os.Args = []string{"typo", "uninstall"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 1 {
+		t.Fatalf("Expected uninstall to fail when config removal errors, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("failed:")) {
+		t.Fatalf("Expected config removal failure in output, got %q", output)
+	}
+}
+
+func TestUninstallInjectedErrors(t *testing.T) {
+	oldArgs := os.Args
+	oldUserHomeDir := userHomeDir
+	oldExecutable := executable
+	oldRemoveAll := removeAll
+	defer func() { os.Args = oldArgs }()
+	defer func() { userHomeDir = oldUserHomeDir }()
+	defer func() { executable = oldExecutable }()
+	defer func() { removeAll = oldRemoveAll }()
+
+	os.Args = []string{"typo", "uninstall"}
+	userHomeDir = func() (string, error) {
+		return "", os.ErrNotExist
+	}
+	executable = func() (string, error) {
+		return "", os.ErrNotExist
+	}
+	removeAll = func(path string) error {
+		return os.ErrPermission
+	}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 1 {
+		t.Fatalf("Expected uninstall to fail on injected errors, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("cannot determine home directory")) {
+		t.Fatalf("Expected home directory error, got %q", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("cannot determine binary location")) {
+		t.Fatalf("Expected executable error, got %q", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("failed:")) {
+		t.Fatalf("Expected removeAll failure, got %q", output)
 	}
 }

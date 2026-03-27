@@ -101,6 +101,38 @@ func (h *History) RemoveEntriesForCommandWord(commandWord string) error {
 	return h.save()
 }
 
+// RemoveConflictsForRule removes history entries that would conflict with a taught rule.
+func (h *History) RemoveConflictsForRule(from string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	from = strings.TrimSpace(from)
+	if from == "" {
+		return nil
+	}
+
+	removed := false
+	if _, exists := h.entries[from]; exists {
+		delete(h.entries, from)
+		removed = true
+	}
+
+	if isSingleCommandWord(from) {
+		for entryFrom := range h.entries {
+			if historyEntryMatchesCommandWord(entryFrom, from) {
+				delete(h.entries, entryFrom)
+				removed = true
+			}
+		}
+	}
+
+	if !removed {
+		return nil
+	}
+
+	return h.save()
+}
+
 // Clear clears all history.
 func (h *History) Clear() error {
 	h.mu.Lock()
@@ -196,4 +228,13 @@ func historyEntryMatchesCommandWord(raw, target string) bool {
 
 	parts := strings.Fields(raw)
 	return len(parts) > 0 && parts[0] == target
+}
+
+func isSingleCommandWord(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+
+	return len(strings.Fields(raw)) == 1 && !strings.ContainsAny(raw, "&|;()<>")
 }

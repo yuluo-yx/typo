@@ -29,7 +29,10 @@ func (p *GitParser) Name() string {
 }
 
 // Parse parses git error output.
-func (p *GitParser) Parse(cmd, stderr string) Result {
+func (p *GitParser) Parse(ctx Context) Result {
+	cmd := ctx.Command
+	stderr := ctx.Stderr
+
 	// Check if it's a git command
 	if !isGitCommand(cmd) {
 		return Result{Fixed: false}

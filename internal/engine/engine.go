@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/yuluo-yx/typo/internal/commands"
@@ -79,17 +80,27 @@ func NewEngine(opts ...Option) *Engine {
 // Fix attempts to fix the given command.
 // stderr is optional and used for error parsing.
 func (e *Engine) Fix(cmd, stderr string) FixResult {
-	cmd = strings.TrimSpace(cmd)
-	if cmd == "" {
+	return e.FixWithContext(parser.Context{
+		Command: cmd,
+		Stderr:  stderr,
+	})
+}
+
+// FixWithContext attempts to fix the given command with parser context.
+func (e *Engine) FixWithContext(input parser.Context) FixResult {
+	input.Command = strings.TrimSpace(input.Command)
+	if input.Command == "" {
 		return FixResult{Fixed: false}
 	}
 
-	currentCmd := cmd
+	originalCmd := input.Command
+	currentCmd := input.Command
 	messages := make([]string, 0)
 	lastSource := ""
 
 	for range 32 {
-		result := e.fixOnePass(currentCmd, stderr)
+		input.Command = currentCmd
+		result := e.fixOnePass(input)
 		if !isMeaningfulFix(currentCmd, result) {
 			break
 		}
@@ -101,7 +112,7 @@ func (e *Engine) Fix(cmd, stderr string) FixResult {
 		}
 	}
 
-	if currentCmd != cmd {
+	if currentCmd != originalCmd {
 		return FixResult{
 			Fixed:   true,
 			Command: currentCmd,
@@ -113,30 +124,37 @@ func (e *Engine) Fix(cmd, stderr string) FixResult {
 	return FixResult{Fixed: false}
 }
 
-func (e *Engine) fixOnePass(cmd, stderr string) FixResult {
+func (e *Engine) fixOnePass(input parser.Context) FixResult {
+	cmd := input.Command
+
 	// 1. Try error parser first (if stderr provided)
-	if stderr != "" {
-		if result := e.tryParser(cmd, stderr); isMeaningfulFix(cmd, result) {
+	if input.Stderr != "" {
+		if result := e.tryParser(input); isMeaningfulFix(cmd, result) {
 			return result
 		}
 	}
 
-	// 2. Try history
+	// 2. Try explicit user rules
+	if result := e.tryUserRules(cmd); isMeaningfulFix(cmd, result) {
+		return result
+	}
+
+	// 3. Try history
 	if result := e.tryHistory(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 3. Try rules
-	if result := e.tryRules(cmd); isMeaningfulFix(cmd, result) {
+	// 4. Try builtin rules
+	if result := e.tryBuiltinRules(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 4. Try subcommand fix
+	// 5. Try subcommand fix
 	if result := e.trySubcommandFix(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 5. Try edit distance
+	// 6. Try edit distance
 	if result := e.tryDistance(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
@@ -165,6 +183,13 @@ func (e *Engine) FixCommand(cmd string) FixResult {
 	args := parts[1:]
 
 	// Try to fix just the command word
+	if result := e.tryUserRules(cmdWord); result.Fixed {
+		rebuilt := e.rebuildCommand(result.Command, args, "rule")
+		if isMeaningfulFix(cmd, rebuilt) {
+			return rebuilt
+		}
+	}
+
 	if result := e.tryHistory(cmdWord); result.Fixed {
 		rebuilt := e.rebuildCommand(result.Command, args, "history")
 		if isMeaningfulFix(cmd, rebuilt) {
@@ -172,7 +197,7 @@ func (e *Engine) FixCommand(cmd string) FixResult {
 		}
 	}
 
-	if result := e.tryRules(cmdWord); result.Fixed {
+	if result := e.tryBuiltinRules(cmdWord); result.Fixed {
 		rebuilt := e.rebuildCommand(result.Command, args, "rule")
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
@@ -198,6 +223,17 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 	for _, line := range lines {
 		cmdWord := line.commandWord()
 
+		if rule, ok := e.rules.MatchUser(cmdWord); ok {
+			result := FixResult{
+				Fixed:   true,
+				Command: line.replaceCommandWord(rule.To),
+				Source:  "rule",
+			}
+			if isMeaningfulFix(cmd, result) {
+				return result
+			}
+		}
+
 		if entry, ok := e.history.Lookup(cmdWord); ok {
 			result := FixResult{
 				Fixed:   true,
@@ -209,7 +245,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 			}
 		}
 
-		if rule, ok := e.rules.Match(cmdWord); ok {
+		if rule, ok := e.rules.MatchBuiltin(cmdWord); ok {
 			result := FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(rule.To),
@@ -235,11 +271,20 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 	return FixResult{Fixed: false}
 }
 
-func (e *Engine) tryParser(cmd, stderr string) FixResult {
-	lines, err := parseShellCommandLines(cmd)
+func (e *Engine) tryParser(input parser.Context) FixResult {
+	lines, err := parseShellCommandLines(input.Command)
 	if err == nil {
+		hasMultipleCommands := len(lines) > 1
+
 		for _, line := range lines {
-			result := e.parser.Parse(line.commandSuffixRaw(), stderr)
+			result := e.parser.Parse(parser.Context{
+				Command:             line.commandSuffixRaw(),
+				Stderr:              input.Stderr,
+				ExitCode:            input.ExitCode,
+				HasMultipleCommands: hasMultipleCommands,
+				HasRedirection:      line.hasRedirection,
+				HasPrivilegeWrapper: line.hasWrapper("sudo"),
+			})
 			if result.Fixed {
 				return FixResult{
 					Fixed:   true,
@@ -253,7 +298,13 @@ func (e *Engine) tryParser(cmd, stderr string) FixResult {
 		return FixResult{Fixed: false}
 	}
 
-	result := e.parser.Parse(cmd, stderr)
+	result := e.parser.Parse(parser.Context{
+		Command:             input.Command,
+		Stderr:              input.Stderr,
+		ExitCode:            input.ExitCode,
+		HasPrivilegeWrapper: strings.HasPrefix(strings.TrimSpace(input.Command), "sudo "),
+		ShellParseFailed:    true,
+	})
 	if result.Fixed {
 		return FixResult{
 			Fixed:   true,
@@ -282,9 +333,26 @@ func (e *Engine) tryHistory(cmd string) FixResult {
 	return result
 }
 
-func (e *Engine) tryRules(cmd string) FixResult {
+func (e *Engine) tryUserRules(cmd string) FixResult {
 	result := e.tryMatchOnCommand(cmd, "rule", func(s string) (string, bool) {
-		rule, ok := e.rules.Match(s)
+		rule, ok := e.rules.MatchUser(s)
+		if ok {
+			return rule.To, true
+		}
+		return "", false
+	})
+
+	// If rule fixed main command, also try to fix subcommand
+	if result.Fixed && e.subcommands != nil {
+		result = e.fixSubcommandInResult(result)
+	}
+
+	return result
+}
+
+func (e *Engine) tryBuiltinRules(cmd string) FixResult {
+	result := e.tryMatchOnCommand(cmd, "rule", func(s string) (string, bool) {
+		rule, ok := e.rules.MatchBuiltin(s)
 		if ok {
 			return rule.To, true
 		}
@@ -376,16 +444,7 @@ func (e *Engine) tryDistance(cmd string) FixResult {
 	}
 
 	// Find best match from known commands
-	bestMatch := ""
-	bestDistance := 999
-
-	for _, known := range e.commands {
-		d := Distance(cmdWord, known, e.keyboard)
-		if d < bestDistance {
-			bestDistance = d
-			bestMatch = known
-		}
-	}
+	bestMatch, bestDistance := e.closestKnownCommand(cmdWord)
 
 	// Check if match is good enough
 	// Threshold: distance <= 2 and similarity > 60%
@@ -602,18 +661,41 @@ func (e *Engine) findClosestCommand(cmd string) string {
 }
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
-	bestMatch := ""
-	bestDistance := 999
+	candidates := make([]commandCandidate, 0, len(e.commands))
+	seen := make(map[string]bool, len(e.commands))
 
 	for _, known := range e.commands {
-		d := Distance(cmd, known, e.keyboard)
-		if d < bestDistance {
-			bestDistance = d
-			bestMatch = known
+		if known == "" || seen[known] {
+			continue
 		}
+		seen[known] = true
+
+		candidates = append(candidates, commandCandidate{
+			name:       known,
+			distance:   Distance(cmd, known, e.keyboard),
+			similarity: Similarity(cmd, known, e.keyboard),
+			priority:   e.commandPriority(known),
+		})
 	}
 
-	return bestMatch, bestDistance
+	if len(candidates) == 0 {
+		return "", 999
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].distance != candidates[j].distance {
+			return candidates[i].distance < candidates[j].distance
+		}
+		if candidates[i].similarity != candidates[j].similarity {
+			return candidates[i].similarity > candidates[j].similarity
+		}
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority > candidates[j].priority
+		}
+		return candidates[i].name < candidates[j].name
+	})
+
+	return candidates[0].name, candidates[0].distance
 }
 
 func (e *Engine) isProtectedCommandWord(cmd string) bool {
@@ -856,12 +938,20 @@ var subcommandPreOptionsWithValues = map[string]map[string]bool{
 
 // Learn stores a user-taught correction as a rule instead of history.
 func (e *Engine) Learn(from, to string) error {
-	return e.rules.AddUserRule(Rule{From: from, To: to})
+	if err := e.rules.AddUserRule(Rule{From: from, To: to}); err != nil {
+		return err
+	}
+
+	return e.clearConflictingHistory(from)
 }
 
 // AddRule adds a user rule.
 func (e *Engine) AddRule(from, to string) error {
-	return e.rules.AddUserRule(Rule{From: from, To: to})
+	if err := e.rules.AddUserRule(Rule{From: from, To: to}); err != nil {
+		return err
+	}
+
+	return e.clearConflictingHistory(from)
 }
 
 // ListRules returns all rules.
@@ -877,4 +967,37 @@ func (e *Engine) ListHistory() []HistoryEntry {
 // RecordHistory records a correction that actually happened.
 func (e *Engine) RecordHistory(from, to string) error {
 	return e.history.Record(from, to)
+}
+
+type commandCandidate struct {
+	name       string
+	distance   int
+	similarity float64
+	priority   int
+}
+
+func (e *Engine) commandPriority(cmd string) int {
+	score := e.rules.TargetPriority(cmd)
+
+	if commands.IsCommonCommand(cmd) {
+		score += 50
+	}
+
+	if commands.IsShellBuiltin(cmd) {
+		score += 25
+	}
+
+	if e.subcommands != nil && e.subcommands.HasSubcommands(cmd) {
+		score += 25
+	}
+
+	return score
+}
+
+func (e *Engine) clearConflictingHistory(from string) error {
+	if e.history == nil {
+		return nil
+	}
+
+	return e.history.RemoveConflictsForRule(from)
 }

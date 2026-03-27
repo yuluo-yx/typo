@@ -117,6 +117,24 @@ func TestAddFileExtension(t *testing.T) {
 	}
 }
 
+func TestIsCommonCommand(t *testing.T) {
+	if !IsCommonCommand("docker") {
+		t.Fatal("Expected docker to be a common command")
+	}
+	if IsCommonCommand("not-a-real-common-command") {
+		t.Fatal("Expected unknown command to not be common")
+	}
+}
+
+func TestIsShellBuiltin(t *testing.T) {
+	if !IsShellBuiltin("source") {
+		t.Fatal("Expected source to be a shell builtin")
+	}
+	if IsShellBuiltin("docker") {
+		t.Fatal("Expected docker to not be a shell builtin")
+	}
+}
+
 func TestDiscoverInDir(t *testing.T) {
 	tmpDir := t.TempDir()
 

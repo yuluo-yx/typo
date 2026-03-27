@@ -74,10 +74,6 @@ func Similarity(a, b string, weights KeyboardWeights) float64 {
 	}
 
 	maxLen := float64(max(len(a), len(b)))
-	if maxLen == 0 {
-		return 1.0
-	}
-
 	distance := Distance(a, b, weights)
 	return 1.0 - float64(distance)/maxLen
 }

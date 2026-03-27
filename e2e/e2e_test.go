@@ -60,13 +60,24 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		bin:    bin,
 	}
 
-	env.seedCommandStubs(t, "git", "docker", "npm", "kubectl", "brew", "yarn", "cargo", "helm", "terraform", "sudo")
+	env.seedCommandStubs(
+		t,
+		"git", "docker", "npm", "kubectl", "brew", "yarn", "cargo", "helm", "terraform", "sudo",
+		"ls", "cat", "grep", "tail", "head", "mkdir", "rm", "cp", "mv", "touch", "find", "sed", "awk",
+		"make", "curl", "tar", "pip", "go",
+	)
 	env.seedSubcommands(t, map[string][]string{
-		"git":     {"status", "remote", "commit", "checkout", "branch", "pull", "push"},
-		"docker":  {"build", "ps", "images", "run", "logs", "compose"},
-		"npm":     {"install", "list", "run", "test", "ci"},
-		"kubectl": {"apply", "describe", "get", "logs"},
-		"brew":    {"install", "update", "upgrade", "list"},
+		"git":       {"status", "remote", "commit", "checkout", "branch", "pull", "push"},
+		"docker":    {"build", "ps", "images", "run", "logs", "compose"},
+		"npm":       {"install", "list", "run", "test", "ci"},
+		"yarn":      {"add", "install", "init", "test", "run"},
+		"kubectl":   {"apply", "describe", "get", "logs"},
+		"cargo":     {"build", "check", "run", "test", "fmt"},
+		"go":        {"build", "test", "fmt", "mod", "env"},
+		"pip":       {"install", "uninstall", "list", "show", "freeze"},
+		"brew":      {"install", "update", "upgrade", "list", "search"},
+		"terraform": {"init", "plan", "apply", "destroy", "validate"},
+		"helm":      {"install", "upgrade", "template", "repo", "lint", "list"},
 	})
 
 	return env
@@ -286,6 +297,7 @@ func TestE2EReadmeExamples(t *testing.T) {
 	gitStderr := env.writeTempFile(t, "git.stderr", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
 	dockerStderr := env.writeTempFile(t, "docker.stderr", "unknown command: imagesa\n\nDid you mean: images?")
 	npmStderr := env.writeTempFile(t, "npm.stderr", "npm ERR! Did you mean list?")
+	permissionStderr := env.writeTempFile(t, "permission.stderr", "mkdir: 1: Permission denied\n")
 
 	parserCases := []struct {
 		name       string
@@ -296,11 +308,16 @@ func TestE2EReadmeExamples(t *testing.T) {
 		{name: "git stderr parser", command: "git remove -v", stderrFile: gitStderr, want: "git remote -v\n"},
 		{name: "docker stderr parser", command: "docker imagesa", stderrFile: dockerStderr, want: "docker images\n"},
 		{name: "npm stderr parser", command: "npm ist --depth=0", stderrFile: npmStderr, want: "npm list --depth=0\n"},
+		{name: "permission stderr parser", command: "mkdir 1", stderrFile: permissionStderr, want: "sudo mkdir 1\n"},
 	}
 
 	for _, tt := range parserCases {
 		t.Run(tt.name, func(t *testing.T) {
-			result := env.run(t, "fix", "-s", tt.stderrFile, tt.command)
+			args := []string{"fix", "-s", tt.stderrFile, tt.command}
+			if tt.name == "permission stderr parser" {
+				args = []string{"fix", "--exit-code", "1", "-s", tt.stderrFile, tt.command}
+			}
+			result := env.run(t, args...)
 			if result.code != 0 || result.stdout != tt.want {
 				t.Fatalf("unexpected stderr parser result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 			}
@@ -428,12 +445,7 @@ print -r -- "$BUFFER"
 zle() { true; }
 bindkey() { true; }
 source "$1"
-cat > "$TYPO_STDERR_CACHE" <<'EOF'
-git: 'remove' is not a git command.
-
-The most similar command is
-	remote
-EOF
+printf "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n" > "$TYPO_STDERR_CACHE"
 BUFFER="sudo git remove -v && dcoker ps"
 _typo_fix_command
 [[ "$BUFFER" == "sudo git remote -v && docker ps" ]] || { print -r -- "$BUFFER"; exit 22; }
@@ -441,6 +453,38 @@ print -r -- "$BUFFER"
 `)
 	if stderrFix.code != 0 || !strings.Contains(stderrFix.stdout, "sudo git remote -v && docker ps") {
 		t.Fatalf("zsh stderr cache fix failed: stdout=%q stderr=%q code=%d", stderrFix.stdout, stderrFix.stderr, stderrFix.code)
+	}
+
+	permissionFix := env.runZsh(t, initScript, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+fc() { print -r -- "mkdir 1"; }
+sed() { while IFS= read -r line; do print -r -- "$line"; done }
+printf "mkdir: 1: Permission denied\n" > "$TYPO_STDERR_CACHE"
+TYPO_LAST_EXIT_CODE=1
+BUFFER=""
+_typo_fix_command
+[[ "$BUFFER" == "sudo mkdir 1" ]] || { print -r -- "$BUFFER"; exit 24; }
+print -r -- "$BUFFER"
+`)
+	if permissionFix.code != 0 || !strings.Contains(permissionFix.stdout, "sudo mkdir 1") {
+		t.Fatalf("zsh permission fix failed: stdout=%q stderr=%q code=%d", permissionFix.stdout, permissionFix.stderr, permissionFix.code)
+	}
+
+	ignoreStaleStderr := env.runZsh(t, initScript, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+printf "mkdir: 1: Permission denied\n" > "$TYPO_STDERR_CACHE"
+TYPO_LAST_EXIT_CODE=1
+BUFFER="mkdi tmpdir"
+_typo_fix_command
+[[ "$BUFFER" == "mkdir tmpdir" ]] || { print -r -- "$BUFFER"; exit 25; }
+print -r -- "$BUFFER"
+`)
+	if ignoreStaleStderr.code != 0 || !strings.Contains(ignoreStaleStderr.stdout, "mkdir tmpdir") {
+		t.Fatalf("zsh stale stderr handling failed: stdout=%q stderr=%q code=%d", ignoreStaleStderr.stdout, ignoreStaleStderr.stderr, ignoreStaleStderr.code)
 	}
 }
 

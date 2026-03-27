@@ -325,3 +325,26 @@ func TestRules_Match_DisabledRule(t *testing.T) {
 		t.Error("Expected not to match disabled rule")
 	}
 }
+
+func TestRules_TargetPriority(t *testing.T) {
+	tmpDir := t.TempDir()
+	r := NewRules(tmpDir)
+
+	builtinPriority := r.TargetPriority("docker")
+	if builtinPriority == 0 {
+		t.Fatal("Expected builtin docker target priority to be non-zero")
+	}
+
+	if err := r.AddUserRule(Rule{From: "dockre", To: "docker"}); err != nil {
+		t.Fatalf("AddUserRule failed: %v", err)
+	}
+
+	userPriority := r.TargetPriority("docker")
+	if userPriority <= builtinPriority {
+		t.Fatalf("Expected user rule to increase target priority, got builtin=%d user=%d", builtinPriority, userPriority)
+	}
+
+	if got := r.TargetPriority("totally-unknown-command"); got != 0 {
+		t.Fatalf("Expected unknown target priority 0, got %d", got)
+	}
+}

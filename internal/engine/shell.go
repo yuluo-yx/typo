@@ -10,9 +10,10 @@ import (
 )
 
 type shellCommandLine struct {
-	raw        string
-	args       []*syntax.Word
-	commandIdx int
+	raw            string
+	args           []*syntax.Word
+	commandIdx     int
+	hasRedirection bool
 }
 
 type shellWordReplacement struct {
@@ -29,7 +30,12 @@ func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
 
 	lines := make([]*shellCommandLine, 0)
 	syntax.Walk(file, func(node syntax.Node) bool {
-		call, ok := node.(*syntax.CallExpr)
+		stmt, ok := node.(*syntax.Stmt)
+		if !ok {
+			return true
+		}
+
+		call, ok := stmt.Cmd.(*syntax.CallExpr)
 		if !ok || len(call.Args) == 0 {
 			return true
 		}
@@ -40,9 +46,10 @@ func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
 		}
 
 		lines = append(lines, &shellCommandLine{
-			raw:        raw,
-			args:       call.Args,
-			commandIdx: commandIdx,
+			raw:            raw,
+			args:           call.Args,
+			commandIdx:     commandIdx,
+			hasRedirection: len(stmt.Redirs) > 0,
 		})
 
 		return true
@@ -107,6 +114,15 @@ func (c *shellCommandLine) commandSuffixRange() (int, int) {
 	start, _ := wordRange(c.args[c.commandIdx], len(c.raw))
 	_, end := wordRange(c.args[len(c.args)-1], len(c.raw))
 	return start, end
+}
+
+func (c *shellCommandLine) hasWrapper(name string) bool {
+	for i := 0; i < c.commandIdx; i++ {
+		if c.args[i].Lit() == name {
+			return true
+		}
+	}
+	return false
 }
 
 func wordRange(word *syntax.Word, rawLen int) (int, int) {

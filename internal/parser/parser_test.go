@@ -58,7 +58,7 @@ func TestGitParser_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(tt.cmd, tt.stderr)
+			result := p.Parse(Context{Command: tt.cmd, Stderr: tt.stderr})
 			if result.Fixed != tt.wantFix {
 				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
 			}
@@ -116,7 +116,7 @@ func TestDockerParser_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(tt.cmd, tt.stderr)
+			result := p.Parse(Context{Command: tt.cmd, Stderr: tt.stderr})
 			if result.Fixed != tt.wantFix {
 				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
 			}
@@ -200,7 +200,7 @@ func TestNpmParser_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(tt.cmd, tt.stderr)
+			result := p.Parse(Context{Command: tt.cmd, Stderr: tt.stderr})
 			if result.Fixed != tt.wantFix {
 				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
 			}
@@ -222,7 +222,7 @@ func TestRegistry_Parse(t *testing.T) {
 	r := NewRegistry()
 
 	// Test git error
-	result := r.Parse("git remove -v", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
+	result := r.Parse(Context{Command: "git remove -v", Stderr: "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"})
 	if !result.Fixed {
 		t.Error("Expected to fix git error")
 	}
@@ -231,7 +231,7 @@ func TestRegistry_Parse(t *testing.T) {
 	}
 
 	// Test unknown error
-	result = r.Parse("unknown command", "unknown error")
+	result = r.Parse(Context{Command: "unknown command", Stderr: "unknown error"})
 	if result.Fixed {
 		t.Error("Expected not to fix unknown error")
 	}
@@ -241,7 +241,7 @@ func TestRegistry_Register(t *testing.T) {
 	r := &Registry{}
 
 	// Initially no parsers
-	result := r.Parse("test", "error")
+	result := r.Parse(Context{Command: "test", Stderr: "error"})
 	if result.Fixed {
 		t.Error("Expected not to fix with no parsers")
 	}
@@ -250,9 +250,98 @@ func TestRegistry_Register(t *testing.T) {
 	r.Register(NewGitParser())
 
 	// Now should parse git errors
-	result = r.Parse("git remove -v", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
+	result = r.Parse(Context{Command: "git remove -v", Stderr: "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"})
 	if !result.Fixed {
 		t.Error("Expected to fix git error after registering parser")
+	}
+}
+
+func TestPermissionParser_Parse(t *testing.T) {
+	p := NewPermissionParser()
+
+	tests := []struct {
+		name string
+		ctx  Context
+		want string
+	}{
+		{
+			name: "macos mkdir permission denied",
+			ctx: Context{
+				Command:  "mkdir 1",
+				Stderr:   "mkdir: 1: Permission denied\n",
+				ExitCode: 1,
+			},
+			want: "sudo mkdir 1",
+		},
+		{
+			name: "linux mkdir permission denied",
+			ctx: Context{
+				Command:  "mkdir 1",
+				Stderr:   "mkdir: cannot create directory '1': Permission denied\n",
+				ExitCode: 1,
+			},
+			want: "sudo mkdir 1",
+		},
+		{
+			name: "already sudo prompt should be ignored",
+			ctx: Context{
+				Command:             "mkdir 1",
+				Stderr:              "Password:\n",
+				ExitCode:            1,
+				HasPrivilegeWrapper: true,
+			},
+		},
+		{
+			name: "shell builtin should be ignored",
+			ctx: Context{
+				Command:  "cd /root",
+				Stderr:   "cd: permission denied: /root\n",
+				ExitCode: 1,
+			},
+		},
+		{
+			name: "multiple commands should be ignored",
+			ctx: Context{
+				Command:             "mkdir 1",
+				Stderr:              "mkdir: 1: Permission denied\n",
+				ExitCode:            1,
+				HasMultipleCommands: true,
+			},
+		},
+		{
+			name: "redirection should be ignored",
+			ctx: Context{
+				Command:        "echo hi",
+				Stderr:         "zsh: permission denied: /root/out\n",
+				ExitCode:       1,
+				HasRedirection: true,
+			},
+		},
+		{
+			name: "no stderr should be ignored",
+			ctx: Context{
+				Command:  "mkdir 1",
+				ExitCode: 1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(tt.ctx)
+			if tt.want == "" {
+				if result.Fixed {
+					t.Fatalf("Parse() = %+v, want no fix", result)
+				}
+				return
+			}
+			if !result.Fixed {
+				t.Fatalf("Expected fix, got %+v", result)
+			}
+			if result.Command != tt.want {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.want)
+			}
+		})
 	}
 }
 
@@ -320,7 +409,10 @@ func TestNpmParser_ParseCommandNotFoundWithSuggestion(t *testing.T) {
 	p := NewNpmParser()
 
 	// Test: command not found pattern with did you mean suggestion
-	result := p.Parse("npm isntall", "npm ERR! code E404\nnpm ERR! 404 command isntall not found\nnpm ERR! Did you mean install?")
+	result := p.Parse(Context{
+		Command: "npm isntall",
+		Stderr:  "npm ERR! code E404\nnpm ERR! 404 command isntall not found\nnpm ERR! Did you mean install?",
+	})
 	if !result.Fixed {
 		t.Error("Expected to fix npm error with command not found and suggestion")
 	}
@@ -333,7 +425,10 @@ func TestNpmParser_ParseJustSuggestionNoParts(t *testing.T) {
 	p := NewNpmParser()
 
 	// Test: just suggestion with npm command only (no subcommand)
-	result := p.Parse("npm", "npm ERR! Did you mean install?")
+	result := p.Parse(Context{
+		Command: "npm",
+		Stderr:  "npm ERR! Did you mean install?",
+	})
 	if result.Fixed {
 		t.Error("Expected not to fix when npm has no subcommand to replace")
 	}

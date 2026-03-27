@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -25,6 +26,8 @@ func Discover() []string {
 	for cmd := range commands {
 		result = append(result, cmd)
 	}
+
+	sort.Strings(result)
 
 	return result
 }
@@ -83,6 +86,8 @@ func DiscoverCommon() []string {
 	}
 }
 
+var commonCommandSet = buildCommandSet(DiscoverCommon())
+
 // ShellBuiltins returns a list of shell builtin commands.
 // These commands are built into the shell and not found in PATH.
 func ShellBuiltins() []string {
@@ -99,6 +104,8 @@ func ShellBuiltins() []string {
 		"times", "ulimit", "umask",
 	}
 }
+
+var shellBuiltinSet = buildCommandSet(ShellBuiltins())
 
 // Filter filters commands by prefix.
 func Filter(commands []string, prefix string) []string {
@@ -147,4 +154,22 @@ func GetPath(name string) string {
 	}
 
 	return ""
+}
+
+// IsCommonCommand reports whether a command is part of the common fallback set.
+func IsCommonCommand(name string) bool {
+	return commonCommandSet[name]
+}
+
+// IsShellBuiltin reports whether a command is a shell builtin.
+func IsShellBuiltin(name string) bool {
+	return shellBuiltinSet[name]
+}
+
+func buildCommandSet(items []string) map[string]bool {
+	set := make(map[string]bool, len(items))
+	for _, item := range items {
+		set[item] = true
+	}
+	return set
 }

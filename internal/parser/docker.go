@@ -25,7 +25,10 @@ func (p *DockerParser) Name() string {
 }
 
 // Parse parses docker error output.
-func (p *DockerParser) Parse(cmd, stderr string) Result {
+func (p *DockerParser) Parse(ctx Context) Result {
+	cmd := ctx.Command
+	stderr := ctx.Stderr
+
 	if !isDockerCommand(cmd) {
 		return Result{Fixed: false}
 	}

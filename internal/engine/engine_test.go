@@ -118,6 +118,42 @@ func TestEngine_FixWithParser_NoMatch(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithPermissionParser(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(parser.Context{
+		Command:  "mkdir 1",
+		Stderr:   "mkdir: 1: Permission denied\n",
+		ExitCode: 1,
+	})
+	if !result.Fixed {
+		t.Fatal("Expected to fix from permission parser")
+	}
+	if result.Command != "sudo mkdir 1" {
+		t.Fatalf("Expected 'sudo mkdir 1', got %q", result.Command)
+	}
+	if result.Source != "parser" {
+		t.Fatalf("Expected source 'parser', got %q", result.Source)
+	}
+}
+
+func TestEngine_FixWithPermissionParser_SkipsRedirection(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(parser.Context{
+		Command:  "echo ok > /root/out",
+		Stderr:   "zsh: permission denied: /root/out\n",
+		ExitCode: 1,
+	})
+	if result.Fixed {
+		t.Fatalf("Expected redirection command to stay unchanged, got %+v", result)
+	}
+}
+
 func TestEngine_FixWithDistance(t *testing.T) {
 	eng := NewEngine(
 		WithCommands([]string{"git", "docker", "npm", "myapp"}),
@@ -134,6 +170,26 @@ func TestEngine_FixWithDistance(t *testing.T) {
 	}
 	if result.Source != "distance" {
 		t.Errorf("Expected source 'distance', got %q", result.Source)
+	}
+}
+
+func TestEngine_FixWithDistance_PrefersSupportedCommandOnTie(t *testing.T) {
+	tmpDir := t.TempDir()
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"colcrt", "docker"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	result := eng.Fix("dokcer ps", "")
+	if !result.Fixed {
+		t.Fatal("Expected to fix from distance")
+	}
+	if result.Command != "docker ps" {
+		t.Fatalf("Expected docker to win tie-break, got %q", result.Command)
+	}
+	if result.Source != "distance" && result.Source != "rule" {
+		t.Fatalf("Expected distance or rule source, got %q", result.Source)
 	}
 }
 
@@ -430,6 +486,40 @@ func TestEngine_Learn(t *testing.T) {
 	}
 }
 
+func TestEngine_LearnClearsConflictingHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	if err := history.Record("dokcer ps", "colcrt ps"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithHistory(history),
+		WithCommands([]string{"colcrt", "docker"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	if err := eng.Learn("dokcer", "docker"); err != nil {
+		t.Fatalf("Learn failed: %v", err)
+	}
+
+	if _, ok := history.Lookup("dokcer ps"); ok {
+		t.Fatal("Expected conflicting history to be cleared after learn")
+	}
+
+	result := eng.Fix("dokcer ps", "")
+	if !result.Fixed {
+		t.Fatal("Expected learned rule to fix command")
+	}
+	if result.Command != "docker ps" {
+		t.Fatalf("Expected learned rule to override stale history, got %q", result.Command)
+	}
+	if result.Source != "rule" {
+		t.Fatalf("Expected source rule, got %q", result.Source)
+	}
+}
+
 func TestEngine_AddRule(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(WithRules(NewRules(tmpDir)))
@@ -446,6 +536,40 @@ func TestEngine_AddRule(t *testing.T) {
 	}
 	if result.Command != "mycommand" {
 		t.Errorf("Expected 'mycommand', got %q", result.Command)
+	}
+}
+
+func TestEngine_AddRuleClearsConflictingHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	if err := history.Record("dokcer ps", "colcrt ps"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+
+	eng := NewEngine(
+		WithRules(NewRules(tmpDir)),
+		WithHistory(history),
+		WithCommands([]string{"colcrt", "docker"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	if err := eng.AddRule("dokcer", "docker"); err != nil {
+		t.Fatalf("AddRule failed: %v", err)
+	}
+
+	if _, ok := history.Lookup("dokcer ps"); ok {
+		t.Fatal("Expected conflicting history to be cleared after rules add")
+	}
+
+	result := eng.Fix("dokcer ps", "")
+	if !result.Fixed {
+		t.Fatal("Expected added rule to fix command")
+	}
+	if result.Command != "docker ps" {
+		t.Fatalf("Expected added rule to override stale history, got %q", result.Command)
+	}
+	if result.Source != "rule" {
+		t.Fatalf("Expected source rule, got %q", result.Source)
 	}
 }
 
@@ -492,7 +616,7 @@ func TestEngine_Priority(t *testing.T) {
 		WithCommands([]string{"git"}),
 	)
 
-	// History should take priority over rules
+	// History should take priority over builtin rules
 	result := eng.Fix("gut", "")
 	if !result.Fixed {
 		t.Error("Expected to fix")
@@ -502,6 +626,36 @@ func TestEngine_Priority(t *testing.T) {
 	}
 	if result.Command != "customgit" {
 		t.Errorf("Expected 'customgit' from history, got %q", result.Command)
+	}
+}
+
+func TestEngine_UserRuleOverridesHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	if err := history.Record("gut", "customgit"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+
+	rules := NewRules(tmpDir)
+	if err := rules.AddUserRule(Rule{From: "gut", To: "mygit"}); err != nil {
+		t.Fatalf("AddUserRule failed: %v", err)
+	}
+
+	eng := NewEngine(
+		WithRules(rules),
+		WithHistory(history),
+		WithCommands([]string{"git"}),
+	)
+
+	result := eng.Fix("gut", "")
+	if !result.Fixed {
+		t.Fatal("Expected to fix")
+	}
+	if result.Source != "rule" {
+		t.Fatalf("Expected source rule, got %q", result.Source)
+	}
+	if result.Command != "mygit" {
+		t.Fatalf("Expected user rule to override history, got %q", result.Command)
 	}
 }
 

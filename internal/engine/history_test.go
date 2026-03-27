@@ -293,3 +293,87 @@ func TestHistory_ListSortedByTimestamp(t *testing.T) {
 		t.Fatalf("Expected newest entry first, got %q", entries[0].From)
 	}
 }
+
+func TestHistory_RemoveConflictsForRule(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHistory(tmpDir)
+
+	for from, to := range map[string]string{
+		"dokcer":         "docker",
+		"dokcer ps":      "docker ps",
+		"sudo dokcer ps": "sudo docker ps",
+		"gerp main":      "grep main",
+	} {
+		if err := h.Record(from, to); err != nil {
+			t.Fatalf("Record(%q) failed: %v", from, err)
+		}
+	}
+
+	if err := h.RemoveConflictsForRule("dokcer"); err != nil {
+		t.Fatalf("RemoveConflictsForRule failed: %v", err)
+	}
+
+	for _, from := range []string{"dokcer", "dokcer ps", "sudo dokcer ps"} {
+		if _, ok := h.Lookup(from); ok {
+			t.Fatalf("Expected %q to be removed", from)
+		}
+	}
+
+	if _, ok := h.Lookup("gerp main"); !ok {
+		t.Fatal("Expected unrelated history entry to remain")
+	}
+}
+
+func TestIsSingleCommandWord(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want bool
+	}{
+		{raw: "dokcer", want: true},
+		{raw: " dokcer ", want: true},
+		{raw: "dokcer ps", want: false},
+		{raw: "dokcer&&ps", want: false},
+		{raw: "", want: false},
+	}
+
+	for _, tt := range tests {
+		if got := isSingleCommandWord(tt.raw); got != tt.want {
+			t.Fatalf("isSingleCommandWord(%q) = %v, want %v", tt.raw, got, tt.want)
+		}
+	}
+}
+
+func TestHistoryEntryMatchesCommandWord(t *testing.T) {
+	tests := []struct {
+		raw    string
+		target string
+		want   bool
+	}{
+		{raw: "gut status", target: "gut", want: true},
+		{raw: "sudo gut status", target: "gut", want: true},
+		{raw: "gut '", target: "gut", want: true},
+		{raw: "docker ps", target: "gut", want: false},
+	}
+
+	for _, tt := range tests {
+		if got := historyEntryMatchesCommandWord(tt.raw, tt.target); got != tt.want {
+			t.Fatalf("historyEntryMatchesCommandWord(%q, %q) = %v, want %v", tt.raw, tt.target, got, tt.want)
+		}
+	}
+}
+
+func TestHistory_RemoveEntriesForCommandWord_Empty(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHistory(tmpDir)
+	if err := h.Record("gut status", "git status"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+
+	if err := h.RemoveEntriesForCommandWord(""); err != nil {
+		t.Fatalf("Expected empty command word removal to be a no-op, got %v", err)
+	}
+
+	if _, ok := h.Lookup("gut status"); !ok {
+		t.Fatal("Expected history entry to remain after empty removal")
+	}
+}

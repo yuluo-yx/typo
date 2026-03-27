@@ -24,6 +24,10 @@ var (
 
 	readBuildInfo = debug.ReadBuildInfo
 	lookPath      = exec.LookPath
+	userHomeDir   = os.UserHomeDir
+	executable    = os.Executable
+	removeAll     = os.RemoveAll
+	statPath      = os.Stat
 )
 
 func main() {
@@ -68,18 +72,19 @@ func printUsage() {
 	fmt.Println(`typo - Command auto-correction tool
 
 Usage:
-  typo fix <command>           Fix a command
-  typo fix -s <file> <command> Fix command with stderr from file
-  typo learn <from> <to>       Learn a correction
-  typo rules list              List all rules
-  typo rules add <from> <to>   Add a user rule
-  typo rules remove <from>     Remove a user rule
-  typo history list            List correction history
-  typo history clear           Clear correction history
-  typo init zsh                Print zsh integration script
-  typo doctor                  Check configuration status
-  typo uninstall               Uninstall typo completely
-  typo version                 Print version
+  typo fix <command>                       Fix a command
+  typo fix -s <file> <command>            Fix command with stderr from file
+  typo fix --exit-code <n> <command>      Fix command with previous exit code
+  typo learn <from> <to>                  Learn a correction
+  typo rules list                         List all rules
+  typo rules add <from> <to>              Add a user rule
+  typo rules remove <from>                Remove a user rule
+  typo history list                       List correction history
+  typo history clear                      Clear correction history
+  typo init zsh                           Print zsh integration script
+  typo doctor                             Check configuration status
+  typo uninstall                          Uninstall typo completely
+  typo version                            Print version
 
 Examples:
   typo fix "gut stattus"
@@ -94,6 +99,7 @@ Zsh Integration:
 func cmdFix(args []string) int {
 	fs := flag.NewFlagSet("fix", flag.ExitOnError)
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
+	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
 
 	_ = fs.Parse(args)
 
@@ -115,7 +121,11 @@ func cmdFix(args []string) int {
 	cfg := config.Load()
 	eng := createEngine(cfg)
 
-	result := eng.Fix(cmd, stderr)
+	result := eng.FixWithContext(parser.Context{
+		Command:  cmd,
+		Stderr:   stderr,
+		ExitCode: *exitCode,
+	})
 
 	if result.Fixed {
 		if result.Command != cmd {
@@ -337,7 +347,7 @@ func cmdDoctor() int {
 	// Check config directory
 	fmt.Print("[2/4] config directory: ")
 	cfg := config.Load()
-	if info, err := os.Stat(cfg.ConfigDir); err == nil && info.IsDir() {
+	if info, err := statPath(cfg.ConfigDir); err == nil && info.IsDir() {
 		fmt.Printf("✓ %s\n", cfg.ConfigDir)
 	} else {
 		fmt.Printf("⊘ %s (will be created on first use)\n", cfg.ConfigDir)
@@ -403,7 +413,7 @@ func getGoBinDir() string {
 	}
 	if goPath == "" {
 		// Try default GOPATH
-		homeDir, err := os.UserHomeDir()
+		homeDir, err := userHomeDir()
 		if err != nil {
 			return ""
 		}
@@ -418,7 +428,7 @@ func checkGoBinTypo() string {
 		return ""
 	}
 	typoPath := filepath.Join(goBinDir, "typo")
-	if _, err := os.Stat(typoPath); err == nil {
+	if _, err := statPath(typoPath); err == nil {
 		return goBinDir
 	}
 	return ""
@@ -434,7 +444,7 @@ func cmdUninstall() int {
 	// Remove ~/.typo directory
 	fmt.Print("[1/3] Removing config directory: ")
 	if cfg.ConfigDir != "" {
-		if err := os.RemoveAll(cfg.ConfigDir); err != nil {
+		if err := removeAll(cfg.ConfigDir); err != nil {
 			fmt.Printf("✗ failed: %v\n", err)
 			hasError = true
 		} else {
@@ -446,13 +456,13 @@ func cmdUninstall() int {
 
 	// Print zsh config cleanup instructions
 	fmt.Print("[2/3] Zsh integration: ")
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := userHomeDir()
 	if err != nil {
 		fmt.Println("✗ cannot determine home directory")
 		hasError = true
 	} else {
 		zshrc := homeDir + "/.zshrc"
-		if _, statErr := os.Stat(zshrc); statErr == nil {
+		if _, statErr := statPath(zshrc); statErr == nil {
 			fmt.Printf("please remove the following line from ~/.zshrc:\n")
 			fmt.Println()
 			fmt.Println("    eval \"$(typo init zsh)\"")
@@ -464,7 +474,7 @@ func cmdUninstall() int {
 
 	// Print binary removal instructions
 	fmt.Print("[3/3] Binary: ")
-	execPath, err := os.Executable()
+	execPath, err := executable()
 	if err != nil {
 		fmt.Println("✗ cannot determine binary location")
 		hasError = true

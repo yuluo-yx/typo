@@ -1,5 +1,16 @@
 package parser
 
+// Context 表示一次修复尝试的上下文。
+type Context struct {
+	Command             string
+	Stderr              string
+	ExitCode            int
+	HasMultipleCommands bool
+	HasRedirection      bool
+	HasPrivilegeWrapper bool
+	ShellParseFailed    bool
+}
+
 // Result represents the result of error parsing.
 type Result struct {
 	Fixed   bool   // Whether a fix was found
@@ -13,9 +24,7 @@ type Parser interface {
 	Name() string
 
 	// Parse parses the stderr output and returns a correction result.
-	// cmd is the original command that was executed.
-	// stderr is the error output from the command.
-	Parse(cmd, stderr string) Result
+	Parse(ctx Context) Result
 }
 
 // Registry manages all available parsers.
@@ -29,6 +38,7 @@ func NewRegistry() *Registry {
 	r.Register(NewGitParser())
 	r.Register(NewDockerParser())
 	r.Register(NewNpmParser())
+	r.Register(NewPermissionParser())
 	return r
 }
 
@@ -38,9 +48,9 @@ func (r *Registry) Register(p Parser) {
 }
 
 // Parse tries all registered parsers and returns the first successful result.
-func (r *Registry) Parse(cmd, stderr string) Result {
+func (r *Registry) Parse(ctx Context) Result {
 	for _, p := range r.parsers {
-		result := p.Parse(cmd, stderr)
+		result := p.Parse(ctx)
 		if result.Fixed {
 			return result
 		}

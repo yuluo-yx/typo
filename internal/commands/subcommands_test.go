@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -453,6 +454,29 @@ func TestParseGoHelp_Empty(t *testing.T) {
 	}
 }
 
+func TestParseBrewHelp(t *testing.T) {
+	output := `==> Built-in commands
+--cache
+--repository
+install
+upgrade
+search
+`
+
+	subcommands := parseBrewHelp(output)
+	expected := []string{"install", "upgrade", "search"}
+
+	if len(subcommands) != len(expected) {
+		t.Fatalf("Expected %d subcommands, got %d: %v", len(expected), len(subcommands), subcommands)
+	}
+
+	for i, cmd := range expected {
+		if subcommands[i] != cmd {
+			t.Fatalf("Expected subcommands[%d] = %s, got %s", i, cmd, subcommands[i])
+		}
+	}
+}
+
 func TestParseGenericHelp(t *testing.T) {
 	output := `Usage: mytool <command>
 
@@ -682,4 +706,94 @@ func TestFetchSubcommands_Yarn(t *testing.T) {
 	}
 	result := r.fetchSubcommands("yarn")
 	_ = result
+}
+
+func TestGetHelpOutput_GitPrefersHelpA(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	gitPath := filepath.Join(tmpDir, "git")
+	script := "#!/bin/sh\nif [ \"$1\" = \"help\" ] && [ \"$2\" = \"-a\" ]; then\n  echo git-help-a\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo git-help\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(gitPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write git stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{}
+	output, err := r.getHelpOutput("git")
+	if err != nil {
+		t.Fatalf("getHelpOutput failed: %v", err)
+	}
+	if strings.TrimSpace(output) != "git-help-a" {
+		t.Fatalf("Expected help -a output, got %q", output)
+	}
+}
+
+func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	toolPath := filepath.Join(tmpDir, "mytool")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  exit 1\nfi\nif [ \"$1\" = \"help\" ]; then\n  echo fallback-help\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(toolPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write tool stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{}
+	output, err := r.getHelpOutput("mytool")
+	if err != nil {
+		t.Fatalf("getHelpOutput failed: %v", err)
+	}
+	if strings.TrimSpace(output) != "fallback-help" {
+		t.Fatalf("Expected help fallback output, got %q", output)
+	}
+}
+
+func TestGetHelpOutput_BrewUsesCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	brewPath := filepath.Join(tmpDir, "brew")
+	script := "#!/bin/sh\nif [ \"$1\" = \"commands\" ]; then\n  echo install\n  echo upgrade\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo should-not-be-used\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(brewPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write brew stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{}
+	output, err := r.getHelpOutput("brew")
+	if err != nil {
+		t.Fatalf("getHelpOutput failed: %v", err)
+	}
+	if strings.Contains(output, "should-not-be-used") || !strings.Contains(output, "install") {
+		t.Fatalf("Expected brew commands output, got %q", output)
+	}
+}
+
+func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	toolPath := filepath.Join(tmpDir, "mytool")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  printf 'Usage: mytool <command>\\n\\n  start    Start service\\n  stop     Stop service\\n'\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(toolPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write tool stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{
+		cache:       make(map[string]*SubcommandCache),
+		cacheDir:    "",
+		cacheExpiry: 7 * 24 * time.Hour,
+	}
+
+	subcommands := r.fetchSubcommands("mytool")
+	if len(subcommands) != 2 || subcommands[0] != "start" || subcommands[1] != "stop" {
+		t.Fatalf("Expected generic parser subcommands, got %v", subcommands)
+	}
 }

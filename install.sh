@@ -18,8 +18,8 @@ Usage:
   install.sh -b
 
 Options:
-  -s VERSION   按 Release 版本安装；latest 表示最新 Release
-  -b           从 main 分支源码构建（需要 go）
+  -s VERSION   Install a Release version; `latest` means the newest Release
+  -b           Build from the `main` branch source (requires `go`)
   -h           Show help
 
 Environment:

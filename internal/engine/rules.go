@@ -67,6 +67,32 @@ func (r *Rules) Match(cmd string) (Rule, bool) {
 	return Rule{}, false
 }
 
+// MatchUser finds a matching user rule for the given command.
+func (r *Rules) MatchUser(cmd string) (Rule, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	rule, ok := r.user[cmd]
+	if !ok || !rule.Enable {
+		return Rule{}, false
+	}
+
+	return rule, true
+}
+
+// MatchBuiltin finds a matching builtin rule for the given command.
+func (r *Rules) MatchBuiltin(cmd string) (Rule, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	rule, ok := r.builtin[cmd]
+	if !ok || !rule.Enable {
+		return Rule{}, false
+	}
+
+	return rule, true
+}
+
 // AddUserRule adds a new user rule.
 func (r *Rules) AddUserRule(rule Rule) error {
 	r.mu.Lock()
@@ -107,6 +133,27 @@ func (r *Rules) ListRules() []Rule {
 	}
 
 	return rules
+}
+
+// TargetPriority returns the explicit preference score for a correction target.
+func (r *Rules) TargetPriority(cmd string) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	score := 0
+	for _, rule := range r.user {
+		if rule.Enable && rule.To == cmd {
+			score += 200
+		}
+	}
+
+	for _, rule := range r.builtin {
+		if rule.Enable && rule.To == cmd {
+			score += 100
+		}
+	}
+
+	return score
 }
 
 // EnableRuleSet enables or disables a rule set by scope.
@@ -154,6 +201,7 @@ func (r *Rules) initBuiltinRules() {
 
 		// Docker rules
 		{From: "dcoker", To: "docker", Scope: "docker"},
+		{From: "dokcer", To: "docker", Scope: "docker"},
 		{From: "docke", To: "docker", Scope: "docker"},
 		{From: "dockr", To: "docker", Scope: "docker"},
 		{From: "doker", To: "docker", Scope: "docker"},
