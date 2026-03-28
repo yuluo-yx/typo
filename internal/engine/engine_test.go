@@ -107,6 +107,45 @@ func TestEngine_FixWithParser(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
+	tmpDir := t.TempDir()
+	subcommands := commands.NewSubcommandRegistry(tmpDir)
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+		WithRules(NewRules(tmpDir)),
+		WithCommands([]string{"git", "docker"}),
+		WithSubcommands(subcommands),
+	)
+
+	result := eng.FixWithContext(parser.Context{
+		Command: "git remove -v && dcoker ps",
+		Stderr:  "git: 'remove' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected parser fix to be followed by normal typo fixes")
+	}
+	if result.Command != "git remote -v && docker ps" {
+		t.Fatalf("Expected parser fix plus docker rule fix, got %q", result.Command)
+	}
+}
+
+func TestEngine_FixWithParser_NoUpstreamTargetsPullOnly(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(parser.Context{
+		Command: "git remove -v && git pull",
+		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected pull command to be fixed")
+	}
+	if result.Command != "git remove -v && git pull --set-upstream origin main" {
+		t.Fatalf("Expected upstream fix to apply only to git pull, got %q", result.Command)
+	}
+}
+
 func TestEngine_FixWithParser_NoMatch(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),

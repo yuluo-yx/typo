@@ -325,13 +325,34 @@ func parseGoHelp(output string) []string {
 	// build       compile packages and dependencies
 	// clean       remove object files and cached files
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}([\w-]+)\s+`)
+	re := regexp.MustCompile(`^\s+([\w-]+)\s+`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
+	inCommands := false
 	for scanner.Scan() {
 		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if !inCommands {
+			if trimmed == "The commands are:" {
+				inCommands = true
+			}
+			continue
+		}
+
+		if trimmed == "" {
+			if len(subcommands) > 0 {
+				break
+			}
+			continue
+		}
+
 		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
 			subcommands = append(subcommands, matches[1])
+			continue
+		}
+
+		if len(subcommands) > 0 {
+			break
 		}
 	}
 

@@ -100,3 +100,27 @@ print -r -- "$BUFFER"
 		t.Fatalf("live stderr capture flow failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }
+
+func TestE2EDynamicGoSubcommandDiscovery(t *testing.T) {
+	env := newE2EEnv(t)
+	env.removeSubcommandCache(t)
+	env.writeBinScript(t, "go", `#!/bin/sh
+if [ "$1" = "help" ]; then
+  printf 'Go is a tool for managing Go source code.\n\n'
+  printf 'Usage:\n\n'
+  printf '\tgo <command> [arguments]\n\n'
+  printf 'The commands are:\n\n'
+  printf '\tbuild       compile packages and dependencies\n'
+  printf '\ttest        test packages\n'
+  printf '\tfmt         gofmt (reformat) package sources\n\n'
+  printf 'Use "go help <command>" for more information about a command.\n'
+  exit 0
+fi
+exit 1
+`)
+
+	result := env.run(t, "fix", "go biuld ./...")
+	if result.code != 0 || result.stdout != "go build ./...\n" {
+		t.Fatalf("dynamic go subcommand discovery failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}

@@ -115,6 +115,10 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 		if resultKind == "" && result.Kind != "" {
 			resultKind = result.Kind
 		}
+		if result.Source == "parser" {
+			// stderr 只对应本次失败，parser 命中后后续轮次不能再次消费同一份错误输出。
+			input.Stderr = ""
+		}
 	}
 
 	if currentCmd != originalCmd {

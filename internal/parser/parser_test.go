@@ -43,6 +43,18 @@ func TestGitParser_Parse(t *testing.T) {
 			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
 		},
 		{
+			name:    "no upstream branch is idempotent once fixed",
+			cmd:     "git pull --set-upstream origin main",
+			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
+			wantFix: false,
+		},
+		{
+			name:    "no upstream branch ignores non-pull command",
+			cmd:     "git remove -v",
+			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
+			wantFix: false,
+		},
+		{
 			name:    "non-git command",
 			cmd:     "npm install",
 			stderr:  "some error",

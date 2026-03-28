@@ -37,6 +37,7 @@ func TestE2EInventory_BuiltinsAndSystemCommands(t *testing.T) {
 		{name: "cut command", command: "ctu -d: -f1 /etc/passwd", want: "cut -d: -f1 /etc/passwd\n"},
 		{name: "tee command", command: "teee out.log", want: "tee out.log\n"},
 		{name: "wc command", command: "wcc -l file.txt", want: "wc -l file.txt\n"},
+		//nolint:misspell
 		{name: "which command", command: "whcih git", want: "which git\n"},
 		{name: "less command", command: "lesss README.md", want: "less README.md\n"},
 		{name: "mkdir command", command: "mkdi tmpdir", want: "mkdir tmpdir\n"},
@@ -73,7 +74,9 @@ func TestE2EInventory_BuiltinsAndSystemCommands(t *testing.T) {
 		{name: "du command", command: "duu -sh .", want: "du -sh .\n"},
 		{name: "df command", command: "dff -h", want: "df -h\n"},
 		{name: "date command", command: "daet", want: "date\n"},
+		//nolint:misspell
 		{name: "open command", command: "opne .", want: "open .\n"},
+		//nolint:misspell
 		{name: "clear command", command: "claer", want: "clear\n"},
 		{name: "man command", command: "mna ls", want: "man ls\n"},
 		{name: "whoami command", command: "whomai", want: "whoami\n"},
@@ -159,7 +162,8 @@ func TestE2EInventory_CompoundFixFlows(t *testing.T) {
 			want:    "echo ok | grep ok | xargs rm && tail -n 1 app.log\n",
 		},
 		{
-			name:    "shell utility chain",
+			name: "shell utility chain",
+			//nolint:misspell
 			command: "pdw && whcih git && dff -h && daet",
 			want:    "pwd && which git && df -h && date\n",
 		},
@@ -169,7 +173,8 @@ func TestE2EInventory_CompoundFixFlows(t *testing.T) {
 			want:    "sort data.txt | uniq | tee out.log && cut -d: -f1 /etc/passwd\n",
 		},
 		{
-			name:    "shell inspection chain",
+			name: "shell inspection chain",
+			//nolint:misspell
 			command: "claer && whomai && unmae -a && stta README.md",
 			want:    "clear && whoami && uname -a && stat README.md\n",
 		},

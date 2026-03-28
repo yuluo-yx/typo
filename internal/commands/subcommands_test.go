@@ -429,9 +429,15 @@ Usage:
 
 The commands are:
 
-  build       compile packages and dependencies
-  clean       remove object files and cached files
-  test        test packages
+	build       compile packages and dependencies
+	clean       remove object files and cached files
+	test        test packages
+
+Use "go help <command>" for more information about a command.
+
+Additional help topics:
+
+	buildconstraint build constraints
 `
 
 	subcommands := parseGoHelp(output)

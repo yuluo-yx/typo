@@ -26,6 +26,7 @@ func TestRules_Match(t *testing.T) {
 		{"match builtin xargs rule", "xagrs", true, "xargs"},
 		{"match builtin sort rule", "srot", true, "sort"},
 		{"match builtin pwd rule", "pdw", true, "pwd"},
+		//nolint:misspell
 		{"match builtin clear rule", "claer", true, "clear"},
 		{"match builtin whoami rule", "whomai", true, "whoami"},
 		{"match builtin wget transposition rule", "wgte", true, "wget"},
