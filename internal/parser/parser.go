@@ -16,7 +16,13 @@ type Result struct {
 	Fixed   bool   // Whether a fix was found
 	Command string // The corrected command
 	Message string // Optional message to display
+	Kind    string // 内部结果标签，用于区分修复类型
 }
+
+const (
+	// ResultKindPermissionSudo 表示基于权限错误补上的 sudo 修复。
+	ResultKindPermissionSudo = "permission_sudo"
+)
 
 // Parser defines the interface for error output parsers.
 type Parser interface {

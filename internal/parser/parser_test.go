@@ -324,6 +324,23 @@ func TestPermissionParser_Parse(t *testing.T) {
 				ExitCode: 1,
 			},
 		},
+		{
+			name: "git publickey denied should be ignored",
+			ctx: Context{
+				Command:  "git push origin main",
+				Stderr:   "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n",
+				ExitCode: 128,
+			},
+		},
+		{
+			name: "docker socket permission denied should still fix",
+			ctx: Context{
+				Command:  "docker ps",
+				Stderr:   "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock\n",
+				ExitCode: 1,
+			},
+			want: "sudo docker ps",
+		},
 	}
 
 	for _, tt := range tests {

@@ -20,6 +20,17 @@ func TestRules_Match(t *testing.T) {
 	}{
 		{"match builtin git rule", "gut", true, "git"},
 		{"match builtin docker rule", "dcoker", true, "docker"},
+		{"match builtin source rule", "sourc", true, "source"},
+		{"match builtin helm rule", "helmm", true, "helm"},
+		{"match builtin terraform rule", "terrafrom", true, "terraform"},
+		{"match builtin xargs rule", "xagrs", true, "xargs"},
+		{"match builtin sort rule", "srot", true, "sort"},
+		{"match builtin pwd rule", "pdw", true, "pwd"},
+		{"match builtin clear rule", "claer", true, "clear"},
+		{"match builtin whoami rule", "whomai", true, "whoami"},
+		{"match builtin wget transposition rule", "wgte", true, "wget"},
+		{"match builtin gzip transposition rule", "gizp", true, "gzip"},
+		{"match builtin process suffix rule", "killl", true, "kill"},
 		{"no match", "validcommand", false, ""},
 		{"match exact case", "gut", true, "git"},
 	}
@@ -160,7 +171,7 @@ func TestRules_GetRuleSets(t *testing.T) {
 
 	sets := r.GetRuleSets()
 
-	expectedSets := []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "python", "pip", "go", "system"}
+	expectedSets := []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "brew", "helm", "terraform", "python", "pip", "go", "system"}
 	for _, expected := range expectedSets {
 		found := false
 		for _, set := range sets {

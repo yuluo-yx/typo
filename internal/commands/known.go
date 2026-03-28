@@ -75,9 +75,11 @@ func DiscoverCommon() []string {
 	return []string{
 		"git", "docker", "npm", "yarn", "node", "python", "python3", "pip", "pip3",
 		"go", "cargo", "rustc", "make", "cmake", "gcc", "clang",
-		"ls", "cd", "cat", "grep", "find", "sed", "awk", "tail", "head",
+		"ls", "cd", "pwd", "cat", "grep", "find", "sed", "awk", "tail", "head", "xargs",
+		"sort", "uniq", "cut", "tee", "wc", "which", "less",
 		"curl", "wget", "ssh", "scp", "rsync",
-		"tar", "zip", "unzip", "gzip",
+		"tar", "zip", "unzip", "gzip", "ln", "du", "df", "date", "open",
+		"clear", "man", "whoami", "uname", "basename", "dirname", "file", "stat",
 		"ps", "kill", "top", "htop",
 		"sudo", "su", "chmod", "chown",
 		"mkdir", "rm", "cp", "mv", "touch",

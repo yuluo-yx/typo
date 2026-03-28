@@ -195,6 +195,21 @@ func TestEngine_FixWithPermissionParser_SkipsRedirection(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithPermissionParser_SkipsRemoteAuthFailure(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(parser.Context{
+		Command:  "git push origin main",
+		Stderr:   "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n",
+		ExitCode: 128,
+	})
+	if result.Fixed {
+		t.Fatalf("Expected remote auth failure to stay unchanged, got %+v", result)
+	}
+}
+
 func TestEngine_FixWithDistance(t *testing.T) {
 	eng := NewEngine(
 		WithCommands([]string{"git", "docker", "npm", "myapp"}),
@@ -907,6 +922,11 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 	tmpDir := t.TempDir()
 	cache := []commands.SubcommandCache{
 		{
+			Tool:        "git",
+			Subcommands: []string{"status", "remote", "rev-parse", "ls-files"},
+			UpdatedAt:   time.Now(),
+		},
+		{
 			Tool:        "docker",
 			Subcommands: []string{"build", "run", "ps", "images", "logs", "compose"},
 			UpdatedAt:   time.Now(),
@@ -926,6 +946,16 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 			Subcommands: []string{"install", "update", "upgrade", "list", "search"},
 			UpdatedAt:   time.Now(),
 		},
+		{
+			Tool:        "terraform",
+			Subcommands: []string{"init", "plan", "apply", "destroy", "validate"},
+			UpdatedAt:   time.Now(),
+		},
+		{
+			Tool:        "helm",
+			Subcommands: []string{"install", "upgrade", "template", "repo", "lint", "list"},
+			UpdatedAt:   time.Now(),
+		},
 	}
 
 	data, err := json.Marshal(cache)
@@ -942,7 +972,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 
 	return NewEngine(
 		WithRules(NewRules(tmpDir)),
-		WithCommands([]string{"git", "docker", "npm", "kubectl", "brew"}),
+		WithCommands([]string{"git", "docker", "npm", "kubectl", "brew", "terraform", "helm"}),
 		WithKeyboard(NewQWERTYKeyboard()),
 		WithSubcommands(subcmdRegistry),
 	)
@@ -997,6 +1027,11 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			wantCmd: "git -C repo status",
 		},
 		{
+			name:    "git hyphenated subcommand typo",
+			cmd:     "git rev-prase HEAD",
+			wantCmd: "git rev-parse HEAD",
+		},
+		{
 			name:    "brew main command and subcommand typo",
 			cmd:     "bre instlal wget",
 			wantCmd: "brew install wget",
@@ -1005,6 +1040,16 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			name:    "brew subcommand typo",
 			cmd:     "brew upgarde", //nolint:misspell // intentional typo for correction test
 			wantCmd: "brew upgrade",
+		},
+		{
+			name:    "terraform subcommand typo after global option with value",
+			cmd:     "terraform -chdir infra valdiate",
+			wantCmd: "terraform -chdir infra validate",
+		},
+		{
+			name:    "helm subcommand typo after global option with value",
+			cmd:     "helm --kube-context prod temlpate chart",
+			wantCmd: "helm --kube-context prod template chart",
 		},
 	}
 

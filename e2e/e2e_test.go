@@ -63,8 +63,11 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	env.seedCommandStubs(
 		t,
 		"git", "docker", "npm", "kubectl", "brew", "yarn", "cargo", "helm", "terraform", "sudo",
-		"ls", "cat", "grep", "tail", "head", "mkdir", "rm", "cp", "mv", "touch", "find", "sed", "awk",
-		"make", "curl", "tar", "pip", "go",
+		"ls", "cd", "pwd", "cat", "grep", "tail", "head", "mkdir", "rm", "cp", "mv", "touch", "find", "sed", "awk", "xargs",
+		"sort", "uniq", "cut", "tee", "wc", "which", "less",
+		"make", "curl", "tar", "pip", "pip3", "go", "python3", "node",
+		"chmod", "chown", "ssh", "scp", "wget", "rsync", "zip", "unzip", "su", "gzip", "ps", "kill", "ln", "du", "df", "date", "open",
+		"clear", "man", "whoami", "uname", "basename", "dirname", "file", "stat",
 	)
 	env.seedSubcommands(t, map[string][]string{
 		"git":       {"status", "remote", "commit", "checkout", "branch", "pull", "push"},
@@ -75,6 +78,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		"cargo":     {"build", "check", "run", "test", "fmt"},
 		"go":        {"build", "test", "fmt", "mod", "env"},
 		"pip":       {"install", "uninstall", "list", "show", "freeze"},
+		"pip3":      {"install", "uninstall", "list", "show", "freeze"},
 		"brew":      {"install", "update", "upgrade", "list", "search"},
 		"terraform": {"init", "plan", "apply", "destroy", "validate"},
 		"helm":      {"install", "upgrade", "template", "repo", "lint", "list"},
@@ -109,6 +113,9 @@ func (e *e2eEnv) seedCommandStubs(t *testing.T, names ...string) {
 	for _, name := range names {
 		path := filepath.Join(e.binDir, name)
 		script := "#!/bin/sh\nexit 0\n"
+		if realPath, err := exec.LookPath(name); err == nil {
+			script = "#!/bin/sh\nexec \"" + realPath + "\" \"$@\"\n"
+		}
 		if err := os.WriteFile(path, []byte(script), 0755); err != nil {
 			t.Fatalf("failed to write command stub %s: %v", name, err)
 		}

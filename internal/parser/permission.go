@@ -9,20 +9,50 @@ import (
 
 // PermissionParser adds a sudo prefix when stderr shows a permission error.
 type PermissionParser struct {
-	permissionPatterns []*regexp.Regexp
-	passwordPrompt     *regexp.Regexp
+	strongPermissionPatterns []*regexp.Regexp
+	genericPermissionDenied  *regexp.Regexp
+	remoteAuthPatterns       []*regexp.Regexp
+	genericPermissionCmds    map[string]bool
+	passwordPrompt           *regexp.Regexp
 }
 
 // NewPermissionParser creates a parser for permission-related command failures.
 func NewPermissionParser() *PermissionParser {
 	return &PermissionParser{
-		permissionPatterns: []*regexp.Regexp{
-			regexp.MustCompile(`(?im)\bpermission denied\b`),
+		strongPermissionPatterns: []*regexp.Regexp{
 			regexp.MustCompile(`(?im)\boperation not permitted\b`),
 			regexp.MustCompile(`(?im)\b(?:EACCES|EPERM)\b`),
 			regexp.MustCompile(`(?im)\bmust be (?:superuser|root)\b`),
 			regexp.MustCompile(`(?im)\byou (?:must|need to) be root\b`),
 			regexp.MustCompile(`(?im)\broot privileges? (?:are )?required\b`),
+		},
+		genericPermissionDenied: regexp.MustCompile(`(?im)\bpermission denied\b`),
+		remoteAuthPatterns: []*regexp.Regexp{
+			regexp.MustCompile(`(?im)\bpermission denied\s*\(publickey\)\b`),
+			regexp.MustCompile(`(?im)\bcould not read from remote repository\b`),
+			regexp.MustCompile(`(?im)\bauthentication failed\b`),
+			regexp.MustCompile(`(?im)\bauthorization failed\b`),
+			regexp.MustCompile(`(?im)\brepository not found\b`),
+			regexp.MustCompile(`(?im)\bunauthorized\b`),
+			regexp.MustCompile(`(?im)\bforbidden\b`),
+		},
+		genericPermissionCmds: map[string]bool{
+			"mkdir":   true,
+			"touch":   true,
+			"rm":      true,
+			"cp":      true,
+			"mv":      true,
+			"install": true,
+			"ln":      true,
+			"chmod":   true,
+			"chown":   true,
+			"cat":     true,
+			"tee":     true,
+			"dd":      true,
+			"tar":     true,
+			"unzip":   true,
+			"zip":     true,
+			"docker":  true,
 		},
 		passwordPrompt: regexp.MustCompile(`(?im)^\s*(?:\[sudo\]\s*)?password(?: for [^:]+)?:\s*$`),
 	}
@@ -35,15 +65,12 @@ func (p *PermissionParser) Name() string {
 
 // Parse decides whether sudo should be prepended based on stderr output.
 func (p *PermissionParser) Parse(ctx Context) Result {
-	if ctx.ExitCode == 0 || ctx.Stderr == "" {
-		return Result{Fixed: false}
-	}
-	if ctx.HasPrivilegeWrapper || ctx.HasMultipleCommands || ctx.HasRedirection || ctx.ShellParseFailed {
+	if p.shouldSkipContext(ctx) {
 		return Result{Fixed: false}
 	}
 
 	stderr := strings.TrimSpace(ctx.Stderr)
-	if stderr == "" || p.passwordPrompt.MatchString(stderr) {
+	if p.shouldSkipStderr(stderr) {
 		return Result{Fixed: false}
 	}
 
@@ -52,16 +79,49 @@ func (p *PermissionParser) Parse(ctx Context) Result {
 		return Result{Fixed: false}
 	}
 
-	for _, pattern := range p.permissionPatterns {
-		if pattern.MatchString(stderr) {
-			return Result{
-				Fixed:   true,
-				Command: "sudo " + ctx.Command,
-			}
-		}
+	if p.matchesAny(stderr, p.remoteAuthPatterns) {
+		return Result{Fixed: false}
+	}
+
+	if p.matchesAny(stderr, p.strongPermissionPatterns) {
+		return p.sudoResult(ctx.Command)
+	}
+
+	if p.genericPermissionDenied.MatchString(stderr) && p.genericPermissionCmds[cmdWord] {
+		return p.sudoResult(ctx.Command)
 	}
 
 	return Result{Fixed: false}
+}
+
+func (p *PermissionParser) shouldSkipContext(ctx Context) bool {
+	return ctx.ExitCode == 0 ||
+		ctx.Stderr == "" ||
+		ctx.HasPrivilegeWrapper ||
+		ctx.HasMultipleCommands ||
+		ctx.HasRedirection ||
+		ctx.ShellParseFailed
+}
+
+func (p *PermissionParser) shouldSkipStderr(stderr string) bool {
+	return stderr == "" || p.passwordPrompt.MatchString(stderr)
+}
+
+func (p *PermissionParser) matchesAny(stderr string, patterns []*regexp.Regexp) bool {
+	for _, pattern := range patterns {
+		if pattern.MatchString(stderr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *PermissionParser) sudoResult(command string) Result {
+	return Result{
+		Fixed:   true,
+		Command: "sudo " + command,
+		Kind:    ResultKindPermissionSudo,
+	}
 }
 
 func firstCommandWord(cmd string) string {

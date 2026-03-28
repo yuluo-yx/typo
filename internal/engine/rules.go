@@ -226,10 +226,24 @@ func (r *Rules) initBuiltinRules() {
 		{From: "crago", To: "cargo", Scope: "cargo"},
 		{From: "cago", To: "cargo", Scope: "cargo"},
 
+		// brew rules
+		{From: "bre", To: "brew", Scope: "brew"},
+		{From: "brwe", To: "brew", Scope: "brew"},
+
+		// helm rules
+		{From: "helmm", To: "helm", Scope: "helm"},
+		{From: "hlem", To: "helm", Scope: "helm"},
+
+		// terraform rules
+		{From: "terrafrom", To: "terraform", Scope: "terraform"},
+
 		// python rules
 		{From: "pyhton", To: "python", Scope: "python"},
 		{From: "pyton", To: "python", Scope: "python"},
 		{From: "pythn", To: "python", Scope: "python"},
+		{From: "pyhton3", To: "python3", Scope: "python"},
+		{From: "pythno3", To: "python3", Scope: "python"},
+		{From: "python33", To: "python3", Scope: "python"},
 
 		// pip rules
 		{From: "pi", To: "pip", Scope: "pip"},
@@ -243,9 +257,10 @@ func (r *Rules) initBuiltinRules() {
 		{From: "sl", To: "ls", Scope: "system"},
 		{From: "l", To: "ls", Scope: "system"},
 
-		// cd rules
+		// cd/pwd rules
 		{From: "dc", To: "cd", Scope: "system"},
 		{From: "xd", To: "cd", Scope: "system"},
+		{From: "pdw", To: "pwd", Scope: "system"},
 
 		// cat rules
 		{From: "cta", To: "cat", Scope: "system"},
@@ -258,6 +273,21 @@ func (r *Rules) initBuiltinRules() {
 		// echo rules
 		{From: "ehco", To: "echo", Scope: "system"},
 		{From: "ehoc", To: "echo", Scope: "system"},
+
+		// shell builtin and utility rules
+		{From: "sourc", To: "source", Scope: "system"},
+		{From: "printff", To: "printf", Scope: "system"},
+		{From: "exportt", To: "export", Scope: "system"},
+		{From: "unsett", To: "unset", Scope: "system"},
+		{From: "historyy", To: "history", Scope: "system"},
+		{From: "typ", To: "type", Scope: "system"},
+		{From: "hasj", To: "hash", Scope: "system"},
+		{From: "helpp", To: "help", Scope: "system"},
+		{From: "testt", To: "test", Scope: "system"},
+		{From: "truee", To: "true", Scope: "system"},
+		{From: "falsee", To: "false", Scope: "system"},
+		{From: "evall", To: "eval", Scope: "system"},
+		{From: "execc", To: "exec", Scope: "system"},
 
 		// sudo rules
 		{From: "sduo", To: "sudo", Scope: "system"},
@@ -275,6 +305,77 @@ func (r *Rules) initBuiltinRules() {
 		// tar rules
 		{From: "tra", To: "tar", Scope: "system"},
 		{From: "atr", To: "tar", Scope: "system"},
+
+		// common file and process rules
+		{From: "taill", To: "tail", Scope: "system"},
+		{From: "headd", To: "head", Scope: "system"},
+		{From: "xagrs", To: "xargs", Scope: "system"},
+		{From: "xargss", To: "xargs", Scope: "system"},
+		{From: "srot", To: "sort", Scope: "system"},
+		{From: "unqi", To: "uniq", Scope: "system"},
+		{From: "ctu", To: "cut", Scope: "system"},
+		{From: "teee", To: "tee", Scope: "system"},
+		{From: "wcc", To: "wc", Scope: "system"},
+		{From: "whcih", To: "which", Scope: "system"},
+		{From: "lesss", To: "less", Scope: "system"},
+		{From: "mkdi", To: "mkdir", Scope: "system"},
+		{From: "rmm", To: "rm", Scope: "system"},
+		{From: "cpx", To: "cp", Scope: "system"},
+		{From: "mvv", To: "mv", Scope: "system"},
+		{From: "touc", To: "touch", Scope: "system"},
+		{From: "fin", To: "find", Scope: "system"},
+		{From: "sedd", To: "sed", Scope: "system"},
+		{From: "awkk", To: "awk", Scope: "system"},
+
+		// chmod/chown rules
+		{From: "chmdo", To: "chmod", Scope: "system"},
+		{From: "chwon", To: "chown", Scope: "system"},
+		{From: "chwno", To: "chown", Scope: "system"},
+		{From: "chownn", To: "chown", Scope: "system"},
+
+		// ssh/scp rules
+		{From: "shs", To: "ssh", Scope: "system"},
+		{From: "spc", To: "scp", Scope: "system"},
+		{From: "sshh", To: "ssh", Scope: "system"},
+		{From: "scpp", To: "scp", Scope: "system"},
+
+		// wget/gzip rules
+		{From: "wegt", To: "wget", Scope: "system"},
+		{From: "wgte", To: "wget", Scope: "system"},
+		{From: "wgett", To: "wget", Scope: "system"},
+		{From: "gizp", To: "gzip", Scope: "system"},
+		{From: "gzpi", To: "gzip", Scope: "system"},
+		{From: "gzipp", To: "gzip", Scope: "system"},
+		{From: "rsycn", To: "rsync", Scope: "system"},
+		{From: "unzpi", To: "unzip", Scope: "system"},
+
+		// runtime and process rules
+		{From: "ndoe", To: "node", Scope: "system"},
+		{From: "nodee", To: "node", Scope: "system"},
+		{From: "klli", To: "kill", Scope: "system"},
+		{From: "killl", To: "kill", Scope: "system"},
+		{From: "zpi", To: "zip", Scope: "system"},
+		{From: "zipp", To: "zip", Scope: "system"},
+		{From: "suu", To: "su", Scope: "system"},
+		{From: "pss", To: "ps", Scope: "system"},
+		{From: "lnn", To: "ln", Scope: "system"},
+		{From: "duu", To: "du", Scope: "system"},
+		{From: "dff", To: "df", Scope: "system"},
+		{From: "daet", To: "date", Scope: "system"},
+		{From: "opne", To: "open", Scope: "system"},
+		{From: "claer", To: "clear", Scope: "system"},
+		{From: "mna", To: "man", Scope: "system"},
+		{From: "whomai", To: "whoami", Scope: "system"},
+		{From: "unmae", To: "uname", Scope: "system"},
+		{From: "basenmae", To: "basename", Scope: "system"},
+		{From: "dirnmae", To: "dirname", Scope: "system"},
+		{From: "fiel", To: "file", Scope: "system"},
+		{From: "stta", To: "stat", Scope: "system"},
+
+		// Java
+		{From: "jvav", To: "java", Scope: "java"},
+		{From: "javv", To: "java", Scope: "java"},
+		{From: "jaav", To: "java", Scope: "java"},
 	}
 
 	for _, rule := range builtinRules {
@@ -284,16 +385,20 @@ func (r *Rules) initBuiltinRules() {
 
 	// Initialize rule sets
 	r.ruleSets = map[string]RuleSet{
-		"git":     {Name: "git", Enable: true},
-		"docker":  {Name: "docker", Enable: true},
-		"npm":     {Name: "npm", Enable: true},
-		"yarn":    {Name: "yarn", Enable: true},
-		"kubectl": {Name: "kubectl", Enable: true},
-		"cargo":   {Name: "cargo", Enable: true},
-		"python":  {Name: "python", Enable: true},
-		"pip":     {Name: "pip", Enable: true},
-		"go":      {Name: "go", Enable: true},
-		"system":  {Name: "system", Enable: true},
+		"git":       {Name: "git", Enable: true},
+		"docker":    {Name: "docker", Enable: true},
+		"npm":       {Name: "npm", Enable: true},
+		"yarn":      {Name: "yarn", Enable: true},
+		"kubectl":   {Name: "kubectl", Enable: true},
+		"cargo":     {Name: "cargo", Enable: true},
+		"brew":      {Name: "brew", Enable: true},
+		"helm":      {Name: "helm", Enable: true},
+		"terraform": {Name: "terraform", Enable: true},
+		"python":    {Name: "python", Enable: true},
+		"pip":       {Name: "pip", Enable: true},
+		"go":        {Name: "go", Enable: true},
+		"java":      {Name: "java", Enable: true},
+		"system":    {Name: "system", Enable: true},
 	}
 }
 

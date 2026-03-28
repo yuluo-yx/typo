@@ -128,7 +128,7 @@ func cmdFix(args []string) int {
 	})
 
 	if result.Fixed {
-		if result.Command != cmd {
+		if shouldRecordHistory(cmd, result) {
 			if err := eng.RecordHistory(cmd, result.Command); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				return 1
@@ -143,6 +143,14 @@ func cmdFix(args []string) int {
 
 	fmt.Fprintln(os.Stderr, "typo: no correction found")
 	return 1
+}
+
+func shouldRecordHistory(original string, result engine.FixResult) bool {
+	if !result.Fixed || result.Command == original {
+		return false
+	}
+
+	return result.Kind != parser.ResultKindPermissionSudo
 }
 
 func cmdLearn(args []string) int {

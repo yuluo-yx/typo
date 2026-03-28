@@ -34,16 +34,17 @@ func TestDiscoverCommon(t *testing.T) {
 		t.Error("Expected some common commands")
 	}
 
-	// Should include git
-	found := false
-	for _, cmd := range cmds {
-		if cmd == "git" {
-			found = true
-			break
+	for _, expected := range []string{"git", "xargs"} {
+		found := false
+		for _, cmd := range cmds {
+			if cmd == expected {
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		t.Error("Expected 'git' in common commands")
+		if !found {
+			t.Errorf("Expected %q in common commands", expected)
+		}
 	}
 }
 

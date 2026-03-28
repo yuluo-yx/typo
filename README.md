@@ -154,6 +154,7 @@ Files stored in `~/.typo/`:
 ```bash
 make build      # Build for current platform
 make build-all  # Build for all platforms
+make install    # Install typo to Go BIN
 make test       # Run tests
 make coverage   # Run tests with coverage
 make lint       # Run linter

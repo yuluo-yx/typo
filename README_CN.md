@@ -154,6 +154,7 @@ typo fix "docker biuld"  # → docker build
 ```bash
 make build      # 编译当前平台
 make build-all  # 编译所有平台
+make install    # 安装到 Go BIN
 make test       # 运行测试
 make coverage   # 运行覆盖率测试
 make lint       # 运行检查

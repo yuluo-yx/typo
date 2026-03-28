@@ -29,6 +29,21 @@ func TestE2EZshInventoryFlows(t *testing.T) {
 			buffer: `kubctl get pods && bre update && helmm list`,
 			want:   "kubectl get pods && brew update && helm list",
 		},
+		{
+			name:   "global option subcommands",
+			buffer: `terraform -chdir infra valdiate && helm --kube-context prod temlpate chart`,
+			want:   "terraform -chdir infra validate && helm --kube-context prod template chart",
+		},
+		{
+			name:   "remote and package commands",
+			buffer: `scpp build.tar.gz deploy@example.com:/srv/app/ && chmdo 755 deploy.sh && pip3 instlal typo`,
+			want:   "scp build.tar.gz deploy@example.com:/srv/app/ && chmod 755 deploy.sh && pip3 install typo",
+		},
+		{
+			name:   "runtime and process commands",
+			buffer: `python33 script.py && nodee server.js && pss aux && killl -9 1234`,
+			want:   "python3 script.py && node server.js && ps aux && kill -9 1234",
+		},
 	}
 
 	for _, tt := range tests {

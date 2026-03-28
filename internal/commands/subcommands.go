@@ -22,6 +22,7 @@ type SubcommandCache struct {
 // SubcommandRegistry manages subcommands for various tools.
 type SubcommandRegistry struct {
 	mu          sync.RWMutex
+	saveMu      sync.Mutex
 	cache       map[string]*SubcommandCache
 	cacheDir    string
 	cacheExpiry time.Duration
@@ -44,7 +45,7 @@ func (r *SubcommandRegistry) Get(tool string) []string {
 	if cached, ok := r.cache[tool]; ok {
 		if time.Since(cached.UpdatedAt) < r.cacheExpiry {
 			r.mu.RUnlock()
-			return cached.Subcommands
+			return append([]string(nil), cached.Subcommands...)
 		}
 	}
 	r.mu.RUnlock()
@@ -62,7 +63,7 @@ func (r *SubcommandRegistry) Get(tool string) []string {
 		r.saveCache()
 	}
 
-	return subcommands
+	return append([]string(nil), subcommands...)
 }
 
 // fetchSubcommands dynamically fetches subcommands for a tool.
@@ -151,6 +152,8 @@ func (r *SubcommandRegistry) loadCache() {
 		return
 	}
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for i := range caches {
 		r.cache[caches[i].Tool] = &caches[i]
 	}
@@ -161,10 +164,19 @@ func (r *SubcommandRegistry) saveCache() {
 		return
 	}
 
+	r.saveMu.Lock()
+	defer r.saveMu.Unlock()
+
+	r.mu.RLock()
 	caches := make([]SubcommandCache, 0, len(r.cache))
 	for _, c := range r.cache {
-		caches = append(caches, *c)
+		caches = append(caches, SubcommandCache{
+			Tool:        c.Tool,
+			Subcommands: append([]string(nil), c.Subcommands...),
+			UpdatedAt:   c.UpdatedAt,
+		})
 	}
+	r.mu.RUnlock()
 
 	data, err := json.MarshalIndent(caches, "", "  ")
 	if err != nil {
@@ -183,7 +195,7 @@ func parseGitHelp(output string) []string {
 	//   add                  Add file contents to the index
 	//   commit               Record changes to the repository
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}(\w+)\s{2,}`)
+	re := regexp.MustCompile(`^\s{2,}([\w-]+)\s{2,}`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -201,7 +213,7 @@ func parseDockerHelp(output string) []string {
 	//   builder     Manage builds
 	//   build       Build an image from a Dockerfile
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}(\w+)\s+`)
+	re := regexp.MustCompile(`^\s{2,}([\w-]+)\s+`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	inCommands := false
@@ -233,7 +245,7 @@ func parseNpmHelp(output string) []string {
 	// install, i, add      Install a package
 	// run, run-script      Run arbitrary package scripts
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}(\w+)`)
+	re := regexp.MustCompile(`^\s{2,}([\w-]+)`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -255,7 +267,7 @@ func parseYarnHelp(output string) []string {
 	//   add       Installs a package and any packages that it depends on.
 	//   init      Interactively creates or updates a package.json file.
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}(\w+)\s+`)
+	re := regexp.MustCompile(`^\s{2,}([\w-]+)\s+`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -273,7 +285,7 @@ func parseKubectlHelp(output string) []string {
 	//   get           Display one or many resources
 	//   describe      Show details of a specific resource or group of resources
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}(\w+)\s+`)
+	re := regexp.MustCompile(`^\s{2,}([\w-]+)\s+`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -291,7 +303,7 @@ func parseCargoHelp(output string) []string {
 	//    build, b    Compile the current package
 	//    check, c    Analyze the current package and report errors
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}(\w+)`)
+	re := regexp.MustCompile(`^\s{2,}([\w-]+)`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -313,7 +325,7 @@ func parseGoHelp(output string) []string {
 	// build       compile packages and dependencies
 	// clean       remove object files and cached files
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}(\w+)\s+`)
+	re := regexp.MustCompile(`^\s{2,}([\w-]+)\s+`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {

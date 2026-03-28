@@ -216,12 +216,13 @@ func TestParseGitHelp(t *testing.T) {
 Commands
   add                  Add file contents to the index
   commit               Record changes to the repository
+  rev-parse            Pick out and massage parameters
   push                 Update remote refs
-  clone                Clone a repository into a new directory
+  ls-files             Show information about files in the index
 `
 
 	subcommands := parseGitHelp(output)
-	expected := []string{"add", "commit", "push", "clone"}
+	expected := []string{"add", "commit", "rev-parse", "push", "ls-files"}
 
 	if len(subcommands) != len(expected) {
 		t.Errorf("Expected %d subcommands, got %d", len(expected), len(subcommands))
@@ -298,6 +299,7 @@ func TestParseNpmHelp(t *testing.T) {
 	output := `Usage: npm <command>
 
 where <command> is one of:
+  dist-tag, disttag    Manage distribution tags
   install, i, add      Install a package
   run, run-script      Run arbitrary package scripts
   test, t              Run tests
@@ -305,7 +307,7 @@ where <command> is one of:
 
 	subcommands := parseNpmHelp(output)
 
-	for _, cmd := range []string{"install", "run", "test"} {
+	for _, cmd := range []string{"dist-tag", "install", "run", "test"} {
 		found := false
 		for _, s := range subcommands {
 			if s == cmd {

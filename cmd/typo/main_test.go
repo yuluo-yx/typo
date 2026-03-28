@@ -1482,6 +1482,59 @@ func TestFixWritesUsageHistory(t *testing.T) {
 	}
 }
 
+func TestFixWithPermissionParser_DoesNotWriteUsageHistory(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "typo-permission-history-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString("mkdir: /root/test: Permission denied\n"); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	os.Args = []string{"typo", "fix", "--exit-code", "1", "-s", tmpFile.Name(), "mkdir", "/root/test"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("sudo mkdir /root/test")) {
+		t.Fatalf("Expected permission fix output, got %q", output)
+	}
+
+	cfg := config.Load()
+	if _, err := os.Stat(filepath.Join(cfg.ConfigDir, "usage_history.json")); !os.IsNotExist(err) {
+		t.Fatalf("Expected permission fix to skip history persistence, got %v", err)
+	}
+}
+
 func TestLearnSurvivesHistoryClear(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()

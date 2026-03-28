@@ -15,6 +15,7 @@ type FixResult struct {
 	Command string // The corrected command
 	Source  string // Where the fix came from (history, rule, parser, distance, subcommand)
 	Message string // Optional message to display
+	Kind    string // 内部结果标签，用于额外处理
 }
 
 // Engine is the main correction engine.
@@ -97,6 +98,7 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 	currentCmd := input.Command
 	messages := make([]string, 0)
 	lastSource := ""
+	resultKind := ""
 
 	for range 32 {
 		input.Command = currentCmd
@@ -110,6 +112,9 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 		if result.Message != "" && !containsString(messages, result.Message) {
 			messages = append(messages, result.Message)
 		}
+		if resultKind == "" && result.Kind != "" {
+			resultKind = result.Kind
+		}
 	}
 
 	if currentCmd != originalCmd {
@@ -118,6 +123,7 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 			Command: currentCmd,
 			Source:  lastSource,
 			Message: strings.Join(messages, "; "),
+			Kind:    resultKind,
 		}
 	}
 
@@ -291,6 +297,7 @@ func (e *Engine) tryParser(input parser.Context) FixResult {
 					Command: line.replaceCommandSuffix(result.Command),
 					Source:  "parser",
 					Message: result.Message,
+					Kind:    result.Kind,
 				}
 			}
 		}
@@ -311,6 +318,7 @@ func (e *Engine) tryParser(input parser.Context) FixResult {
 			Command: result.Command,
 			Source:  "parser",
 			Message: result.Message,
+			Kind:    result.Kind,
 		}
 	}
 	return FixResult{Fixed: false}
@@ -933,6 +941,26 @@ var subcommandPreOptionsWithValues = map[string]map[string]bool{
 		"--prefix":     true,
 		"--userconfig": true,
 		"-C":           true,
+	},
+	"terraform": {
+		"-chdir": true,
+	},
+	"helm": {
+		"--burst-limit":       true,
+		"--host":              true,
+		"--kube-apiserver":    true,
+		"--kube-as-group":     true,
+		"--kube-as-user":      true,
+		"--kube-ca-file":      true,
+		"--kube-context":      true,
+		"--kube-token":        true,
+		"--kubeconfig":        true,
+		"--namespace":         true,
+		"--qps":               true,
+		"--registry-config":   true,
+		"--repository-cache":  true,
+		"--repository-config": true,
+		"-n":                  true,
 	},
 }
 
