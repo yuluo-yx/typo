@@ -41,7 +41,17 @@ func (p *NpmParser) Parse(ctx Context) Result {
 		suggestMatches := p.didYouMeanRegex.FindStringSubmatch(stderr)
 		if len(suggestMatches) >= 2 {
 			suggested := suggestMatches[1]
-			fixed := strings.Replace(cmd, wrongCmd, suggested, 1)
+			fixed := ""
+			call, err := parseShellCall(cmd)
+			if err != nil {
+				fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
+			} else {
+				var ok bool
+				fixed, ok = call.replaceSubcommand("npm", wrongCmd, suggested, npmParserOptionsWithValues)
+				if !ok {
+					return Result{Fixed: false}
+				}
+			}
 			return Result{
 				Fixed:   true,
 				Command: fixed,
@@ -54,7 +64,21 @@ func (p *NpmParser) Parse(ctx Context) Result {
 	matches = p.didYouMeanRegex.FindStringSubmatch(stderr)
 	if len(matches) >= 2 {
 		suggested := matches[1]
-		// Replace the second word in command (the npm subcommand)
+		call, err := parseShellCall(cmd)
+		if err == nil {
+			fixed, ok := call.replaceSubcommand("npm", "", suggested, npmParserOptionsWithValues)
+			if ok {
+				return Result{
+					Fixed:   true,
+					Command: fixed,
+					Message: "npm suggested: " + suggested,
+				}
+			}
+			return Result{Fixed: false}
+		}
+
+		// Fall back to the original permissive logic when shell parsing fails
+		// so interactive fixes still have a chance to recover.
 		parts := strings.Fields(cmd)
 		if len(parts) >= 2 {
 			fixed := parts[0] + " " + suggested

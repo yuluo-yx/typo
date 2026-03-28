@@ -38,7 +38,17 @@ func (p *DockerParser) Parse(ctx Context) Result {
 	if len(matches) >= 3 {
 		wrongCmd := matches[1]
 		suggested := matches[2]
-		fixed := strings.Replace(cmd, wrongCmd, suggested, 1)
+		fixed := ""
+		call, err := parseShellCall(cmd)
+		if err != nil {
+			fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
+		} else {
+			var ok bool
+			fixed, ok = call.replaceSubcommand("docker", wrongCmd, suggested, dockerParserOptionsWithValues)
+			if !ok {
+				return Result{Fixed: false}
+			}
+		}
 		return Result{
 			Fixed:   true,
 			Command: fixed,
@@ -51,7 +61,17 @@ func (p *DockerParser) Parse(ctx Context) Result {
 	if len(matches) >= 3 {
 		wrongCmd := matches[1]
 		suggested := matches[2]
-		fixed := strings.Replace(cmd, wrongCmd, suggested, 1)
+		fixed := ""
+		call, err := parseShellCall(cmd)
+		if err != nil {
+			fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
+		} else {
+			var ok bool
+			fixed, ok = call.replaceSubcommand("docker", wrongCmd, suggested, dockerParserOptionsWithValues)
+			if !ok {
+				return Result{Fixed: false}
+			}
+		}
 		return Result{
 			Fixed:   true,
 			Command: fixed,

@@ -241,6 +241,14 @@ func TestHistory_LoadInvalidJSON(t *testing.T) {
 	if h.Count() != 0 {
 		t.Errorf("Expected count 0 with invalid JSON, got %d", h.Count())
 	}
+
+	matches, err := filepath.Glob(historyFile + ".corrupt-*")
+	if err != nil {
+		t.Fatalf("Glob failed: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("Expected one quarantined history file, got %v", matches)
+	}
 }
 
 func TestHistory_SaveMkdirError(t *testing.T) {

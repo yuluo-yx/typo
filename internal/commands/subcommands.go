@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yuluo-yx/typo/internal/storage"
 )
 
 // SubcommandCache represents cached subcommands for a tool.
@@ -149,6 +151,7 @@ func (r *SubcommandRegistry) loadCache() {
 
 	var caches []SubcommandCache
 	if err := json.Unmarshal(data, &caches); err != nil {
+		storage.QuarantineInvalidJSON(cacheFile, err)
 		return
 	}
 
@@ -185,7 +188,7 @@ func (r *SubcommandRegistry) saveCache() {
 
 	_ = os.MkdirAll(r.cacheDir, 0755)
 	cacheFile := filepath.Join(r.cacheDir, "subcommands.json")
-	_ = os.WriteFile(cacheFile, data, 0600)
+	_ = storage.WriteFileAtomic(cacheFile, data, 0600)
 }
 
 // Parser functions for different tools
@@ -425,6 +428,43 @@ func (r *SubcommandRegistry) HasSubcommands(tool string) bool {
 		"brew":      true,
 	}
 	return knownTools[tool]
+}
+
+var builtinSubcommands = map[string][]string{
+	"git":       {"add", "branch", "checkout", "clone", "commit", "diff", "fetch", "init", "log", "merge", "pull", "push", "rebase", "remote", "restore", "status", "switch"},
+	"docker":    {"build", "compose", "exec", "images", "logs", "ps", "pull", "push", "rm", "run", "start", "stop"},
+	"npm":       {"ci", "install", "list", "login", "publish", "run", "test", "uninstall", "update"},
+	"yarn":      {"add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade"},
+	"kubectl":   {"api-resources", "apply", "config", "create", "delete", "describe", "exec", "get", "logs", "patch", "rollout"},
+	"cargo":     {"bench", "build", "check", "clean", "doc", "fmt", "run", "test", "update"},
+	"go":        {"build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool"},
+	"brew":      {"cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"},
+	"terraform": {"apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"},
+	"helm":      {"dependency", "get", "install", "lint", "list", "package", "pull", "repo", "search", "template", "upgrade"},
+}
+
+var builtinSubcommandSet = buildBuiltinSubcommandSet()
+
+// HasBuiltinSubcommand reports whether a tool's builtin subcommand set contains the given subcommand.
+func HasBuiltinSubcommand(tool, subcommand string) bool {
+	if tool == "" || subcommand == "" {
+		return false
+	}
+
+	toolSet, ok := builtinSubcommandSet[tool]
+	return ok && toolSet[subcommand]
+}
+
+func buildBuiltinSubcommandSet() map[string]map[string]bool {
+	result := make(map[string]map[string]bool, len(builtinSubcommands))
+	for tool, subcommands := range builtinSubcommands {
+		set := make(map[string]bool, len(subcommands))
+		for _, subcommand := range subcommands {
+			set[subcommand] = true
+		}
+		result[tool] = set
+	}
+	return result
 }
 
 // PreFetch prefetches subcommands for common tools.

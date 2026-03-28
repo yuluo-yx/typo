@@ -96,7 +96,7 @@ typo doctor            # 检查配置状态
 ```bash
 typo init zsh          # 打印 shell 集成脚本
 typo version           # 显示版本
-typo uninstall         # 卸载 typo
+typo uninstall         # 清理本地配置并提示剩余手动清理步骤
 ```
 
 ## 工作原理
@@ -145,7 +145,7 @@ typo fix "docker biuld"  # → docker build
 ```
 ~/.typo/
 ├── rules.json                   # learn 结果与用户自定义规则
-├── usage_history.json           # 真实修正历史
+├── usage_history.json           # 已接受或直接执行修正的历史记录
 └── subcommands.json             # 子命令缓存
 ```
 

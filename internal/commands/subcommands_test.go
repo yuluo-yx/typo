@@ -37,6 +37,15 @@ func TestNewSubcommandRegistry_EmptyCacheDir(t *testing.T) {
 	}
 }
 
+func TestHasBuiltinSubcommand(t *testing.T) {
+	if !HasBuiltinSubcommand("git", "status") {
+		t.Fatal("Expected builtin git subcommand lookup to find status")
+	}
+	if HasBuiltinSubcommand("git", "nonexistent-subcommand") {
+		t.Fatal("Expected unknown git subcommand lookup to fail")
+	}
+}
+
 func TestLoadCache(t *testing.T) {
 	t.Run("loads existing cache", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -91,7 +100,15 @@ func TestLoadCache(t *testing.T) {
 		r.loadCache()
 
 		if len(r.cache) != 0 {
-			t.Errorf("Expected empty cache for invalid JSON, got %d", len(r.cache))
+			t.Fatalf("Expected invalid JSON load to keep explicit cache empty, got %d", len(r.cache))
+		}
+
+		matches, err := filepath.Glob(cacheFile + ".corrupt-*")
+		if err != nil {
+			t.Fatalf("Glob failed: %v", err)
+		}
+		if len(matches) != 1 {
+			t.Fatalf("Expected one quarantined cache file, got %v", matches)
 		}
 	})
 

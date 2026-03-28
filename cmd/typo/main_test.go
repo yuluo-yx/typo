@@ -1461,6 +1461,14 @@ func TestFixWritesUsageHistory(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
 	os.Args = []string{"typo", "fix", "gut", "status"}
 
 	oldStdout := os.Stdout
@@ -1532,6 +1540,99 @@ func TestFixWithPermissionParser_DoesNotWriteUsageHistory(t *testing.T) {
 	cfg := config.Load()
 	if _, err := os.Stat(filepath.Join(cfg.ConfigDir, "usage_history.json")); !os.IsNotExist(err) {
 		t.Fatalf("Expected permission fix to skip history persistence, got %v", err)
+	}
+}
+
+func TestFixWithParser_DoesNotWriteUsageHistory(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "typo-parser-history-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString("git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	os.Args = []string{"typo", "fix", "-s", tmpFile.Name(), "git", "remove", "-v"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("git remote -v")) {
+		t.Fatalf("Expected parser fix output, got %q", output)
+	}
+
+	cfg := config.Load()
+	if _, err := os.Stat(filepath.Join(cfg.ConfigDir, "usage_history.json")); !os.IsNotExist(err) {
+		t.Fatalf("Expected parser fix to skip history persistence, got %v", err)
+	}
+}
+
+func TestFixNoHistoryFlag_DoesNotWriteUsageHistory(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	os.Args = []string{"typo", "fix", "--no-history", "gut", "status"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("git status")) {
+		t.Fatalf("Expected fix output, got %q", output)
+	}
+
+	cfg := config.Load()
+	if _, err := os.Stat(filepath.Join(cfg.ConfigDir, "usage_history.json")); !os.IsNotExist(err) {
+		t.Fatalf("Expected --no-history to skip history persistence, got %v", err)
 	}
 }
 
@@ -1766,14 +1867,14 @@ func TestUninstall(t *testing.T) {
 	if code != 0 {
 		t.Errorf("Expected exit code 0, got %d", code)
 	}
-	if !bytes.Contains([]byte(output), []byte("Uninstalling typo")) {
-		t.Error("Expected output to contain 'Uninstalling typo'")
+	if !bytes.Contains([]byte(output), []byte("Cleaning up typo")) {
+		t.Error("Expected output to contain 'Cleaning up typo'")
 	}
 	if !bytes.Contains([]byte(output), []byte("Removing config directory")) {
 		t.Error("Expected output to contain 'Removing config directory'")
 	}
-	if !bytes.Contains([]byte(output), []byte("Uninstallation complete")) {
-		t.Error("Expected output to contain 'Uninstallation complete'")
+	if !bytes.Contains([]byte(output), []byte("Local cleanup complete")) {
+		t.Error("Expected output to contain 'Local cleanup complete'")
 	}
 
 	// Verify config directory was removed
@@ -1816,8 +1917,8 @@ func TestUninstallNonexistentConfig(t *testing.T) {
 	if code != 0 {
 		t.Errorf("Expected exit code 0, got %d", code)
 	}
-	if !bytes.Contains([]byte(output), []byte("Uninstallation complete")) {
-		t.Errorf("Expected 'Uninstallation complete', got: %s", output)
+	if !bytes.Contains([]byte(output), []byte("Local cleanup complete")) {
+		t.Errorf("Expected 'Local cleanup complete', got: %s", output)
 	}
 }
 
@@ -1857,7 +1958,7 @@ func TestUninstallWithZshrcHint(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Expected uninstall to succeed, got %d", code)
 	}
-	if !bytes.Contains([]byte(output), []byte("please remove the following line from ~/.zshrc")) {
+	if !bytes.Contains([]byte(output), []byte("manual cleanup required in ~/.zshrc")) {
 		t.Fatalf("Expected .zshrc cleanup hint, got %q", output)
 	}
 }

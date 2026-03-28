@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
@@ -11,21 +12,25 @@ import (
 
 // FixResult represents the result of a fix attempt.
 type FixResult struct {
-	Fixed   bool   // Whether a fix was found
-	Command string // The corrected command
-	Source  string // Where the fix came from (history, rule, parser, distance, subcommand)
-	Message string // Optional message to display
-	Kind    string // 内部结果标签，用于额外处理
+	Fixed      bool   // Whether a fix was found
+	Command    string // The corrected command
+	Source     string // Where the fix came from (history, rule, parser, distance, subcommand)
+	Message    string // Optional message to display
+	Kind       string // Internal result tag used for extra handling.
+	UsedParser bool   // Whether parser context was consumed in the fix chain.
 }
 
 // Engine is the main correction engine.
 type Engine struct {
-	keyboard    KeyboardWeights
-	rules       *Rules
-	history     *History
-	parser      *parser.Registry
-	commands    []string // Known commands from $PATH
-	subcommands *commands.SubcommandRegistry
+	keyboard          KeyboardWeights
+	rules             *Rules
+	history           *History
+	parser            *parser.Registry
+	commands          []string // Loaded command set, seeded first and expanded on demand.
+	commandLoader     func() []string
+	commandsLoadOnce  sync.Once
+	commandsFullyLoad bool
+	subcommands       *commands.SubcommandRegistry
 }
 
 // Option is a functional option for Engine.
@@ -53,7 +58,12 @@ func WithParser(p *parser.Registry) Option {
 
 // WithCommands sets the known commands.
 func WithCommands(cmds []string) Option {
-	return func(e *Engine) { e.commands = cmds }
+	return func(e *Engine) { e.commands = append([]string(nil), cmds...) }
+}
+
+// WithCommandLoader sets the lazy loader for discovered commands.
+func WithCommandLoader(loader func() []string) Option {
+	return func(e *Engine) { e.commandLoader = loader }
 }
 
 // WithSubcommands sets the subcommand registry.
@@ -99,6 +109,7 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 	messages := make([]string, 0)
 	lastSource := ""
 	resultKind := ""
+	usedParser := false
 
 	for range 32 {
 		input.Command = currentCmd
@@ -116,18 +127,21 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 			resultKind = result.Kind
 		}
 		if result.Source == "parser" {
-			// stderr 只对应本次失败，parser 命中后后续轮次不能再次消费同一份错误输出。
+			usedParser = true
+			// stderr only belongs to the failed command that triggered this fix.
+			// Once a parser fix lands, later passes must not consume the same stderr again.
 			input.Stderr = ""
 		}
 	}
 
 	if currentCmd != originalCmd {
 		return FixResult{
-			Fixed:   true,
-			Command: currentCmd,
-			Source:  lastSource,
-			Message: strings.Join(messages, "; "),
-			Kind:    resultKind,
+			Fixed:      true,
+			Command:    currentCmd,
+			Source:     lastSource,
+			Message:    strings.Join(messages, "; "),
+			Kind:       resultKind,
+			UsedParser: usedParser,
 		}
 	}
 
@@ -538,7 +552,7 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	mainCmd := parts[0]
 
 	// If main command is not known, try to resolve it first
-	if !containsString(e.commands, mainCmd) {
+	if !containsString(e.availableCommands(), mainCmd) {
 		resolved := e.findClosestCommand(mainCmd)
 		if resolved == "" {
 			return FixResult{Fixed: false}
@@ -547,17 +561,21 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	}
 
 	// Get subcommands for this tool
-	subcommands := e.subcommands.Get(mainCmd)
-	if len(subcommands) == 0 {
-		return FixResult{Fixed: false}
-	}
-
 	subcmdIdx := findSubcommandIndex(mainCmd, parts)
 	if subcmdIdx == -1 {
 		return FixResult{Fixed: false}
 	}
 
 	subcmd := parts[subcmdIdx]
+	if commands.HasBuiltinSubcommand(mainCmd, subcmd) {
+		return FixResult{Fixed: false}
+	}
+
+	// Fast-path obviously valid builtin subcommands to avoid synchronous help probing on cold start.
+	subcommands := e.subcommands.Get(mainCmd)
+	if len(subcommands) == 0 {
+		return FixResult{Fixed: false}
+	}
 
 	// Check if subcommand is already valid
 	if containsString(subcommands, subcmd) {
@@ -607,17 +625,21 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 			continue
 		}
 
-		subcommands := e.subcommands.Get(mainCmd)
-		if len(subcommands) == 0 {
-			continue
-		}
-
 		subcmdIdx := findSubcommandWordIndex(mainCmd, line)
 		if subcmdIdx == -1 {
 			continue
 		}
 
 		subcmd := line.args[subcmdIdx].Lit()
+		if commands.HasBuiltinSubcommand(mainCmd, subcmd) {
+			continue
+		}
+
+		// Fast-path obviously valid builtin subcommands to avoid synchronous help probing on cold start.
+		subcommands := e.subcommands.Get(mainCmd)
+		if len(subcommands) == 0 {
+			continue
+		}
 		if containsString(subcommands, subcmd) {
 			continue
 		}
@@ -653,7 +675,7 @@ func (e *Engine) trySubcommandFixWithSource(cmd, source string) FixResult {
 
 func (e *Engine) resolveShellCommandLine(line *shellCommandLine) (string, string, error) {
 	mainCmd := line.commandWord()
-	if containsString(e.commands, mainCmd) || e.isProtectedCommandWord(mainCmd) {
+	if containsString(e.availableCommands(), mainCmd) || e.isProtectedCommandWord(mainCmd) {
 		return mainCmd, "", nil
 	}
 
@@ -673,10 +695,21 @@ func (e *Engine) findClosestCommand(cmd string) string {
 }
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
-	candidates := make([]commandCandidate, 0, len(e.commands))
-	seen := make(map[string]bool, len(e.commands))
+	bestMatch, bestDistance := e.closestKnownCommandFromSlice(cmd, e.availableCommands())
+	if isGoodDistanceMatch(cmd, bestMatch, bestDistance, e.keyboard) || e.commandLoader == nil || e.commandsFullyLoad {
+		return bestMatch, bestDistance
+	}
 
-	for _, known := range e.commands {
+	// Only scan PATH on demand when builtin or seeded commands cannot produce a good candidate.
+	e.loadCommands()
+	return e.closestKnownCommandFromSlice(cmd, e.availableCommands())
+}
+
+func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string) (string, int) {
+	candidates := make([]commandCandidate, 0, len(knownCommands))
+	seen := make(map[string]bool, len(knownCommands))
+
+	for _, known := range knownCommands {
 		if known == "" || seen[known] {
 			continue
 		}
@@ -710,6 +743,22 @@ func (e *Engine) closestKnownCommand(cmd string) (string, int) {
 	return candidates[0].name, candidates[0].distance
 }
 
+func (e *Engine) availableCommands() []string {
+	return e.commands
+}
+
+func (e *Engine) loadCommands() {
+	e.commandsLoadOnce.Do(func() {
+		if e.commandLoader == nil {
+			e.commandsFullyLoad = true
+			return
+		}
+
+		e.commands = mergeUniqueStrings(e.commands, e.commandLoader()...)
+		e.commandsFullyLoad = true
+	})
+}
+
 func (e *Engine) isProtectedCommandWord(cmd string) bool {
 	for _, rule := range e.rules.ListRules() {
 		if rule.To == cmd {
@@ -733,6 +782,24 @@ func containsString(slice []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func mergeUniqueStrings(base []string, extra ...string) []string {
+	result := append([]string(nil), base...)
+	seen := make(map[string]bool, len(result)+len(extra))
+	for _, item := range result {
+		seen[item] = true
+	}
+
+	for _, item := range extra {
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		result = append(result, item)
+	}
+
+	return result
 }
 
 func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) FixResult {

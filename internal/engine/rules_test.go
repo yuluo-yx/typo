@@ -275,6 +275,14 @@ func TestRules_LoadInvalidJSON(t *testing.T) {
 	if rule.To != "git" {
 		t.Errorf("Expected 'git', got %q", rule.To)
 	}
+
+	matches, err := filepath.Glob(rulesFile + ".corrupt-*")
+	if err != nil {
+		t.Fatalf("Glob failed: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("Expected one quarantined rules file, got %v", matches)
+	}
 }
 
 func TestRules_SaveMkdirError(t *testing.T) {

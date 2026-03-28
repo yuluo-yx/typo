@@ -1,6 +1,6 @@
 package parser
 
-// Context 表示一次修复尝试的上下文。
+// Context carries the execution context for a single fix attempt.
 type Context struct {
 	Command             string
 	Stderr              string
@@ -16,11 +16,11 @@ type Result struct {
 	Fixed   bool   // Whether a fix was found
 	Command string // The corrected command
 	Message string // Optional message to display
-	Kind    string // 内部结果标签，用于区分修复类型
+	Kind    string // Internal result tag used to distinguish fix categories.
 }
 
 const (
-	// ResultKindPermissionSudo 表示基于权限错误补上的 sudo 修复。
+	// ResultKindPermissionSudo identifies fixes that prepend sudo after a permission error.
 	ResultKindPermissionSudo = "permission_sudo"
 )
 

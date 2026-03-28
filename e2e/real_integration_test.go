@@ -70,6 +70,25 @@ exit 1
 	t.Fatalf("git subcommands were not cached after dynamic discovery: %s", data)
 }
 
+func TestE2EZshPreviewFixDoesNotWriteUsageHistory(t *testing.T) {
+	env := newE2EEnv(t)
+
+	initScript := env.initZshScript(t)
+	result := env.runZsh(t, initScript, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+BUFFER="gut status"
+_typo_fix_command
+[[ "$BUFFER" == "git status" ]] || exit 41
+[[ ! -e "$HOME/.typo/usage_history.json" ]] || exit 42
+print -r -- "$BUFFER"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, "git status") {
+		t.Fatalf("zsh preview fix should not write usage history: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
 func TestE2EZshIntegrationCapturesLiveStderr(t *testing.T) {
 	env := newE2EEnv(t)
 	env.writeBinScript(t, "git", `#!/bin/sh

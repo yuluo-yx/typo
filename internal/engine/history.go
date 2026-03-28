@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yuluo-yx/typo/internal/storage"
 )
 
 const usageHistoryFileName = "usage_history.json"
@@ -184,7 +186,8 @@ func (h *History) load() {
 
 	var entries []HistoryEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
-		return // Invalid JSON, ignore
+		storage.QuarantineInvalidJSON(historyFile, err)
+		return
 	}
 
 	for _, entry := range entries {
@@ -212,7 +215,7 @@ func (h *History) save() error {
 	}
 
 	historyFile := filepath.Join(h.configDir, usageHistoryFileName)
-	return os.WriteFile(historyFile, data, 0600)
+	return storage.WriteFileAtomic(historyFile, data, 0600)
 }
 
 func historyEntryMatchesCommandWord(raw, target string) bool {

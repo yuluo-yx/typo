@@ -127,6 +127,9 @@ func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
 	if result.Command != "git remote -v && docker ps" {
 		t.Fatalf("Expected parser fix plus docker rule fix, got %q", result.Command)
 	}
+	if !result.UsedParser {
+		t.Fatal("Expected parser-assisted fix chain to retain parser usage marker")
+	}
 }
 
 func TestEngine_FixWithParser_NoUpstreamTargetsPullOnly(t *testing.T) {

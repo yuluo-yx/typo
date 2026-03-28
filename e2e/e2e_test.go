@@ -29,6 +29,11 @@ type e2eEnv struct {
 	bin    string
 }
 
+var e2ePassthroughCommands = map[string]bool{
+	"sed": true,
+	"tee": true,
+}
+
 func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Helper()
 
@@ -113,8 +118,10 @@ func (e *e2eEnv) seedCommandStubs(t *testing.T, names ...string) {
 	for _, name := range names {
 		path := filepath.Join(e.binDir, name)
 		script := "#!/bin/sh\nexit 0\n"
-		if realPath, err := exec.LookPath(name); err == nil {
-			script = "#!/bin/sh\nexec \"" + realPath + "\" \"$@\"\n"
+		if e2ePassthroughCommands[name] {
+			if realPath, err := exec.LookPath(name); err == nil {
+				script = "#!/bin/sh\nexec \"" + realPath + "\" \"$@\"\n"
+			}
 		}
 		if err := os.WriteFile(path, []byte(script), 0755); err != nil {
 			t.Fatalf("failed to write command stub %s: %v", name, err)

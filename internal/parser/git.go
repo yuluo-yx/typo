@@ -59,9 +59,22 @@ func (p *GitParser) parseDidYouMean(cmd, stderr string) Result {
 
 	wrongCmd := matches[1]
 	suggested := matches[2]
+	fixed := ""
 
-	// Replace the wrong command with the suggested one
-	fixed := strings.Replace(cmd, wrongCmd, suggested, 1)
+	call, err := parseShellCall(cmd)
+	if err != nil {
+		fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
+		return Result{
+			Fixed:   true,
+			Command: fixed,
+			Message: "git suggested: " + suggested,
+		}
+	}
+
+	fixed, ok := call.replaceSubcommand("git", wrongCmd, suggested, gitParserOptionsWithValues)
+	if !ok {
+		return Result{Fixed: false}
+	}
 
 	return Result{
 		Fixed:   true,

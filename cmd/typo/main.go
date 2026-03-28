@@ -83,7 +83,7 @@ Usage:
   typo history clear                      Clear correction history
   typo init zsh                           Print zsh integration script
   typo doctor                             Check configuration status
-  typo uninstall                          Uninstall typo completely
+  typo uninstall                          Remove local config and show remaining cleanup steps
   typo version                            Print version
 
 Examples:
@@ -100,6 +100,7 @@ func cmdFix(args []string) int {
 	fs := flag.NewFlagSet("fix", flag.ExitOnError)
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
 	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
+	noHistory := fs.Bool("no-history", false, "do not persist correction history")
 
 	_ = fs.Parse(args)
 
@@ -128,7 +129,7 @@ func cmdFix(args []string) int {
 	})
 
 	if result.Fixed {
-		if shouldRecordHistory(cmd, result) {
+		if !*noHistory && shouldRecordHistory(cmd, result) {
 			if err := eng.RecordHistory(cmd, result.Command); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				return 1
@@ -150,7 +151,7 @@ func shouldRecordHistory(original string, result engine.FixResult) bool {
 		return false
 	}
 
-	return result.Kind != parser.ResultKindPermissionSudo
+	return result.Kind != parser.ResultKindPermissionSudo && !result.UsedParser
 }
 
 func cmdLearn(args []string) int {
@@ -443,7 +444,7 @@ func checkGoBinTypo() string {
 }
 
 func cmdUninstall() int {
-	fmt.Println("Uninstalling typo...")
+	fmt.Println("Cleaning up typo...")
 	fmt.Println()
 
 	cfg := config.Load()
@@ -462,7 +463,7 @@ func cmdUninstall() int {
 		fmt.Println("⊘ not found")
 	}
 
-	// Print zsh config cleanup instructions
+	// Show manual cleanup instructions for shell configuration leftovers.
 	fmt.Print("[2/3] Zsh integration: ")
 	homeDir, err := userHomeDir()
 	if err != nil {
@@ -471,7 +472,7 @@ func cmdUninstall() int {
 	} else {
 		zshrc := homeDir + "/.zshrc"
 		if _, statErr := statPath(zshrc); statErr == nil {
-			fmt.Printf("please remove the following line from ~/.zshrc:\n")
+			fmt.Printf("manual cleanup required in ~/.zshrc:\n")
 			fmt.Println()
 			fmt.Println("    eval \"$(typo init zsh)\"")
 			fmt.Println()
@@ -480,20 +481,20 @@ func cmdUninstall() int {
 		}
 	}
 
-	// Print binary removal instructions
+	// Show manual cleanup instructions for the installed binary.
 	fmt.Print("[3/3] Binary: ")
 	execPath, err := executable()
 	if err != nil {
 		fmt.Println("✗ cannot determine binary location")
 		hasError = true
 	} else {
-		fmt.Printf("please remove the binary manually:\n")
+		fmt.Printf("manual cleanup required for the binary:\n")
 		fmt.Println()
 		fmt.Printf("    rm %s\n", execPath)
 		fmt.Println()
 	}
 
-	fmt.Println("Uninstallation complete.")
+	fmt.Println("Local cleanup complete. Manual steps above may still be required.")
 	if hasError {
 		return 1
 	}
@@ -508,9 +509,7 @@ func printZshIntegration() {
 }
 
 func createEngine(cfg *config.Config) *engine.Engine {
-	// Discover commands from PATH and merge with builtins
-	cmds := commands.Discover()
-	cmds = append(cmds, commands.ShellBuiltins()...)
+	seedCommands := append(commands.DiscoverCommon(), commands.ShellBuiltins()...)
 
 	// Create subcommand registry
 	subcmdRegistry := commands.NewSubcommandRegistry(cfg.ConfigDir)
@@ -519,7 +518,12 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithRules(engine.NewRules(cfg.ConfigDir)),
 		engine.WithHistory(engine.NewHistory(cfg.ConfigDir)),
 		engine.WithParser(parser.NewRegistry()),
-		engine.WithCommands(cmds),
+		engine.WithCommands(seedCommands),
+		engine.WithCommandLoader(func() []string {
+			cmds := commands.Discover()
+			cmds = append(cmds, commands.ShellBuiltins()...)
+			return cmds
+		}),
 		engine.WithSubcommands(subcmdRegistry),
 	)
 }

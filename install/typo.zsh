@@ -36,7 +36,9 @@ _typo_fix_command() {
     elif [[ "$use_last_command" -eq 1 ]]; then
         fixed=$(typo fix --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
     else
-        fixed=$(typo fix "$cmd" 2>/dev/null)
+        # Preview fixes for the current buffer should not pollute history.
+        # Only fixes applied after a failed command should be persisted.
+        fixed=$(typo fix --no-history "$cmd" 2>/dev/null)
     fi
 
     if [[ -n "$fixed" && "$fixed" != "$cmd" ]]; then

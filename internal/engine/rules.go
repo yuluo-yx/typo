@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/yuluo-yx/typo/internal/storage"
 )
 
 // ErrRuleNotFound is returned when attempting to remove a rule that does not exist.
@@ -411,7 +413,8 @@ func (r *Rules) loadUserRules() {
 
 	var userRules []Rule
 	if err := json.Unmarshal(data, &userRules); err != nil {
-		return // Invalid JSON, ignore
+		storage.QuarantineInvalidJSON(rulesFile, err)
+		return
 	}
 
 	for _, rule := range userRules {
@@ -440,5 +443,5 @@ func (r *Rules) saveUserRules() error {
 	}
 
 	rulesFile := filepath.Join(r.configDir, "rules.json")
-	return os.WriteFile(rulesFile, data, 0600)
+	return storage.WriteFileAtomic(rulesFile, data, 0600)
 }

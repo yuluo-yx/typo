@@ -96,7 +96,7 @@ typo doctor            # Check configuration status
 ```bash
 typo init zsh          # Print shell integration script
 typo version           # Show version
-typo uninstall         # Uninstall typo
+typo uninstall         # Remove local config and print remaining cleanup steps
 ```
 
 ## How It Works
@@ -145,7 +145,7 @@ Files stored in `~/.typo/`:
 ```
 ~/.typo/
 ├── rules.json                  # Learned and user-defined rules
-├── usage_history.json          # Actual correction history
+├── usage_history.json          # Correction history persisted from accepted/direct fixes
 └── subcommands.json            # Subcommand cache
 ```
 

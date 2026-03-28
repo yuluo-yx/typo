@@ -29,6 +29,13 @@ func TestGitParser_Parse(t *testing.T) {
 			wantCmd: "git commit -m 'test'",
 		},
 		{
+			name:    "did you mean only replaces git subcommand token",
+			cmd:     "git -c alias.remvoe=whatever remvoe -v",
+			stderr:  "git: 'remvoe' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
+			wantFix: true,
+			wantCmd: "git -c alias.remvoe=whatever remote -v",
+		},
+		{
 			name:    "no upstream branch",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
@@ -111,6 +118,13 @@ func TestDockerParser_Parse(t *testing.T) {
 			stderr:  "unknown command: imagesa\n\nDid you mean: images?",
 			wantFix: true,
 			wantCmd: "docker images",
+		},
+		{
+			name:    "docker replacement does not rewrite option values",
+			cmd:     "docker --context psa psa",
+			stderr:  "docker: 'psa' is not a docker command.\nSimilar command: ps\n\nRun 'docker --help' for more information",
+			wantFix: true,
+			wantCmd: "docker --context psa ps",
 		},
 		{
 			name:    "non-docker command",
@@ -207,6 +221,13 @@ func TestNpmParser_Parse(t *testing.T) {
 			stderr:  "npm ERR! Did you mean list?",
 			wantFix: true,
 			wantCmd: "npm list --depth=0",
+		},
+		{
+			name:    "npm replacement skips prefix option value",
+			cmd:     "npm --prefix web ist",
+			stderr:  "npm ERR! Did you mean list?",
+			wantFix: true,
+			wantCmd: "npm --prefix web list",
 		},
 	}
 
