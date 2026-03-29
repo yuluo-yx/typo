@@ -979,6 +979,11 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 			UpdatedAt:   time.Now(),
 		},
 		{
+			Tool:        "cargo",
+			Subcommands: []string{"bench", "build", "check", "fmt", "run", "test"},
+			UpdatedAt:   time.Now(),
+		},
+		{
 			Tool:        "kubectl",
 			Subcommands: []string{"get", "describe", "apply", "delete", "logs"},
 			UpdatedAt:   time.Now(),
@@ -1014,7 +1019,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 
 	return NewEngine(
 		WithRules(NewRules(tmpDir)),
-		WithCommands([]string{"git", "docker", "npm", "kubectl", "brew", "terraform", "helm"}),
+		WithCommands([]string{"git", "docker", "npm", "cargo", "kubectl", "brew", "terraform", "helm"}),
 		WithKeyboard(NewQWERTYKeyboard()),
 		WithSubcommands(subcmdRegistry),
 	)
@@ -1052,6 +1057,16 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			name:    "npm subcommand typo",
 			cmd:     "npm rn test",
 			wantCmd: "npm run test",
+		},
+		{
+			name:    "cargo subcommand typo",
+			cmd:     "cargo helpd",
+			wantCmd: "cargo help",
+		},
+		{
+			name:    "cargo global option typo",
+			cmd:     "cargo --versino",
+			wantCmd: "cargo --version",
 		},
 		{
 			name:    "kubectl main command and subcommand typo",

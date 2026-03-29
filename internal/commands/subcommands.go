@@ -43,17 +43,19 @@ func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
 
 // Get returns subcommands for a tool, fetching from cache or dynamically.
 func (r *SubcommandRegistry) Get(tool string) []string {
+	builtin := builtinSubcommandsForTool(tool)
+
 	r.mu.RLock()
 	if cached, ok := r.cache[tool]; ok {
 		if time.Since(cached.UpdatedAt) < r.cacheExpiry {
 			r.mu.RUnlock()
-			return append([]string(nil), cached.Subcommands...)
+			return mergeUniqueStrings(cached.Subcommands, builtin...)
 		}
 	}
 	r.mu.RUnlock()
 
 	// Need to fetch
-	subcommands := r.fetchSubcommands(tool)
+	subcommands := mergeUniqueStrings(r.fetchSubcommands(tool), builtin...)
 	if len(subcommands) > 0 {
 		r.mu.Lock()
 		r.cache[tool] = &SubcommandCache{
@@ -436,7 +438,7 @@ var builtinSubcommands = map[string][]string{
 	"npm":       {"ci", "install", "list", "login", "publish", "run", "test", "uninstall", "update"},
 	"yarn":      {"add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade"},
 	"kubectl":   {"api-resources", "apply", "config", "create", "delete", "describe", "exec", "get", "logs", "patch", "rollout"},
-	"cargo":     {"bench", "build", "check", "clean", "doc", "fmt", "run", "test", "update"},
+	"cargo":     {"bench", "build", "check", "clean", "doc", "fmt", "help", "run", "test", "update"},
 	"go":        {"build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool"},
 	"brew":      {"cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"},
 	"terraform": {"apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"},
@@ -464,6 +466,28 @@ func buildBuiltinSubcommandSet() map[string]map[string]bool {
 		}
 		result[tool] = set
 	}
+	return result
+}
+
+func builtinSubcommandsForTool(tool string) []string {
+	return append([]string(nil), builtinSubcommands[tool]...)
+}
+
+func mergeUniqueStrings(base []string, extra ...string) []string {
+	result := append([]string(nil), base...)
+	seen := make(map[string]bool, len(result)+len(extra))
+	for _, item := range result {
+		seen[item] = true
+	}
+
+	for _, item := range extra {
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		result = append(result, item)
+	}
+
 	return result
 }
 

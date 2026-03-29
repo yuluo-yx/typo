@@ -54,6 +54,8 @@ eval "$(typo init zsh)"
 
 ## 命令
 
+> 更多用法请看：[use](./docs/example/use.md)
+
 ### `typo fix` - 修正命令
 
 ```bash

@@ -54,6 +54,8 @@ Restart your terminal, then press `Esc` `Esc` after a typo. (No Enter can!)
 
 ## Commands
 
+> More use method please see：[use](./docs/example/use.md)
+
 ### `typo fix` - Fix a command
 
 ```bash

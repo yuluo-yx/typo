@@ -173,12 +173,17 @@ func (e *Engine) fixOnePass(input parser.Context) FixResult {
 		return result
 	}
 
-	// 5. Try subcommand fix
+	// 5. Try tool global option fix
+	if result := e.tryToolOptionFix(cmd); isMeaningfulFix(cmd, result) {
+		return result
+	}
+
+	// 6. Try subcommand fix
 	if result := e.trySubcommandFix(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 6. Try edit distance
+	// 7. Try edit distance
 	if result := e.tryDistance(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
@@ -535,6 +540,125 @@ func (e *Engine) tryDistanceWithShell(cmd string) (FixResult, bool) {
 	return FixResult{Fixed: false}, true
 }
 
+func (e *Engine) tryToolOptionFix(cmd string) FixResult {
+	if result, parsed := e.tryToolOptionFixWithShell(cmd); parsed {
+		return result
+	}
+
+	parts := strings.Fields(cmd)
+	if len(parts) < 2 {
+		return FixResult{Fixed: false}
+	}
+
+	mainCmd := parts[0]
+	if !containsString(e.availableCommands(), mainCmd) {
+		resolved := e.findClosestCommand(mainCmd)
+		if resolved == "" {
+			return FixResult{Fixed: false}
+		}
+		mainCmd = resolved
+		parts[0] = resolved
+	}
+
+	expectValue := false
+	for i := 1; i < len(parts); i++ {
+		arg := parts[i]
+		if expectValue {
+			expectValue = false
+			continue
+		}
+
+		if arg == "--" {
+			break
+		}
+
+		name, suffix, isOption := splitToolOptionToken(arg)
+		if !isOption {
+			break
+		}
+
+		if isKnownToolOption(mainCmd, name) {
+			if toolOptionTakesValue(mainCmd, name) && suffix == "" {
+				expectValue = true
+			}
+			continue
+		}
+
+		replacement := closestToolOption(mainCmd, name, e.keyboard)
+		if replacement == "" {
+			continue
+		}
+
+		parts[i] = replacement + suffix
+		return FixResult{
+			Fixed:   true,
+			Command: strings.Join(parts, " "),
+			Source:  "option",
+			Message: fmt.Sprintf("did you mean: %s?", replacement),
+		}
+	}
+
+	return FixResult{Fixed: false}
+}
+
+func (e *Engine) tryToolOptionFixWithShell(cmd string) (FixResult, bool) {
+	lines, err := parseShellCommandLines(cmd)
+	if err != nil {
+		return FixResult{Fixed: false}, false
+	}
+
+	for _, line := range lines {
+		mainCmd, resolvedCmd, resolveErr := e.resolveShellCommandLine(line)
+		if resolveErr != nil {
+			continue
+		}
+
+		expectValue := false
+		for i := line.commandIdx + 1; i < len(line.args); i++ {
+			arg := line.args[i].Lit()
+			if expectValue {
+				expectValue = false
+				continue
+			}
+
+			if arg == "--" {
+				break
+			}
+
+			name, suffix, isOption := splitToolOptionToken(arg)
+			if !isOption {
+				break
+			}
+
+			if isKnownToolOption(mainCmd, name) {
+				if toolOptionTakesValue(mainCmd, name) && suffix == "" {
+					expectValue = true
+				}
+				continue
+			}
+
+			replacement := closestToolOption(mainCmd, name, e.keyboard)
+			if replacement == "" {
+				continue
+			}
+
+			replacements := []shellWordReplacement{{index: i, value: replacement + suffix}}
+			if resolvedCmd != "" {
+				replacements = append(replacements, shellWordReplacement{index: line.commandIdx, value: resolvedCmd})
+			}
+
+			return FixResult{
+				Fixed:   true,
+				Command: line.replaceWords(replacements...),
+				Source:  "option",
+				Message: fmt.Sprintf("did you mean: %s?", replacement),
+			}, true
+		}
+	}
+
+	return FixResult{Fixed: false}, true
+}
+
 func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	if e.subcommands == nil {
 		return FixResult{Fixed: false}
@@ -582,17 +706,8 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 		return FixResult{Fixed: false}
 	}
 
-	// Try to find closest subcommand
-	bestMatch := ""
-	bestDistance := 999
-
-	for _, known := range subcommands {
-		d := Distance(subcmd, known, e.keyboard)
-		if d < bestDistance {
-			bestDistance = d
-			bestMatch = known
-		}
-	}
+	// Try to find closest subcommand.
+	bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, e.keyboard)
 
 	// Threshold: distance <= 2 and similarity > 60%
 	if bestMatch != "" && bestDistance <= 2 {
@@ -819,16 +934,34 @@ func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) Fi
 func closestSubcommand(subcmd string, knownSubcommands []string, keyboard KeyboardWeights) (string, int) {
 	bestMatch := ""
 	bestDistance := 999
+	bestLengthDelta := 999
+	bestSimilarity := -1.0
 
 	for _, known := range knownSubcommands {
 		d := Distance(subcmd, known, keyboard)
-		if d < bestDistance {
+		lengthDelta := abs(len(subcmd) - len(known))
+		similarity := Similarity(subcmd, known, keyboard)
+		if !isGoodDistanceMatch(subcmd, known, d, keyboard) {
+			continue
+		}
+		if d < bestDistance ||
+			(d == bestDistance && lengthDelta < bestLengthDelta) ||
+			(d == bestDistance && lengthDelta == bestLengthDelta && similarity > bestSimilarity) {
 			bestDistance = d
+			bestLengthDelta = lengthDelta
 			bestMatch = known
+			bestSimilarity = similarity
 		}
 	}
 
 	return bestMatch, bestDistance
+}
+
+func abs(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func isGoodDistanceMatch(original, candidate string, distance int, keyboard KeyboardWeights) bool {
@@ -963,6 +1096,66 @@ func optionTakesValue(mainCmd, option string) bool {
 	return options[option]
 }
 
+func splitToolOptionToken(arg string) (name string, suffix string, isOption bool) {
+	if strings.HasPrefix(arg, "--") {
+		if eq := strings.IndexByte(arg, '='); eq >= 0 {
+			return arg[:eq], arg[eq:], true
+		}
+		return arg, "", true
+	}
+
+	if strings.HasPrefix(arg, "-") && arg != "-" {
+		if len(arg) > 2 {
+			return "", "", false
+		}
+		return arg, "", true
+	}
+
+	return "", "", false
+}
+
+func isKnownToolOption(mainCmd, option string) bool {
+	options, ok := builtinToolOptionSet[mainCmd]
+	return ok && options[option]
+}
+
+func toolOptionTakesValue(mainCmd, option string) bool {
+	options, ok := builtinToolOptionsWithValues[mainCmd]
+	return ok && options[option]
+}
+
+func closestToolOption(mainCmd, option string, keyboard KeyboardWeights) string {
+	candidates := builtinToolOptions[mainCmd]
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	bestMatch := ""
+	bestDistance := 999
+	for _, candidate := range candidates {
+		if strings.HasPrefix(option, "--") != strings.HasPrefix(candidate, "--") {
+			continue
+		}
+		if strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "--") {
+			if !strings.HasPrefix(candidate, "-") || strings.HasPrefix(candidate, "--") {
+				continue
+			}
+		}
+
+		distance := Distance(option, candidate, keyboard)
+		if distance < bestDistance {
+			bestDistance = distance
+			bestMatch = candidate
+		}
+	}
+
+	if !isGoodDistanceMatch(option, bestMatch, bestDistance, keyboard) {
+		return ""
+	}
+
+	return bestMatch
+}
+
 var subcommandPreOptionsWithValues = map[string]map[string]bool{
 	"git": {
 		"-C":             true,
@@ -1013,6 +1206,13 @@ var subcommandPreOptionsWithValues = map[string]map[string]bool{
 		"--userconfig": true,
 		"-C":           true,
 	},
+	"cargo": {
+		"--color":   true,
+		"--config":  true,
+		"--explain": true,
+		"-C":        true,
+		"-Z":        true,
+	},
 	"terraform": {
 		"-chdir": true,
 	},
@@ -1033,6 +1233,35 @@ var subcommandPreOptionsWithValues = map[string]map[string]bool{
 		"--repository-config": true,
 		"-n":                  true,
 	},
+}
+
+var builtinToolOptions = map[string][]string{
+	"cargo": {"-C", "-V", "-Z", "-h", "-q", "-v", "--color", "--config", "--explain", "--frozen", "--help", "--list", "--locked", "--offline", "--quiet", "--verbose", "--version"},
+}
+
+var builtinToolOptionSet = buildBuiltinToolOptionSet()
+
+var builtinToolOptionsWithValues = map[string]map[string]bool{
+	"cargo": {
+		"--color":   true,
+		"--config":  true,
+		"--explain": true,
+		"-C":        true,
+		"-Z":        true,
+	},
+}
+
+func buildBuiltinToolOptionSet() map[string]map[string]bool {
+	result := make(map[string]map[string]bool, len(builtinToolOptions))
+	for tool, options := range builtinToolOptions {
+		set := make(map[string]bool, len(options))
+		for _, option := range options {
+			set[option] = true
+		}
+		result[tool] = set
+	}
+
+	return result
 }
 
 // Learn stores a user-taught correction as a rule instead of history.

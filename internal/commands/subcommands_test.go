@@ -46,6 +46,31 @@ func TestHasBuiltinSubcommand(t *testing.T) {
 	}
 }
 
+func TestSubcommandRegistry_GetMergesBuiltinSubcommands(t *testing.T) {
+	r := &SubcommandRegistry{
+		cache: map[string]*SubcommandCache{
+			"cargo": {
+				Tool:        "cargo",
+				Subcommands: []string{"build", "check"},
+				UpdatedAt:   time.Now(),
+			},
+		},
+		cacheExpiry: 7 * 24 * time.Hour,
+	}
+
+	subcommands := r.Get("cargo")
+	hasHelp := false
+	for _, subcommand := range subcommands {
+		if subcommand == "help" {
+			hasHelp = true
+			break
+		}
+	}
+	if !hasHelp {
+		t.Fatalf("Expected builtin cargo subcommands to include help, got %v", subcommands)
+	}
+}
+
 func TestLoadCache(t *testing.T) {
 	t.Run("loads existing cache", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -181,8 +206,17 @@ func TestGet_Cached(t *testing.T) {
 	}
 
 	subcommands := r.Get("git")
-	if len(subcommands) != 3 {
-		t.Errorf("Expected 3 subcommands, got %d", len(subcommands))
+	for _, want := range []string{"add", "commit", "push"} {
+		found := false
+		for _, subcommand := range subcommands {
+			if subcommand == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("Expected cached subcommands to include %q, got %v", want, subcommands)
+		}
 	}
 }
 

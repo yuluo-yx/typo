@@ -117,6 +117,8 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 		{name: "kubectl subcommand", command: "kubectl aplly -f deployment.yaml", want: "kubectl apply -f deployment.yaml\n"},
 		{name: "cargo main command", command: "crago build", want: "cargo build\n"},
 		{name: "cargo subcommand", command: "cargo chcek", want: "cargo check\n"},
+		{name: "cargo help subcommand", command: "cargo helpd", want: "cargo help\n"},
+		{name: "cargo global option", command: "cargo --versino", want: "cargo --version\n"},
 		{name: "go main command", command: "og test ./...", want: "go test ./...\n"},
 		{name: "go subcommand", command: "go biuld ./...", want: "go build ./...\n"},
 		{name: "pip main command", command: "pi list", want: "pip list\n"},
