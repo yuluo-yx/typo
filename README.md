@@ -14,7 +14,7 @@ Press `Esc` `Esc` to fix typos automatically.
   <img src="docs/typo-demo.gif" alt="Typo Demo">
 </p>
 
-## Why build Typo when TheFuck already exists?
+## Why Typo?
 
 There were a few reasons:
 
