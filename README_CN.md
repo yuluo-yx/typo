@@ -14,6 +14,18 @@
   <img src="docs/typo-demo.gif" alt="Typo Demo">
 </p>
 
+## TheFuck？
+
+不是有 thefuck 了吗，为什么还要编写 typo？
+
+有下面几个原因：
+
+1. theFuck 不在维护了，issue，pr 没人处理（这也是最大的原因；
+2. theFuck 和 Python 版本有绑定关系，我安装的时候废了点功夫～；
+3. theFuck 对包含 `""` 的处理并不好。
+
+基于上面的原因，我用 Go 写了 Typo，它不是 TheFuck 的翻译。而是从头开始的！
+
 ## 快速开始
 
 ### 通过 Homebrew 安装

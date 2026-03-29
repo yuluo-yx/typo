@@ -14,6 +14,16 @@ Press `Esc` `Esc` to fix typos automatically.
   <img src="docs/typo-demo.gif" alt="Typo Demo">
 </p>
 
+## Why build Typo when TheFuck already exists?
+
+There were a few reasons:
+
+1. TheFuck is no longer actively maintained, and issues and PRs are not being handled. This was the biggest reason.
+2. TheFuck is tied to Python versions, so installation took extra effort.
+3. TheFuck does not handle commands containing `""` very well.
+
+For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is built from scratch.
+
 ## Quick Start
 
 ### Install via Homebrew
