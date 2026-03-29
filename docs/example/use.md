@@ -1,74 +1,76 @@
-# Typo 可以修复的场景示例
+# Typo Usage Examples
 
-> Tips：
-> - Typo 在修复时，不用回车在执行之后在修正，在打完之后就能修正了。
-> - Typo 如果出现修正不准确的情况？type learn 一下，将修正规则添加到 rules 集合里面，或者 Issue & PR。
-> - Typo 同时支持 `gti statuus` 修正，支持主命令同时也支持字命令。
+English | [Simplified Chinese](use.md)
 
-## 普通命令
+> Tips:
+> - Typo can fix commands before you press Enter. You do not need to run the command first and correct it afterward.
+> - If a correction is inaccurate, use `typo learn` to add your own rule, or open an Issue / PR.
+> - Typo supports both top-level command fixes and subcommand fixes, such as `gti statuus`.
 
-> 包含 git，docker，brew，apt 等在内的常用 linux & mac 命令
+## Common commands
+
+> Includes common Linux and macOS commands such as git, docker, brew, apt, and more.
 
 ```shell
-gti  <e, e>
+gti  <Esc, Esc>
 
-gti
+git
 
-brewd <e, e>
+brewd <Esc, Esc>
 
 brew
 ```
 
-## 子命令
+## Subcommands
 
-> git status，git commit，docker images 等在内的 subcommands
+> Covers subcommands such as `git status`, `git commit`, `docker images`, and more.
 
 ```shell
-gti stauts <e, e>
+gti stauts <Esc, Esc>
 
 git status
 
-docker imagess <e, e>
+docker imagess <Esc, Esc>
 
 docker images
 ```
 
-## && 连字命令
+## Commands joined with `&&`
 
-支持同时修正 && 左右两侧的命令。
+Typo can fix commands on both sides of `&&` in the same line.
 
 ```shell
-echo ok && gti status <e, e>
+echo ok && gti status <Esc, Esc>
 
 echo ok && git status
 
-ehco ok && gti status <e, e>
+ehco ok && gti status <Esc, Esc>
 
 echo ok && git status
 ```
 
-## 支持 Shell 自建命令
+## Shell built-in commands
 
-例如 source, echo time 等
+For example, `source`, `echo`, `time`, and similar shell commands.
 
 ```shell
-sourec ~/.zshrc <e, e>
+sourec ~/.zshrc <Esc, Esc>
 
 source ~/.zshrc
 ```
 
-## 支持管道连接命令
+## Commands connected by pipes
 
 ```shell
-$ cat ~/.zshrc | grpe "zsh"     
-zsh: command not found: grpe <enter, e, e>
+$ cat ~/.zshrc | grpe "zsh"
+zsh: command not found: grpe <Enter, Esc, Esc>
 
 cat ~/.zshrc | grep "zsh"
 ```
 
-## 支持 git pull --set-upstream
+## `git pull --set-upstream`
 
-你是否遇到过下面这类问题，当 git pull 的时候，突然出现：
+Have you ever run into this kind of issue when using `git pull`?
 
 ```shell
 $ git pull
@@ -83,15 +85,15 @@ If you wish to set tracking information for this branch you can do so with:
     git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check
 ```
 
-不要着急，两次 esc 自动 fix。
+No problem. Press `Esc` `Esc`, and Typo can fix it automatically.
 
-## sudo 没有权限？
+## No permission? Use `sudo`
 
-> 打完一个命令之后，发现没有权限！！！
+> You finish typing a command and then realize you do not have permission.
 
 ```shell
-$ mkcd test    <enter, e, e>
-mkdir: test: Permission denied 
+$ mkcd test    <Enter, Esc, Esc>
+mkdir: test: Permission denied
 
 # fix it.
 $ sudo mkdir test
