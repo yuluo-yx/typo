@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,11 @@ import (
 	"time"
 
 	"github.com/yuluo-yx/typo/internal/commands"
+)
+
+var (
+	sharedRepoRoot string
+	sharedBinary   string
 )
 
 type e2eResult struct {
@@ -37,7 +43,10 @@ var e2ePassthroughCommands = map[string]bool{
 func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Helper()
 
-	root := repoRoot(t)
+	root := sharedRepoRoot
+	if root == "" {
+		root = repoRoot(t)
+	}
 	base := t.TempDir()
 	home := filepath.Join(base, "home")
 	tmpDir := filepath.Join(base, "tmp")
@@ -49,12 +58,12 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		}
 	}
 
+	if sharedBinary == "" {
+		t.Fatal("shared e2e binary is not initialized")
+	}
 	bin := filepath.Join(binDir, "typo")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/typo")
-	build.Dir = root
-	output, err := build.CombinedOutput()
-	if err != nil {
-		t.Fatalf("failed to build typo binary: %v\n%s", err, output)
+	if err := copyExecutable(sharedBinary, bin); err != nil {
+		t.Fatalf("failed to prepare test binary: %v", err)
 	}
 
 	env := &e2eEnv{
@@ -95,17 +104,60 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 func repoRoot(t *testing.T) string {
 	t.Helper()
 
+	root, err := locateRepoRoot()
+	if err != nil {
+		t.Fatalf("failed to locate repository root: %v", err)
+	}
+	return root
+}
+
+func locateRepoRoot() (string, error) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("failed to locate e2e source file")
+		return "", fmt.Errorf("failed to locate e2e source file")
 	}
 
 	root := filepath.Clean(filepath.Join(filepath.Dir(filename), ".."))
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Fatalf("failed to locate repository root: %v", err)
+		return "", err
 	}
 
-	return root
+	return root, nil
+}
+
+func TestMain(m *testing.M) {
+	root, err := locateRepoRoot()
+	if err != nil {
+		panic(err)
+	}
+
+	buildDir, err := os.MkdirTemp("", "typo-e2e-bin-*")
+	if err != nil {
+		panic(err)
+	}
+
+	bin := filepath.Join(buildDir, "typo")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/typo")
+	build.Dir = root
+	output, err := build.CombinedOutput()
+	if err != nil {
+		panic(fmt.Sprintf("failed to build typo binary: %v\n%s", err, output))
+	}
+
+	sharedRepoRoot = root
+	sharedBinary = bin
+
+	code := m.Run()
+	_ = os.RemoveAll(buildDir)
+	os.Exit(code)
+}
+
+func copyExecutable(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0755)
 }
 
 func (e *e2eEnv) configDir() string {

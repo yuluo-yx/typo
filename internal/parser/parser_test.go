@@ -395,6 +395,257 @@ func TestPermissionParser_Parse(t *testing.T) {
 	}
 }
 
+func TestPermissionParser_Helpers(t *testing.T) {
+	p := NewPermissionParser()
+	if p.Name() != "permission" {
+		t.Fatalf("Name() = %q, want permission", p.Name())
+	}
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "git status", want: "git"},
+		{input: "   docker ps", want: "docker"},
+		{input: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		if got := firstCommandWord(tt.input); got != tt.want {
+			t.Fatalf("firstCommandWord(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+
+	if got := p.Parse(Context{
+		Command:          "chmod 644 /etc/hosts",
+		Stderr:           "operation not permitted",
+		ExitCode:         1,
+		ShellParseFailed: true,
+	}); got.Fixed {
+		t.Fatalf("Expected shell parse failure to skip permission fix, got %+v", got)
+	}
+
+	if got := p.Parse(Context{
+		Command:  "chmod 644 /etc/hosts",
+		Stderr:   "operation not permitted",
+		ExitCode: 1,
+	}); !got.Fixed || got.Command != "sudo chmod 644 /etc/hosts" {
+		t.Fatalf("Expected strong permission pattern to trigger sudo, got %+v", got)
+	}
+
+	if !p.shouldSkipContext(Context{ExitCode: 0}) {
+		t.Fatal("Expected zero exit code to be skipped")
+	}
+	if !p.shouldSkipStderr("[sudo] password for user:") {
+		t.Fatal("Expected password prompt stderr to be skipped")
+	}
+	if !p.matchesAny("git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n", p.remoteAuthPatterns) {
+		t.Fatal("Expected remote auth pattern to match")
+	}
+	if p.matchesAny("plain error", p.remoteAuthPatterns) {
+		t.Fatal("Did not expect unrelated stderr to match remote auth patterns")
+	}
+
+	result := p.sudoResult("tar -xf archive.tar")
+	if !result.Fixed || result.Command != "sudo tar -xf archive.tar" || result.Kind != ResultKindPermissionSudo {
+		t.Fatalf("Unexpected sudoResult: %+v", result)
+	}
+}
+
+func TestGitCommandHelpers(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+		want string
+	}{
+		{name: "plain subcommand", cmd: "git status", want: "status"},
+		{name: "prefixed executable", cmd: "git-status", want: "status"},
+		{name: "global option with value", cmd: "git -C repo status", want: "status"},
+		{name: "global option with inline value", cmd: "git --git-dir=repo status", want: "status"},
+		{name: "double dash stops parsing", cmd: "git -- status", want: ""},
+		{name: "unknown option aborts", cmd: "git --mystery status", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gitSubcommand(tt.cmd); got != tt.want {
+				t.Fatalf("gitSubcommand(%q) = %q, want %q", tt.cmd, got, tt.want)
+			}
+		})
+	}
+
+	if got := gitPrefixedSubcommand("git-commit"); got != "commit" {
+		t.Fatalf("gitPrefixedSubcommand() = %q, want commit", got)
+	}
+	if got := gitPrefixedSubcommand("commit"); got != "" {
+		t.Fatalf("gitPrefixedSubcommand() = %q, want empty", got)
+	}
+
+	optionCases := []struct {
+		arg  string
+		want gitOptionParseState
+	}{
+		{arg: "--", want: gitOptionUnknown},
+		{arg: "--git-dir", want: gitOptionConsumesNextValue},
+		{arg: "--git-dir=repo", want: gitOptionHandled},
+		{arg: "--help", want: gitOptionHandled},
+		{arg: "-C", want: gitOptionConsumesNextValue},
+		{arg: "-abc", want: gitOptionHandled},
+		{arg: "status", want: gitOptionNotAnOption},
+	}
+
+	for _, tt := range optionCases {
+		if got := gitOptionState(tt.arg); got != tt.want {
+			t.Fatalf("gitOptionState(%q) = %v, want %v", tt.arg, got, tt.want)
+		}
+	}
+
+	if got := gitShortOptionState("-x"); got != gitOptionUnknown {
+		t.Fatalf("gitShortOptionState(-x) = %v, want gitOptionUnknown", got)
+	}
+
+	if name, hasInline := splitLongOption("--git-dir=repo"); name != "--git-dir" || !hasInline {
+		t.Fatalf("splitLongOption() = (%q, %v), want (--git-dir, true)", name, hasInline)
+	}
+	if name, hasInline := splitLongOption("--help"); name != "--help" || hasInline {
+		t.Fatalf("splitLongOption() = (%q, %v), want (--help, false)", name, hasInline)
+	}
+
+	if !gitCommandHasUpstreamFlag("git pull --set-upstream origin main") {
+		t.Fatal("Expected --set-upstream to be detected")
+	}
+	if !gitCommandHasUpstreamFlag("git pull --set-upstream-to=origin/main") {
+		t.Fatal("Expected inline --set-upstream-to to be detected")
+	}
+	if gitCommandHasUpstreamFlag("git pull origin main") {
+		t.Fatal("Did not expect plain pull to report upstream flag")
+	}
+}
+
+func mustParseShellCall(t *testing.T, raw string) *shellCall {
+	t.Helper()
+
+	call, err := parseShellCall(raw)
+	if err != nil {
+		t.Fatalf("parseShellCall(%q) failed: %v", raw, err)
+	}
+
+	return call
+}
+
+func TestParserShellHelpers_ReplaceSubcommand(t *testing.T) {
+	call := mustParseShellCall(t, "git --git-dir repo status")
+
+	replaced, ok := call.replaceSubcommand("git", "status", "switch", gitParserOptionsWithValues)
+	if !ok || replaced != "git --git-dir repo switch" {
+		t.Fatalf("replaceSubcommand() = (%q, %v), want (git --git-dir repo switch, true)", replaced, ok)
+	}
+
+	if replaced, ok := call.replaceSubcommand("git", "commit", "switch", gitParserOptionsWithValues); ok || replaced != "" {
+		t.Fatalf("replaceSubcommand() mismatch = (%q, %v), want empty false", replaced, ok)
+	}
+}
+
+func TestParserShellHelpers_FindShellSubcommandIndex(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		command string
+		opts    map[string]bool
+		wantIdx int
+	}{
+		{name: "git double dash", raw: "git -- status", command: "git", opts: gitParserOptionsWithValues, wantIdx: 2},
+		{name: "command mismatch", raw: "npm --prefix web install", command: "docker", opts: dockerParserOptionsWithValues, wantIdx: -1},
+		{name: "npm double dash", raw: "npm -- install", command: "npm", opts: npmParserOptionsWithValues, wantIdx: 2},
+		{name: "npm long option with value", raw: "npm --prefix web install", command: "npm", opts: npmParserOptionsWithValues, wantIdx: 3},
+		{name: "npm short option with value", raw: "npm -C web install", command: "npm", opts: npmParserOptionsWithValues, wantIdx: 3},
+		{name: "npm inline value", raw: "npm --cache=/tmp install", command: "npm", opts: npmParserOptionsWithValues, wantIdx: 2},
+		{name: "missing subcommand", raw: "npm --prefix web", command: "npm", opts: npmParserOptionsWithValues, wantIdx: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			call := mustParseShellCall(t, tt.raw)
+			if got := findShellSubcommandIndex(call.args, tt.command, tt.opts); got != tt.wantIdx {
+				t.Fatalf("findShellSubcommandIndex() = %d, want %d", got, tt.wantIdx)
+			}
+		})
+	}
+}
+
+func TestParserShellHelpers_ParseFailures(t *testing.T) {
+	if _, err := parseShellCall("git '"); err == nil {
+		t.Fatal("Expected invalid shell input to fail parsing")
+	}
+	if _, err := parseShellCall("((1 + 1))"); err == nil {
+		t.Fatal("Expected unsupported command shape to fail parsing")
+	}
+}
+
+func TestParserOffsetToIndex(t *testing.T) {
+	if got := parserOffsetToIndex(^uint(0), 5); got != 5 {
+		t.Fatalf("parserOffsetToIndex(maxUint, 5) = %d, want 5", got)
+	}
+	if got := parserOffsetToIndex(3, 5); got != 3 {
+		t.Fatalf("parserOffsetToIndex(3, 5) = %d, want 3", got)
+	}
+	if got := parserOffsetToIndex(99, 5); got != 5 {
+		t.Fatalf("parserOffsetToIndex(99, 5) = %d, want 5", got)
+	}
+}
+
+func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
+	gitResult := NewGitParser().Parse(Context{
+		Command: "git remove '",
+		Stderr:  "git: 'remove' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
+	})
+	if !gitResult.Fixed || gitResult.Command != "git remote '" {
+		t.Fatalf("Expected git fallback replacement, got %+v", gitResult)
+	}
+
+	dockerResult := NewDockerParser().Parse(Context{
+		Command: "docker psa '",
+		Stderr:  "docker: 'psa' is not a docker command.\nSimilar command: ps\n\nRun 'docker --help' for more information",
+	})
+	if !dockerResult.Fixed || dockerResult.Command != "docker ps '" {
+		t.Fatalf("Expected docker fallback replacement, got %+v", dockerResult)
+	}
+
+	npmResult := NewNpmParser().Parse(Context{
+		Command: "npm ist '",
+		Stderr:  "npm ERR! Did you mean list?",
+	})
+	if !npmResult.Fixed || npmResult.Command != "npm list '" {
+		t.Fatalf("Expected npm fallback replacement, got %+v", npmResult)
+	}
+
+	npmNotFound := NewNpmParser().Parse(Context{
+		Command: "npm isntall '",
+		Stderr:  "npm ERR! code E404\nnpm ERR! 404 command isntall not found\nnpm ERR! Did you mean install?",
+	})
+	if !npmNotFound.Fixed || npmNotFound.Command != "npm install '" {
+		t.Fatalf("Expected npm not-found fallback replacement, got %+v", npmNotFound)
+	}
+
+	dockerUnknown := NewDockerParser().Parse(Context{
+		Command: "docker imagesa '",
+		Stderr:  "unknown command: imagesa\n\nDid you mean: images?",
+	})
+	if !dockerUnknown.Fixed || dockerUnknown.Command != "docker images '" {
+		t.Fatalf("Expected docker unknown-command fallback replacement, got %+v", dockerUnknown)
+	}
+}
+
+func TestGitParser_ParseNoUpstreamPlaceholderWithoutLocalBranch(t *testing.T) {
+	result := NewGitParser().Parse(Context{
+		Command: "git pull",
+		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\n\n    git branch --set-upstream-to=origin/<branch>\n",
+	})
+	if result.Fixed {
+		t.Fatalf("Expected placeholder upstream without local branch to stay unchanged, got %+v", result)
+	}
+}
+
 func TestIsGitCommand(t *testing.T) {
 	tests := []struct {
 		cmd      string

@@ -214,6 +214,56 @@ func TestOffsetToIndex(t *testing.T) {
 	}
 }
 
+func TestShellCommandLineReplacementHelpers(t *testing.T) {
+	lines, err := parseShellCommandLines("sudo git status")
+	if err != nil {
+		t.Fatalf("parseShellCommandLines failed: %v", err)
+	}
+	line := lines[0]
+
+	if got := line.commandSuffixRaw(); got != "git status" {
+		t.Fatalf("commandSuffixRaw() = %q, want git status", got)
+	}
+	if got := line.replaceWords(); got != "sudo git status" {
+		t.Fatalf("replaceWords() with no replacements = %q", got)
+	}
+	if got := line.replaceCommandSuffixDedup("sudo git remote -v"); got != "sudo git remote -v" {
+		t.Fatalf("replaceCommandSuffixDedup() = %q, want sudo git remote -v", got)
+	}
+	if got := line.replaceCommandSuffixDedup("sudo"); got != "sudo sudo" {
+		t.Fatalf("replaceCommandSuffixDedup() empty normalized branch = %q, want sudo sudo", got)
+	}
+
+	lines, err = parseShellCommandLines("docker --context prod ps")
+	if err != nil {
+		t.Fatalf("parseShellCommandLines docker failed: %v", err)
+	}
+	line = lines[0]
+	got := line.replaceWords(
+		shellWordReplacement{index: 1, value: "--host"},
+		shellWordReplacement{index: 2, value: "unix:///var/run/docker.sock"},
+		shellWordReplacement{index: 3, value: "run"},
+	)
+	if got != "docker --host unix:///var/run/docker.sock run" {
+		t.Fatalf("replaceWords() = %q", got)
+	}
+}
+
+func TestTrimShellWordPrefix(t *testing.T) {
+	if got := trimShellWordPrefix("git remote -v", nil); got != "git remote -v" {
+		t.Fatalf("trimShellWordPrefix() nil prefix = %q, want original", got)
+	}
+	if got := trimShellWordPrefix("sudo git remote -v", []string{"sudo"}); got != "git remote -v" {
+		t.Fatalf("trimShellWordPrefix() = %q, want git remote -v", got)
+	}
+	if got := trimShellWordPrefix("git remote -v", []string{"sudo"}); got != "git remote -v" {
+		t.Fatalf("trimShellWordPrefix() mismatch = %q, want original", got)
+	}
+	if got := trimShellWordPrefix("broken '", []string{"sudo"}); got != "broken '" {
+		t.Fatalf("trimShellWordPrefix() parse failure = %q, want original", got)
+	}
+}
+
 func parseCallArgs(t *testing.T, raw string) []*syntax.Word {
 	t.Helper()
 
