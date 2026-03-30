@@ -77,6 +77,7 @@ The `<scope>` should identify the part of the codebase affected. Examples:
 - `e2e` -- End-to-end tests
 - `docs` -- README, CONTRIBUTING, or other documentation
 - `deps` -- Dependency changes
+- `release` -- Release configuration
 - `build` -- Makefile and build configuration
 
 ### Breaking Changes
