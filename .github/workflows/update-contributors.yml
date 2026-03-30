@@ -22,14 +22,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure contributors SVG exists
-        run: |
-          if [ ! -f CONTRIBUTORS.svg ]; then
-            cat <<'EOF' > CONTRIBUTORS.svg
-            <svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>
-            EOF
-          fi
-
       - name: Generate contributors SVG
         uses: tw93/contributors-list@3722c5cb0d662c5e6dbffe78448002c461aab3b9
         with:
