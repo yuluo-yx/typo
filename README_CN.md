@@ -46,8 +46,8 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bas
 # 显式安装最新 Release
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
 
-# 安装指定 Release 版本
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 26.03.24
+# 安装指定 Release 版本（语义化版本号）
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 0.2.0
 
 # 从 main 分支源码构建（需要 Go）
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -b

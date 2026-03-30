@@ -14,11 +14,11 @@ Install typo on macOS or Linux.
 
 Usage:
   install.sh
-  install.sh -s 26.03.24
+  install.sh -s 0.2.0
   install.sh -b
 
 Options:
-  -s VERSION   Install a Release version; `latest` means the newest Release
+  -s VERSION   Install a Release version (semver, e.g. 0.2.0); `latest` means the newest Release
   -b           Build from the `main` branch source (requires `go`)
   -h           Show help
 
