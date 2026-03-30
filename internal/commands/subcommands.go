@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -160,12 +161,30 @@ func (r *SubcommandRegistry) runHelpCommand(tool string, args ...string) (string
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, tool, args...)
-	output, err := cmd.CombinedOutput()
-	if ctx.Err() != nil {
+	cmd := exec.Command(tool, args...)
+	configureHelpCommand(cmd)
+
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		return output.String(), err
+	case <-ctx.Done():
+		_ = killHelpCommand(cmd)
+		<-waitCh
 		return "", ctx.Err()
 	}
-	return string(output), err
 }
 
 func (r *SubcommandRegistry) loadCache() {
