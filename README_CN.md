@@ -174,6 +174,14 @@ make coverage   # 运行覆盖率测试
 make lint       # 运行检查
 ```
 
+## 社区贡献者
+
+感谢所有参与 Typo 构建的贡献者。
+
+<p align="center">
+  <img src="CONTRIBUTORS.svg" alt="Typo 贡献者">
+</p>
+
 ## License
 
 MIT

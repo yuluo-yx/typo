@@ -346,6 +346,20 @@ func TestTryMatchOnCommand_Fallback(t *testing.T) {
 	}
 }
 
+func TestTryMatchOnCommand_CommandSuffixBranch(t *testing.T) {
+	match := func(s string) (string, bool) {
+		if s == "git status" {
+			return "sudo git remote -v", true
+		}
+		return "", false
+	}
+
+	got := NewEngine().tryMatchOnCommand("sudo git status", "rule", match)
+	if !got.Fixed || got.Command != "sudo git remote -v" || got.Source != "rule" {
+		t.Fatalf("Expected command suffix replacement path, got %+v", got)
+	}
+}
+
 func TestEngine_FixCommand_PriorityPaths(t *testing.T) {
 	tmpDir := t.TempDir()
 	history := NewHistory(tmpDir)
@@ -423,6 +437,212 @@ func TestEngine_FixCommand_FallbackPriorityPaths(t *testing.T) {
 				t.Fatalf("FixCommand() = %+v, want command=%q source=%q", got, tt.wantCmd, tt.wantSource)
 			}
 		})
+	}
+}
+
+func TestEngine_CommandLoaderAndLoadCommands(t *testing.T) {
+	loads := 0
+	eng := NewEngine(
+		WithCommands([]string{"git"}),
+		WithCommandLoader(func() []string {
+			loads++
+			return []string{"kubectl", "git"}
+		}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	if got := eng.findClosestCommand("kubctl"); got != "kubectl" {
+		t.Fatalf("findClosestCommand() = %q, want kubectl", got)
+	}
+	if loads != 1 {
+		t.Fatalf("Expected command loader to run once, got %d", loads)
+	}
+	if !eng.commandsFullyLoad {
+		t.Fatal("Expected command set to be fully loaded after fallback discovery")
+	}
+
+	seen := 0
+	for _, cmd := range eng.availableCommands() {
+		if cmd == "git" {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("Expected merged command set to deduplicate git, got %d entries", seen)
+	}
+
+	eng.loadCommands()
+	if loads != 1 {
+		t.Fatalf("Expected repeated loadCommands() to stay cached, got %d loads", loads)
+	}
+}
+
+func TestEngine_LoadCommandsWithoutLoader(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+	eng.loadCommands()
+
+	if !eng.commandsFullyLoad {
+		t.Fatal("Expected loadCommands without loader to mark commands as fully loaded")
+	}
+	if len(eng.availableCommands()) != 1 || eng.availableCommands()[0] != "git" {
+		t.Fatalf("Unexpected commands after load without loader: %v", eng.availableCommands())
+	}
+}
+
+func misspelledLongVersionOption() string {
+	return "--ver" + "soin"
+}
+
+func mixedPrefixVersionOption() string {
+	return "-ver" + "soin"
+}
+
+func TestEngine_TryToolOptionFix_FallbackBranches(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"cargo"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+	versionOptionTypo := misspelledLongVersionOption()
+
+	tests := []struct {
+		name      string
+		cmd       string
+		wantFixed bool
+		wantCmd   string
+	}{
+		{name: "shell path with long option", cmd: "cargo " + versionOptionTypo + " build", wantFixed: true, wantCmd: "cargo --version build"},
+		{name: "shell path skips option value", cmd: "cargo -C repo --colro always", wantFixed: true, wantCmd: "cargo -C repo --color always"},
+		{name: "fallback path resolves command", cmd: "crago " + versionOptionTypo + " '", wantFixed: true, wantCmd: "cargo --version '"},
+		{name: "fallback path skips option value", cmd: "cargo -C repo --colro '", wantFixed: true, wantCmd: "cargo -C repo --color '"},
+		{name: "known option continues before fixing", cmd: "cargo --frozen " + versionOptionTypo + " '", wantFixed: true, wantCmd: "cargo --frozen --version '"},
+		{name: "too short to inspect", cmd: "cargo", wantFixed: false},
+		{name: "unresolved command stays unchanged", cmd: "unknown " + versionOptionTypo + " build", wantFixed: false},
+		{name: "unknown option without close match", cmd: "cargo --zzzzz '", wantFixed: false},
+		{name: "non option stops scanning", cmd: "cargo build " + versionOptionTypo, wantFixed: false},
+		{name: "double dash stops option scan", cmd: "cargo -- " + versionOptionTypo, wantFixed: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.tryToolOptionFix(tt.cmd)
+			if got.Fixed != tt.wantFixed {
+				t.Fatalf("tryToolOptionFix().Fixed = %v, want %v (%+v)", got.Fixed, tt.wantFixed, got)
+			}
+			if tt.wantFixed && (got.Command != tt.wantCmd || got.Source != "option") {
+				t.Fatalf("tryToolOptionFix() = %+v, want command=%q source=option", got, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestToolOptionHelpers(t *testing.T) {
+	tests := []struct {
+		arg        string
+		wantName   string
+		wantSuffix string
+		wantOption bool
+	}{
+		{arg: "--context=prod", wantName: "--context", wantSuffix: "=prod", wantOption: true},
+		{arg: "--verbose", wantName: "--verbose", wantSuffix: "", wantOption: true},
+		{arg: "-v", wantName: "-v", wantSuffix: "", wantOption: true},
+		{arg: "-abc", wantName: "", wantSuffix: "", wantOption: false},
+		{arg: "build", wantName: "", wantSuffix: "", wantOption: false},
+	}
+
+	for _, tt := range tests {
+		name, suffix, ok := splitToolOptionToken(tt.arg)
+		if name != tt.wantName || suffix != tt.wantSuffix || ok != tt.wantOption {
+			t.Fatalf("splitToolOptionToken(%q) = (%q, %q, %v), want (%q, %q, %v)", tt.arg, name, suffix, ok, tt.wantName, tt.wantSuffix, tt.wantOption)
+		}
+	}
+
+	if got := closestToolOption("cargo", misspelledLongVersionOption(), NewQWERTYKeyboard()); got != "--version" {
+		t.Fatalf("closestToolOption() = %q, want --version", got)
+	}
+	if got := closestToolOption("cargo", "-V", NewQWERTYKeyboard()); got != "-V" {
+		t.Fatalf("closestToolOption() short exact = %q, want -V", got)
+	}
+	if got := closestToolOption("cargo", mixedPrefixVersionOption(), NewQWERTYKeyboard()); got != "" {
+		t.Fatalf("closestToolOption() mixed prefix = %q, want empty", got)
+	}
+	if got := closestToolOption("unknown", misspelledLongVersionOption(), NewQWERTYKeyboard()); got != "" {
+		t.Fatalf("closestToolOption() unknown command = %q, want empty", got)
+	}
+}
+
+func TestEngine_TrySubcommandFix_ShellAndResolvedCommand(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	if got := eng.trySubcommandFix("git -C repo stattus"); !got.Fixed || got.Command != "git -C repo status" {
+		t.Fatalf("Expected git shell subcommand fix, got %+v", got)
+	}
+
+	if got := eng.trySubcommandFix("cargo -C repo chcek"); !got.Fixed || got.Command != "cargo -C repo check" {
+		t.Fatalf("Expected cargo shell subcommand fix after option value, got %+v", got)
+	}
+
+	if got := eng.trySubcommandFix("git -- stattus"); !got.Fixed || got.Command != "git -- status" {
+		t.Fatalf("Expected subcommand fix after double dash, got %+v", got)
+	}
+}
+
+func TestEngine_TrySubcommandFix_EmptyDynamicSubcommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	eng := NewEngine(
+		WithCommands([]string{"composer"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithSubcommands(commands.NewSubcommandRegistry(tmpDir)),
+	)
+
+	if got := eng.trySubcommandFix("composer isntall"); got.Fixed {
+		t.Fatalf("Expected empty dynamic subcommand set to skip fix, got %+v", got)
+	}
+}
+
+func TestEngine_TrySubcommandFixWithShell_ContinuesUntilLaterFix(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	eng.commands = append(eng.commands, "composer")
+
+	got, parsed := eng.trySubcommandFixWithShell("unknown biuld && composer isntall && docker build && docker zzzz && git stattus")
+	if !parsed {
+		t.Fatal("Expected shell subcommand fixer to parse the compound command")
+	}
+	if !got.Fixed || got.Command != "unknown biuld && composer isntall && docker build && docker zzzz && git status" {
+		t.Fatalf("Expected later git subcommand fix after continue branches, got %+v", got)
+	}
+}
+
+func TestEngine_TryDistance_ShellBranches(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "grep"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	if got := eng.tryDistance("gerp main file.txt"); !got.Fixed || got.Command != "grep main file.txt" {
+		t.Fatalf("Expected shell-aware distance fix, got %+v", got)
+	}
+
+	if got := eng.tryDistance("git status"); got.Fixed {
+		t.Fatalf("Expected identical protected command to stay unchanged, got %+v", got)
+	}
+}
+
+func TestEngine_TryDistance_FixesMainAndSubcommand(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	if got := eng.tryDistance("dcoker biuld"); !got.Fixed || got.Command != "docker build" {
+		t.Fatalf("Expected distance fix to cascade into subcommand fix, got %+v", got)
+	}
+}
+
+func TestEngine_TryDistance_ContinuesUntilLaterFix(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"grep"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	if got := eng.tryDistance("zzzz && gerp main file.txt"); !got.Fixed || got.Command != "zzzz && grep main file.txt" {
+		t.Fatalf("Expected distance fixer to continue to a later shell command, got %+v", got)
 	}
 }
 

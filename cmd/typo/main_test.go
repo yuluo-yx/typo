@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"testing"
+	"time"
 
 	installscript "github.com/yuluo-yx/typo/install"
 	"github.com/yuluo-yx/typo/internal/config"
@@ -167,6 +168,69 @@ func TestRun(t *testing.T) {
 			}
 			if tt.wantOutput != "" && !bytes.Contains([]byte(output), []byte(tt.wantOutput)) {
 				t.Errorf("Expected output to contain %q, got %q", tt.wantOutput, output)
+			}
+		})
+	}
+}
+
+func TestDiscoverCommandsWithinTimeout(t *testing.T) {
+	t.Run("returns loader result within budget", func(t *testing.T) {
+		result := discoverCommandsWithinTimeout(func() []string {
+			return []string{"foo", "bar"}
+		}, 100*time.Millisecond)
+
+		if len(result) != 2 || result[0] != "foo" || result[1] != "bar" {
+			t.Fatalf("unexpected discovery result: %v", result)
+		}
+	})
+
+	t.Run("returns quickly when loader blocks", func(t *testing.T) {
+		start := time.Now()
+		result := discoverCommandsWithinTimeout(func() []string {
+			time.Sleep(time.Second)
+			return []string{"slow"}
+		}, 50*time.Millisecond)
+		elapsed := time.Since(start)
+
+		if result != nil {
+			t.Fatalf("expected nil result after timeout, got %v", result)
+		}
+		if elapsed >= 500*time.Millisecond {
+			t.Fatalf("expected timed discovery to return quickly, got %v", elapsed)
+		}
+	})
+
+	t.Run("returns nil for nil loader", func(t *testing.T) {
+		if got := discoverCommandsWithinTimeout(nil, 10*time.Millisecond); got != nil {
+			t.Fatalf("expected nil loader result, got %v", got)
+		}
+	})
+
+	t.Run("uses direct loader when timeout disabled", func(t *testing.T) {
+		if got := discoverCommandsWithinTimeout(func() []string { return []string{"direct"} }, 0); len(got) != 1 || got[0] != "direct" {
+			t.Fatalf("unexpected direct discovery result: %v", got)
+		}
+	})
+}
+
+func TestShouldRecordHistory(t *testing.T) {
+	tests := []struct {
+		name     string
+		original string
+		result   engine.FixResult
+		want     bool
+	}{
+		{name: "not fixed", original: "git status", result: engine.FixResult{Fixed: false}, want: false},
+		{name: "unchanged command", original: "git status", result: engine.FixResult{Fixed: true, Command: "git status"}, want: false},
+		{name: "permission sudo parser", original: "mkdir 1", result: engine.FixResult{Fixed: true, Command: "sudo mkdir 1", Kind: "permission_sudo"}, want: false},
+		{name: "parser assisted fix", original: "git remove -v", result: engine.FixResult{Fixed: true, Command: "git remote -v", UsedParser: true}, want: false},
+		{name: "normal accepted fix", original: "gut status", result: engine.FixResult{Fixed: true, Command: "git status"}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldRecordHistory(tt.original, tt.result); got != tt.want {
+				t.Fatalf("shouldRecordHistory() = %v, want %v", got, tt.want)
 			}
 		})
 	}

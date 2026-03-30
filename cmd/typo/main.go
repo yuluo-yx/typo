@@ -30,6 +30,8 @@ var (
 	statPath      = os.Stat
 )
 
+const commandDiscoveryTimeout = 150 * time.Millisecond
+
 func main() {
 	os.Exit(run())
 }
@@ -520,12 +522,31 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithParser(parser.NewRegistry()),
 		engine.WithCommands(seedCommands),
 		engine.WithCommandLoader(func() []string {
-			cmds := commands.Discover()
-			cmds = append(cmds, commands.ShellBuiltins()...)
-			return cmds
+			return discoverCommandsWithinTimeout(commands.Discover, commandDiscoveryTimeout)
 		}),
 		engine.WithSubcommands(subcmdRegistry),
 	)
+}
+
+func discoverCommandsWithinTimeout(loader func() []string, timeout time.Duration) []string {
+	if loader == nil {
+		return nil
+	}
+	if timeout <= 0 {
+		return loader()
+	}
+
+	resultCh := make(chan []string, 1)
+	go func() {
+		resultCh <- loader()
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result
+	case <-time.After(timeout):
+		return nil
+	}
 }
 
 func sameDir(a, b string) bool {

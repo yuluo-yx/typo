@@ -44,6 +44,12 @@ func TestHasBuiltinSubcommand(t *testing.T) {
 	if HasBuiltinSubcommand("git", "nonexistent-subcommand") {
 		t.Fatal("Expected unknown git subcommand lookup to fail")
 	}
+	if HasBuiltinSubcommand("", "status") {
+		t.Fatal("Expected empty tool lookup to fail")
+	}
+	if HasBuiltinSubcommand("git", "") {
+		t.Fatal("Expected empty subcommand lookup to fail")
+	}
 }
 
 func TestSubcommandRegistry_GetMergesBuiltinSubcommands(t *testing.T) {
@@ -779,7 +785,7 @@ func TestGetHelpOutput_GitPrefersHelpA(t *testing.T) {
 	}
 
 	os.Setenv("PATH", tmpDir)
-	r := &SubcommandRegistry{}
+	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("git")
 	if err != nil {
 		t.Fatalf("getHelpOutput failed: %v", err)
@@ -801,7 +807,7 @@ func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 	}
 
 	os.Setenv("PATH", tmpDir)
-	r := &SubcommandRegistry{}
+	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("mytool")
 	if err != nil {
 		t.Fatalf("getHelpOutput failed: %v", err)
@@ -823,13 +829,130 @@ func TestGetHelpOutput_BrewUsesCommands(t *testing.T) {
 	}
 
 	os.Setenv("PATH", tmpDir)
-	r := &SubcommandRegistry{}
+	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("brew")
 	if err != nil {
 		t.Fatalf("getHelpOutput failed: %v", err)
 	}
 	if strings.Contains(output, "should-not-be-used") || !strings.Contains(output, "install") {
 		t.Fatalf("Expected brew commands output, got %q", output)
+	}
+}
+
+func TestGetHelpOutput_GitFallsBackToHelp(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	gitPath := filepath.Join(tmpDir, "git")
+	script := "#!/bin/sh\nif [ \"$1\" = \"help\" ] && [ \"$2\" = \"-a\" ]; then\n  exit 1\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo git-help\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(gitPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write git fallback stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	output, err := r.getHelpOutput("git")
+	if err != nil {
+		t.Fatalf("getHelpOutput fallback failed: %v", err)
+	}
+	if strings.TrimSpace(output) != "git-help" {
+		t.Fatalf("Expected git --help fallback output, got %q", output)
+	}
+}
+
+func TestGetHelpOutput_BrewFallsBackToHelp(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	brewPath := filepath.Join(tmpDir, "brew")
+	script := "#!/bin/sh\nif [ \"$1\" = \"commands\" ]; then\n  exit 1\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo fallback-brew-help\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(brewPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write brew fallback stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	output, err := r.getHelpOutput("brew")
+	if err != nil {
+		t.Fatalf("getHelpOutput brew fallback failed: %v", err)
+	}
+	if strings.TrimSpace(output) != "fallback-brew-help" {
+		t.Fatalf("Expected brew --help fallback output, got %q", output)
+	}
+}
+
+func TestGetHelpOutput_Timeout(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	toolPath := filepath.Join(tmpDir, "slowtool")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  /bin/sleep 1\n  echo slow-help\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(toolPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write slow tool stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
+
+	start := time.Now()
+	output, err := r.getHelpOutput("slowtool")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Expected timed out help command to return an error")
+	}
+	if output != "" {
+		t.Fatalf("Expected empty output after timeout, got %q", output)
+	}
+	if elapsed >= 500*time.Millisecond {
+		t.Fatalf("Expected timeout to return quickly, got %v", elapsed)
+	}
+}
+
+func TestGetHelpOutput_GitTimeoutStopsFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	gitPath := filepath.Join(tmpDir, "git")
+	script := "#!/bin/sh\nif [ \"$1\" = \"help\" ] && [ \"$2\" = \"-a\" ]; then\n  /bin/sleep 1\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo should-not-run\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(gitPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write git timeout stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
+	output, err := r.getHelpOutput("git")
+	if err == nil {
+		t.Fatal("Expected git help timeout to return an error")
+	}
+	if output != "" {
+		t.Fatalf("Expected timed out git help to return empty output, got %q", output)
+	}
+}
+
+func TestGetHelpOutput_BrewTimeoutStopsFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	brewPath := filepath.Join(tmpDir, "brew")
+	script := "#!/bin/sh\nif [ \"$1\" = \"commands\" ]; then\n  /bin/sleep 1\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo should-not-run\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(brewPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write brew timeout stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
+	output, err := r.getHelpOutput("brew")
+	if err == nil {
+		t.Fatal("Expected brew commands timeout to return an error")
+	}
+	if output != "" {
+		t.Fatalf("Expected timed out brew commands to return empty output, got %q", output)
 	}
 }
 
@@ -849,10 +972,35 @@ func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
 		cache:       make(map[string]*SubcommandCache),
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
+		helpTimeout: 10 * time.Second,
 	}
 
 	subcommands := r.fetchSubcommands("mytool")
 	if len(subcommands) != 2 || subcommands[0] != "start" || subcommands[1] != "stop" {
 		t.Fatalf("Expected generic parser subcommands, got %v", subcommands)
+	}
+}
+
+func TestFetchSubcommands_EmptyHelpOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	toolPath := filepath.Join(tmpDir, "emptytool")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(toolPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write empty tool stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{
+		cache:       make(map[string]*SubcommandCache),
+		cacheDir:    "",
+		cacheExpiry: 7 * 24 * time.Hour,
+		helpTimeout: 10 * time.Second,
+	}
+
+	if got := r.fetchSubcommands("emptytool"); got != nil {
+		t.Fatalf("Expected empty help output to return nil subcommands, got %v", got)
 	}
 }

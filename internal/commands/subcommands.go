@@ -2,7 +2,10 @@ package commands
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,7 +31,10 @@ type SubcommandRegistry struct {
 	cache       map[string]*SubcommandCache
 	cacheDir    string
 	cacheExpiry time.Duration
+	helpTimeout time.Duration
 }
+
+const defaultHelpTimeout = 500 * time.Millisecond
 
 // NewSubcommandRegistry creates a new subcommand registry.
 func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
@@ -36,6 +42,7 @@ func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
 		cache:       make(map[string]*SubcommandCache),
 		cacheDir:    cacheDir,
 		cacheExpiry: 7 * 24 * time.Hour, // 7 days
+		helpTimeout: defaultHelpTimeout,
 	}
 	r.loadCache()
 	return r
@@ -110,34 +117,74 @@ func (r *SubcommandRegistry) fetchSubcommands(tool string) []string {
 func (r *SubcommandRegistry) getHelpOutput(tool string) (string, error) {
 	// Special handling for git - use 'help -a' for all commands
 	if tool == "git" {
-		cmd := exec.Command("git", "help", "-a")
-		output, err := cmd.CombinedOutput()
+		output, err := r.runHelpCommand("git", "help", "-a")
 		if err == nil {
-			return string(output), nil
+			return output, nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", err
 		}
 	}
 
 	// Special handling for brew - use 'commands' to get command list
 	if tool == "brew" {
-		cmd := exec.Command("brew", "commands")
-		output, err := cmd.CombinedOutput()
+		output, err := r.runHelpCommand("brew", "commands")
 		if err == nil {
-			return string(output), nil
+			return output, nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", err
 		}
 	}
 
 	// Try --help first
-	cmd := exec.Command(tool, "--help")
-	output, err := cmd.CombinedOutput()
+	output, err := r.runHelpCommand(tool, "--help")
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", err
+		}
 		// Try help subcommand
-		cmd = exec.Command(tool, "help")
-		output, err = cmd.CombinedOutput()
+		output, err = r.runHelpCommand(tool, "help")
 		if err != nil {
 			return "", err
 		}
 	}
-	return string(output), nil
+	return output, nil
+}
+
+func (r *SubcommandRegistry) runHelpCommand(tool string, args ...string) (string, error) {
+	timeout := r.helpTimeout
+	if timeout <= 0 {
+		timeout = defaultHelpTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.Command(tool, args...)
+	configureHelpCommand(cmd)
+
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		return output.String(), err
+	case <-ctx.Done():
+		_ = killHelpCommand(cmd)
+		<-waitCh
+		return "", ctx.Err()
+	}
 }
 
 func (r *SubcommandRegistry) loadCache() {

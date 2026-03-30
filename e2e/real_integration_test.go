@@ -120,6 +120,45 @@ print -r -- "$BUFFER"
 	}
 }
 
+func TestE2EZshIntegrationSkipsSlowDynamicDiscovery(t *testing.T) {
+	env := newE2EEnv(t)
+	env.removeSubcommandCache(t)
+	env.writeBinScript(t, "go", `#!/bin/sh
+if [ "$1" = "help" ]; then
+  /bin/sleep 2
+  printf 'Go is a tool for managing Go source code.\n\n'
+  printf 'The commands are:\n\n'
+  printf '\tvet         examine Go source code and report suspicious constructs\n'
+  exit 0
+fi
+if [ "$1" = "vte" ]; then
+  printf "go: unknown command: vte\n" >&2
+  exit 1
+fi
+exit 0
+`)
+
+	initScript := env.initZshScript(t)
+	result := env.runZsh(t, initScript, `
+zle() { true; }
+bindkey() { true; }
+fc() { print -r -- "go vte ./..."; }
+sed() { while IFS= read -r line; do print -r -- "$line"; done }
+source "$1"
+TYPO_LAST_EXIT_CODE=1
+BUFFER=""
+start=$SECONDS
+_typo_fix_command
+elapsed=$((SECONDS - start))
+[[ "$elapsed" -lt 1 ]] || exit 51
+[[ -z "$BUFFER" ]] || { print -r -- "$BUFFER"; exit 52; }
+print -r -- "elapsed=$elapsed"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, "elapsed=") {
+		t.Fatalf("slow dynamic discovery should not block zsh fix flow: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
 func TestE2EDynamicGoSubcommandDiscovery(t *testing.T) {
 	env := newE2EEnv(t)
 	env.removeSubcommandCache(t)
