@@ -172,6 +172,14 @@ make coverage   # Run tests with coverage
 make lint       # Run linter
 ```
 
+## Community Love
+
+Thanks to everyone who helped build Typo.
+
+<p align="center">
+  <img src="CONTRIBUTORS.svg" alt="Typo Contributors">
+</p>
+
 ## License
 
 MIT
