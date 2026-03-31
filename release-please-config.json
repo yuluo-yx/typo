@@ -1,8 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "go",
-  "bump-minor-pre-major": true,
+  "bump-minor-pre-major": false,
   "include-v-in-tag": true,
+  "bootstrap-sha": "fff36e052677a84c4cae131b88c78b4ed8b2e6f1",
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md"
