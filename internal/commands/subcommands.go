@@ -294,19 +294,40 @@ func parseDockerHelp(output string) []string {
 
 func parseNpmHelp(output string) []string {
 	// npm help format:
-	// install, i, add      Install a package
-	// run, run-script      Run arbitrary package scripts
+	// All commands:
+	// 	   access, ...
+	// 	   config, ...
+	// 	   edit, ....
 	subcommands := []string{}
-	re := regexp.MustCompile(`^\s{2,}([\w-]+)`)
-
 	scanner := bufio.NewScanner(strings.NewReader(output))
+
+	inCommandsSection := false
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
-			// Only take the first command, not aliases
-			cmd := matches[1]
-			if !strings.Contains(line, ",") || strings.Index(line, cmd) < strings.Index(line, ",") {
-				subcommands = append(subcommands, cmd)
+
+		// Compatible with with npm v7+ (All commands) and v6- (where <command> is one of:)
+		if strings.HasPrefix(line, "All commands:") || strings.Contains(line, "where <command> is one of:") {
+			inCommandsSection = true
+			continue
+		}
+		if inCommandsSection {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			// End of commands block
+			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+				inCommandsSection = false
+				// Don't break to prevent future versions with multiple command sections from being missed
+				continue
+			}
+			// Extract commands from the line
+			parts := strings.Split(line, ",")
+			for _, part := range parts {
+				cmd := strings.TrimSpace(part)
+				if cmd != "" {
+					subcommands = append(subcommands, cmd)
+				}
 			}
 		}
 	}
