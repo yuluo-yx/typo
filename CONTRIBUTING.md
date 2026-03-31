@@ -77,7 +77,28 @@ The `<scope>` should identify the part of the codebase affected. Examples:
 - `e2e` -- End-to-end tests
 - `docs` -- README, CONTRIBUTING, or other documentation
 - `deps` -- Dependency changes
+- `release` -- Release configuration
 - `build` -- Makefile and build configuration
+
+### Breaking Changes
+
+Append `!` after the type (or scope) to indicate a breaking change:
+
+```
+<type>(<scope>)!: <message>
+```
+
+Alternatively, include a `BREAKING CHANGE:` footer in the commit body. Both forms trigger a SemVer major version bump (or minor bump while the project is pre-`v1`).
+
+### Version Bumps
+
+Releases are automated via [release-please](https://github.com/googleapis/release-please). The PR title (set at squash-merge time) determines the version bump:
+
+| Commit pattern | Version bump |
+|----------------|-------------|
+| `fix(scope): ...` | Patch |
+| `feat(scope): ...` | Minor |
+| `feat(scope)!: ...` or `BREAKING CHANGE:` footer | Major |
 
 ### Examples
 
@@ -90,6 +111,8 @@ chore(docs): update installation instructions for Homebrew
 chore(deps): bump mvdan.cc/sh to v3.14.0
 ci(workflows): add Go 1.26 to test matrix
 perf(engine): reduce allocations in fuzzy matching
+feat(cmd)!: rename --verbose flag to --debug
+fix(engine)!: change scoring return type from int to float64
 ```
 
 ## Pull Request Expectations

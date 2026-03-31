@@ -44,8 +44,8 @@ Optional arguments:
 # Install the latest release explicitly
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
 
-# Install a specific release
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 26.03.24
+# Install a specific release (semver)
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 0.2.0
 
 # Build from the main branch source (requires Go)
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -b
