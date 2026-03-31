@@ -55,4 +55,5 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./tools/github-setup-deps
-      - run: make build-e2e-image && make test-e2e-docker
+      - run: make build-e2e-image
+      - run: make test-e2e-docker
