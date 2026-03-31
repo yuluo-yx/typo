@@ -1,0 +1,59 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - 'Makefile'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - 'Makefile'
+      - '.github/workflows/**'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./tools/github-setup-deps
+      - run: make download
+      - run: make test
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./tools/github-setup-deps
+        with:
+          args: --config=./tools/linter/.golangci.yml
+          version: v2.11.3
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./tools/github-setup-deps
+      - run: make build
+
+  e2e-docker:
+    name: E2E Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./tools/github-setup-deps
+      - run: make build-e2e-image
+      - run: make test-e2e-docker

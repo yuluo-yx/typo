@@ -88,7 +88,7 @@ func (e *installScriptEnv) commandEnv(extra ...string) []string {
 func (e *installScriptEnv) runWithEnv(t *testing.T, extraEnv []string, args ...string) e2eResult {
 	t.Helper()
 
-	scriptPath := filepath.Join(e.root, "install.sh")
+	scriptPath := filepath.Join(e.root, "tools", "scripts", "install.sh")
 	cmd := exec.Command("bash", append([]string{scriptPath}, args...)...)
 	cmd.Dir = e.root
 	cmd.Env = e.commandEnv(extraEnv...)
@@ -104,7 +104,7 @@ func (e *installScriptEnv) runWithEnv(t *testing.T, extraEnv []string, args ...s
 		if errors.As(err, &exitErr) {
 			code = exitErr.ExitCode()
 		} else {
-			t.Fatalf("failed to execute install.sh: %v", err)
+			t.Fatalf("failed to execute tools/scripts/install.sh: %v", err)
 		}
 	}
 
