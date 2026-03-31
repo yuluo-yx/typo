@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/yuluo-yx/typo/compare/v0.1.0...v0.1.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **release:** update release-please to include build phase ([39ca46a](https://github.com/yuluo-yx/typo/commit/39ca46aa5b6b79fe4e80698c205acf093d060ca9))
+* **release:** update release-please to include build phase ([a202c2b](https://github.com/yuluo-yx/typo/commit/a202c2bbb53f8aea7e36fd75b44448ac5cb917da))
+
 ## [0.1.0](https://github.com/yuluo-yx/typo/compare/v0.0.1...v0.1.0) (2026-03-31)
 
 
