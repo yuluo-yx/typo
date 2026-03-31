@@ -34,7 +34,7 @@ type SubcommandRegistry struct {
 	helpTimeout time.Duration
 }
 
-const defaultHelpTimeout = 500 * time.Millisecond
+const defaultHelpTimeout = 1000 * time.Millisecond
 
 // NewSubcommandRegistry creates a new subcommand registry.
 func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
