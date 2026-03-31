@@ -25,6 +25,7 @@ jobs:
             perf
             style
             ci
+            infra
           requireScope: true
           subjectPattern: ^[a-z].+$
           subjectPatternError: |
