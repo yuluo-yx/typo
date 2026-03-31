@@ -46,10 +46,10 @@ build-darwin-arm64: ## build typo for darwin/arm64
 
 ##@ linter and test
 
-,PNOHT: download
+.PHONY: download
 download: ## Download dependencies
 	@$(LOG_TARGET)
-  $(GO) mod download
+	$(GO) mod download
 
 .PHONY: fmt
 fmt: ## Run go fmt
