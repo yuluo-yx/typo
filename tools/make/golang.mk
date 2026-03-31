@@ -48,7 +48,7 @@ build-darwin-arm64: ## build typo for darwin/arm64
 
 ,PNOHT: download
 download: ## Download dependencies
-  @$(LOG_TARGET)
+	@$(LOG_TARGET)
   $(GO) mod download
 
 .PHONY: fmt
