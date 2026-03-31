@@ -26,7 +26,7 @@ jobs:
             style
             ci
             infra
-          requireScope: true
+          requireScope: false
           subjectPattern: ^[a-z].+$
           subjectPatternError: |
             The subject "{subject}" must start with a lowercase letter.
