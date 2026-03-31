@@ -43,16 +43,13 @@ var e2ePassthroughCommands = map[string]bool{
 func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Helper()
 
-	root := sharedRepoRoot
-	if root == "" {
-		root = repoRoot(t)
-	}
 	base := t.TempDir()
+	root := filepath.Join(base, "work")
 	home := filepath.Join(base, "home")
 	tmpDir := filepath.Join(base, "tmp")
 	binDir := filepath.Join(base, "bin")
 
-	for _, dir := range []string{home, tmpDir, binDir} {
+	for _, dir := range []string{root, home, tmpDir, binDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("failed to create e2e directory: %v", err)
 		}
