@@ -718,7 +718,20 @@ func TestFetchSubcommands_Npm(t *testing.T) {
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
 	result := r.fetchSubcommands("npm")
-	_ = result
+	if len(result) == 0 {
+		t.Fatalf("Expected npm subcommands")
+	}
+	// List of core commands that MUST exist in any npm version
+	expectedCmds := []string{"install", "config", "test", "publish"}
+	actualCmds := make(map[string]bool)
+	for _, cmd := range result {
+		actualCmds[cmd] = true
+	}
+	for _, expected := range expectedCmds {
+		if !actualCmds[expected] {
+			t.Errorf("Expected npm to have subcommand '%s', but it was missing", expected)
+		}
+	}
 }
 
 func TestFetchSubcommands_Go(t *testing.T) {
