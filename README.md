@@ -33,7 +33,7 @@ Coming soon.
 ### Or via script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
 ```
 
 The script downloads a prebuilt Release binary by default. `Go` is only required when building from the `main` branch source.
@@ -42,13 +42,13 @@ Optional arguments:
 
 ```bash
 # Install the latest release explicitly
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -s latest
 
 # Install a specific release (semver)
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 0.2.0
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -s 0.2.0
 
 # Build from the main branch source (requires Go)
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -b
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -b
 ```
 
 Note: The install script currently supports macOS and Linux.
@@ -177,7 +177,7 @@ make lint       # Run linter
 Thanks to everyone who helped build Typo.
 
 <p align="center">
-  <img src="CONTRIBUTORS.svg" alt="Typo Contributors">
+  <img src=".github/CONTRIBUTORS.svg" alt="Typo Contributors">
 </p>
 
 ## License

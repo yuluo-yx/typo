@@ -35,7 +35,7 @@ Coming soon.
 ### 或通过脚本安装
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
 ```
 
 脚本默认下载预编译的 Release 二进制。只有在从 `main` 分支源码构建时才需要 `Go`。
@@ -44,13 +44,13 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bas
 
 ```bash
 # 显式安装最新 Release
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s latest
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -s latest
 
 # 安装指定 Release 版本（语义化版本号）
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -s 0.2.0
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -s 0.2.0
 
 # 从 main 分支源码构建（需要 Go）
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/install.sh | bash -s -- -b
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -b
 ```
 
 说明：安装脚本当前支持 macOS 和 Linux。
@@ -179,7 +179,7 @@ make lint       # 运行检查
 感谢所有参与 Typo 构建的贡献者。
 
 <p align="center">
-  <img src="CONTRIBUTORS.svg" alt="Typo 贡献者">
+  <img src=".github/CONTRIBUTORS.svg" alt="Typo 贡献者">
 </p>
 
 ## License
