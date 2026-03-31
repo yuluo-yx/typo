@@ -39,7 +39,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./tools/github-setup-deps
-      - uses: golangci/golangci-lint-action@v9
         with:
           args: --config=./tools/linter/.golangci.yml
           version: v2.11.3
