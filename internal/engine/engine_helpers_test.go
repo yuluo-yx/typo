@@ -556,16 +556,16 @@ func TestToolOptionHelpers(t *testing.T) {
 		}
 	}
 
-	if got := closestToolOption("cargo", misspelledLongVersionOption(), NewQWERTYKeyboard()); got != "--version" {
+	if got := closestToolOption("cargo", misspelledLongVersionOption(), NewQWERTYKeyboard(), 2, 0.6); got != "--version" {
 		t.Fatalf("closestToolOption() = %q, want --version", got)
 	}
-	if got := closestToolOption("cargo", "-V", NewQWERTYKeyboard()); got != "-V" {
+	if got := closestToolOption("cargo", "-V", NewQWERTYKeyboard(), 2, 0.6); got != "-V" {
 		t.Fatalf("closestToolOption() short exact = %q, want -V", got)
 	}
-	if got := closestToolOption("cargo", mixedPrefixVersionOption(), NewQWERTYKeyboard()); got != "" {
+	if got := closestToolOption("cargo", mixedPrefixVersionOption(), NewQWERTYKeyboard(), 2, 0.6); got != "" {
 		t.Fatalf("closestToolOption() mixed prefix = %q, want empty", got)
 	}
-	if got := closestToolOption("unknown", misspelledLongVersionOption(), NewQWERTYKeyboard()); got != "" {
+	if got := closestToolOption("unknown", misspelledLongVersionOption(), NewQWERTYKeyboard(), 2, 0.6); got != "" {
 		t.Fatalf("closestToolOption() unknown command = %q, want empty", got)
 	}
 }
