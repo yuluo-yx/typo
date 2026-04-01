@@ -690,42 +690,18 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 		return FixResult{Fixed: false}
 	}
 
-	subcmd := parts[subcmdIdx]
-	if commands.HasBuiltinSubcommand(mainCmd, subcmd) {
+	fixedParts, bestMatch, changed := e.fixSubcommandParts(mainCmd, parts, subcmdIdx)
+	if !changed {
 		return FixResult{Fixed: false}
 	}
 
-	// Fast-path obviously valid builtin subcommands to avoid synchronous help probing on cold start.
-	subcommands := e.subcommands.Get(mainCmd)
-	if len(subcommands) == 0 {
-		return FixResult{Fixed: false}
+	fixedParts[0] = mainCmd
+	return FixResult{
+		Fixed:   true,
+		Command: strings.Join(fixedParts, " "),
+		Source:  "subcommand",
+		Message: fmt.Sprintf("did you mean: %s?", bestMatch),
 	}
-
-	// Check if subcommand is already valid
-	if containsString(subcommands, subcmd) {
-		return FixResult{Fixed: false}
-	}
-
-	// Try to find closest subcommand.
-	bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, e.keyboard)
-
-	// Threshold: distance <= 2 and similarity > 60%
-	if bestMatch != "" && bestDistance <= 2 {
-		similarity := Similarity(subcmd, bestMatch, e.keyboard)
-		if similarity >= 0.6 {
-			// Update main command if it was resolved
-			parts[0] = mainCmd
-			parts[subcmdIdx] = bestMatch
-			return FixResult{
-				Fixed:   true,
-				Command: strings.Join(parts, " "),
-				Source:  "subcommand",
-				Message: fmt.Sprintf("did you mean: %s?", bestMatch),
-			}
-		}
-	}
-
-	return FixResult{Fixed: false}
 }
 
 func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
@@ -745,26 +721,11 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 			continue
 		}
 
-		subcmd := line.args[subcmdIdx].Lit()
-		if commands.HasBuiltinSubcommand(mainCmd, subcmd) {
+		replacements, bestMatch, changed := e.fixSubcommandWords(mainCmd, line, subcmdIdx)
+		if !changed {
 			continue
 		}
 
-		// Fast-path obviously valid builtin subcommands to avoid synchronous help probing on cold start.
-		subcommands := e.subcommands.Get(mainCmd)
-		if len(subcommands) == 0 {
-			continue
-		}
-		if containsString(subcommands, subcmd) {
-			continue
-		}
-
-		bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, e.keyboard)
-		if !isGoodDistanceMatch(subcmd, bestMatch, bestDistance, e.keyboard) {
-			continue
-		}
-
-		replacements := []shellWordReplacement{{index: subcmdIdx, value: bestMatch}}
 		if resolvedCmd != "" {
 			replacements = append(replacements, shellWordReplacement{index: line.commandIdx, value: resolvedCmd})
 		}
@@ -786,6 +747,70 @@ func (e *Engine) trySubcommandFixWithSource(cmd, source string) FixResult {
 		result.Source = source
 	}
 	return result
+}
+
+func (e *Engine) fixSubcommandParts(mainCmd string, parts []string, startIdx int) ([]string, string, bool) {
+	fixed := append([]string(nil), parts...)
+	prefix := make([]string, 0, len(parts)-startIdx)
+	bestMatch := ""
+	changed := false
+
+	for i := startIdx; i < len(fixed); i++ {
+		token := fixed[i]
+		subcommands := e.subcommands.GetChildren(mainCmd, prefix)
+		if len(subcommands) == 0 {
+			break
+		}
+
+		if containsString(subcommands, token) {
+			prefix = append(prefix, token)
+			continue
+		}
+
+		match, distance := closestSubcommand(token, subcommands, e.keyboard)
+		if !isGoodDistanceMatch(token, match, distance, e.keyboard) {
+			break
+		}
+
+		fixed[i] = match
+		prefix = append(prefix, match)
+		bestMatch = match
+		changed = true
+	}
+
+	return fixed, bestMatch, changed
+}
+
+func (e *Engine) fixSubcommandWords(mainCmd string, line *shellCommandLine, startIdx int) ([]shellWordReplacement, string, bool) {
+	prefix := make([]string, 0, len(line.args)-startIdx)
+	replacements := make([]shellWordReplacement, 0)
+	bestMatch := ""
+	changed := false
+
+	for i := startIdx; i < len(line.args); i++ {
+		token := line.args[i].Lit()
+		subcommands := e.subcommands.GetChildren(mainCmd, prefix)
+		if len(subcommands) == 0 {
+			break
+		}
+
+		if containsString(subcommands, token) {
+			prefix = append(prefix, token)
+			continue
+		}
+
+		match, distance := closestSubcommand(token, subcommands, e.keyboard)
+		if !isGoodDistanceMatch(token, match, distance, e.keyboard) {
+			break
+		}
+
+		replacements = append(replacements, shellWordReplacement{index: i, value: match})
+		prefix = append(prefix, match)
+		bestMatch = match
+		changed = true
+	}
+
+	return replacements, bestMatch, changed
 }
 
 func (e *Engine) resolveShellCommandLine(line *shellCommandLine) (string, string, error) {
@@ -1232,6 +1257,39 @@ var subcommandPreOptionsWithValues = map[string]map[string]bool{
 		"--repository-cache":  true,
 		"--repository-config": true,
 		"-n":                  true,
+	},
+	"aws": {
+		"--ca-bundle":           true,
+		"--cli-binary-format":   true,
+		"--cli-connect-timeout": true,
+		"--cli-read-timeout":    true,
+		"--color":               true,
+		"--endpoint-url":        true,
+		"--output":              true,
+		"--profile":             true,
+		"--query":               true,
+		"--region":              true,
+	},
+	"gcloud": {
+		"--access-token-file":            true,
+		"--account":                      true,
+		"--billing-project":              true,
+		"--configuration":                true,
+		"--filter":                       true,
+		"--flags-file":                   true,
+		"--flatten":                      true,
+		"--format":                       true,
+		"--impersonate-service-account":  true,
+		"--project":                      true,
+		"--trace-token":                  true,
+		"--user-output-enabled-log-file": true,
+		"--verbosity":                    true,
+	},
+	"az": {
+		"--output":       true,
+		"--query":        true,
+		"--subscription": true,
+		"--tenant":       true,
 	},
 }
 

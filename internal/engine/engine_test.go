@@ -1003,6 +1003,31 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 			Subcommands: []string{"install", "upgrade", "template", "repo", "lint", "list"},
 			UpdatedAt:   time.Now(),
 		},
+		{
+			Tool:        "aws",
+			Subcommands: []string{"s3", "ec2", "configure"},
+			Children: map[string][]string{
+				"s3": {"cp", "ls", "mb", "mv", "rm", "sync"},
+			},
+			UpdatedAt: time.Now(),
+		},
+		{
+			Tool:        "gcloud",
+			Subcommands: []string{"auth", "compute", "config"},
+			Children: map[string][]string{
+				"compute":           {"instances"},
+				"compute instances": {"describe", "list"},
+			},
+			UpdatedAt: time.Now(),
+		},
+		{
+			Tool:        "az",
+			Subcommands: []string{"account", "group", "login"},
+			Children: map[string][]string{
+				"group": {"create", "delete", "list", "show"},
+			},
+			UpdatedAt: time.Now(),
+		},
 	}
 
 	data, err := json.Marshal(cache)
@@ -1019,7 +1044,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 
 	return NewEngine(
 		WithRules(NewRules(tmpDir)),
-		WithCommands([]string{"git", "docker", "npm", "cargo", "kubectl", "brew", "terraform", "helm"}),
+		WithCommands([]string{"git", "docker", "npm", "cargo", "kubectl", "brew", "terraform", "helm", "aws", "gcloud", "az"}),
 		WithKeyboard(NewQWERTYKeyboard()),
 		WithSubcommands(subcmdRegistry),
 	)

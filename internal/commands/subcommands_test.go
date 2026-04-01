@@ -84,7 +84,14 @@ func TestLoadCache(t *testing.T) {
 
 		caches := []SubcommandCache{
 			{Tool: "git", Subcommands: []string{"add", "commit"}, UpdatedAt: time.Now()},
-			{Tool: "docker", Subcommands: []string{"build", "run"}, UpdatedAt: time.Now()},
+			{
+				Tool:        "gcloud",
+				Subcommands: []string{"compute", "auth"},
+				Children: map[string][]string{
+					"compute": {"instances"},
+				},
+				UpdatedAt: time.Now(),
+			},
 		}
 		data, _ := json.MarshalIndent(caches, "", "  ")
 		if err := os.WriteFile(cacheFile, data, 0644); err != nil {
@@ -102,6 +109,9 @@ func TestLoadCache(t *testing.T) {
 		}
 		if r.cache["git"] == nil || len(r.cache["git"].Subcommands) != 2 {
 			t.Error("Expected git cache with 2 subcommands")
+		}
+		if r.cache["gcloud"] == nil || len(r.cache["gcloud"].Children["compute"]) != 1 {
+			t.Error("Expected gcloud cache with nested children")
 		}
 	})
 
@@ -223,6 +233,33 @@ func TestGet_Cached(t *testing.T) {
 		if !found {
 			t.Fatalf("Expected cached subcommands to include %q, got %v", want, subcommands)
 		}
+	}
+}
+
+func TestGetChildren_CachedNested(t *testing.T) {
+	r := &SubcommandRegistry{
+		cache: map[string]*SubcommandCache{
+			"gcloud": {
+				Tool:        "gcloud",
+				Subcommands: []string{"compute"},
+				Children: map[string][]string{
+					"compute":           {"instances"},
+					"compute instances": {"list", "describe"},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+		cacheExpiry: 7 * 24 * time.Hour,
+	}
+
+	children := r.GetChildren("gcloud", []string{"compute"})
+	if len(children) != 1 || children[0] != "instances" {
+		t.Fatalf("Expected cached nested children, got %v", children)
+	}
+
+	grandChildren := r.GetChildren("gcloud", []string{"compute", "instances"})
+	if len(grandChildren) != 2 || grandChildren[0] != "list" || grandChildren[1] != "describe" {
+		t.Fatalf("Expected cached grand-children, got %v", grandChildren)
 	}
 }
 
@@ -542,6 +579,77 @@ search
 	}
 }
 
+func TestParseAWSHelp(t *testing.T) {
+	output := `AWS CLI
+
+SERVICES
+  s3          Amazon Simple Storage Service
+  ec2         Amazon Elastic Compute Cloud
+
+AVAILABLE COMMANDS
+  configure   Configure the AWS CLI
+`
+
+	subcommands := parseAWSHelp(output)
+	expected := []string{"s3", "ec2", "configure"}
+	if len(subcommands) != len(expected) {
+		t.Fatalf("Expected %d aws subcommands, got %d: %v", len(expected), len(subcommands), subcommands)
+	}
+	for i, cmd := range expected {
+		if subcommands[i] != cmd {
+			t.Fatalf("Expected aws subcommands[%d] = %s, got %s", i, cmd, subcommands[i])
+		}
+	}
+}
+
+func TestParseGCloudHelp(t *testing.T) {
+	output := `NAME
+    gcloud - manage Google Cloud resources
+
+GROUPS
+    compute     Read and write Compute Engine resources
+    auth        Manage authentication
+
+COMMANDS
+    config      View and edit configuration
+`
+
+	subcommands := parseGCloudHelp(output)
+	expected := []string{"compute", "auth", "config"}
+	if len(subcommands) != len(expected) {
+		t.Fatalf("Expected %d gcloud subcommands, got %d: %v", len(expected), len(subcommands), subcommands)
+	}
+	for i, cmd := range expected {
+		if subcommands[i] != cmd {
+			t.Fatalf("Expected gcloud subcommands[%d] = %s, got %s", i, cmd, subcommands[i])
+		}
+	}
+}
+
+func TestParseAzureHelp(t *testing.T) {
+	output := `Group
+    az
+
+Subgroups:
+  group        Manage resource groups.
+
+Commands:
+  login        Log in to Azure.
+  account      Manage Azure subscription information.
+`
+
+	subcommands := parseAzureHelp(output)
+	expected := []string{"group", "login", "account"}
+	if len(subcommands) != len(expected) {
+		t.Fatalf("Expected %d az subcommands, got %d: %v", len(expected), len(subcommands), subcommands)
+	}
+	for i, cmd := range expected {
+		if subcommands[i] != cmd {
+			t.Fatalf("Expected az subcommands[%d] = %s, got %s", i, cmd, subcommands[i])
+		}
+	}
+}
+
 func TestParseGenericHelp(t *testing.T) {
 	output := `Usage: mytool <command>
 
@@ -593,6 +701,9 @@ func TestHasSubcommands(t *testing.T) {
 		{"terraform", true},
 		{"helm", true},
 		{"brew", true},
+		{"aws", true},
+		{"gcloud", true},
+		{"az", true},
 		{"unknown", false},
 		{"ls", false},
 		{"", false},
@@ -830,6 +941,47 @@ func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 	}
 }
 
+func TestGetHelpOutputAtPath_CloudCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	scripts := map[string]string{
+		"aws":    "#!/bin/sh\nif [ \"$1\" = \"s3\" ] && [ \"$2\" = \"help\" ]; then\n  echo aws-s3-help\n  exit 0\nfi\nexit 1\n",
+		"gcloud": "#!/bin/sh\nif [ \"$1\" = \"compute\" ] && [ \"$2\" = \"--help\" ]; then\n  echo gcloud-compute-help\n  exit 0\nfi\nexit 1\n",
+		"az":     "#!/bin/sh\nif [ \"$1\" = \"group\" ] && [ \"$2\" = \"--help\" ]; then\n  echo az-group-help\n  exit 0\nfi\nexit 1\n",
+	}
+	for name, script := range scripts {
+		path := filepath.Join(tmpDir, name)
+		if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+			t.Fatalf("Failed to write %s stub: %v", name, err)
+		}
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+
+	tests := []struct {
+		tool   string
+		prefix []string
+		want   string
+	}{
+		{tool: "aws", prefix: []string{"s3"}, want: "aws-s3-help"},
+		{tool: "gcloud", prefix: []string{"compute"}, want: "gcloud-compute-help"},
+		{tool: "az", prefix: []string{"group"}, want: "az-group-help"},
+	}
+
+	for _, tt := range tests {
+		output, err := r.getHelpOutputAtPath(tt.tool, tt.prefix...)
+		if err != nil {
+			t.Fatalf("getHelpOutputAtPath(%s, %v) failed: %v", tt.tool, tt.prefix, err)
+		}
+		if strings.TrimSpace(output) != tt.want {
+			t.Fatalf("Expected %s help output %q, got %q", tt.tool, tt.want, output)
+		}
+	}
+}
+
 func TestGetHelpOutput_BrewUsesCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
@@ -991,6 +1143,55 @@ func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
 	subcommands := r.fetchSubcommands("mytool")
 	if len(subcommands) != 2 || subcommands[0] != "start" || subcommands[1] != "stop" {
 		t.Fatalf("Expected generic parser subcommands, got %v", subcommands)
+	}
+}
+
+func TestFetchSubcommands_GCloudNestedWithStub(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	toolPath := filepath.Join(tmpDir, "gcloud")
+	script := `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  printf 'GROUPS\n    compute     Read and write Compute Engine resources\n'
+  exit 0
+fi
+if [ "$1" = "compute" ] && [ "$2" = "--help" ]; then
+  printf 'GROUPS\n    instances   Read and write Compute Engine VM instances\n'
+  exit 0
+fi
+if [ "$1" = "compute" ] && [ "$2" = "instances" ] && [ "$3" = "--help" ]; then
+  printf 'COMMANDS\n    list        List Compute Engine VM instances\n'
+  exit 0
+fi
+exit 1
+`
+	if err := os.WriteFile(toolPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write gcloud stub: %v", err)
+	}
+
+	os.Setenv("PATH", tmpDir)
+	r := &SubcommandRegistry{
+		cache:       make(map[string]*SubcommandCache),
+		cacheDir:    "",
+		cacheExpiry: 7 * 24 * time.Hour,
+		helpTimeout: 10 * time.Second,
+	}
+
+	root := r.fetchSubcommands("gcloud")
+	if len(root) != 1 || root[0] != "compute" {
+		t.Fatalf("Expected gcloud root subcommands, got %v", root)
+	}
+
+	children := r.fetchSubcommands("gcloud", "compute")
+	if len(children) != 1 || children[0] != "instances" {
+		t.Fatalf("Expected gcloud compute children, got %v", children)
+	}
+
+	grandChildren := r.fetchSubcommands("gcloud", "compute", "instances")
+	if len(grandChildren) != 1 || grandChildren[0] != "list" {
+		t.Fatalf("Expected gcloud compute instances children, got %v", grandChildren)
 	}
 }
 

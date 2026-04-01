@@ -57,6 +57,9 @@ func TestFindSubcommandIndex(t *testing.T) {
 		{name: "docker short flag without value", mainCmd: "docker", parts: []string{"docker", "-v", "build"}, wantIdx: 2},
 		{name: "git short option with value", mainCmd: "git", parts: []string{"git", "-C", "repo", "status"}, wantIdx: 3},
 		{name: "kubectl double dash", mainCmd: "kubectl", parts: []string{"kubectl", "--", "logs"}, wantIdx: 2},
+		{name: "aws option with value", mainCmd: "aws", parts: []string{"aws", "--profile", "prod", "s3", "ls"}, wantIdx: 3},
+		{name: "gcloud option with value", mainCmd: "gcloud", parts: []string{"gcloud", "--project", "demo", "compute", "instances", "list"}, wantIdx: 3},
+		{name: "az option with value", mainCmd: "az", parts: []string{"az", "--subscription", "demo", "group", "list"}, wantIdx: 3},
 		{name: "no subcommand", mainCmd: "git", parts: []string{"git"}, wantIdx: -1},
 	}
 
@@ -81,6 +84,9 @@ func TestFindSubcommandWordIndex(t *testing.T) {
 		{name: "kubectl double dash", mainCmd: "kubectl", raw: "kubectl -- logs pod/nginx", wantIdx: 2},
 		{name: "docker option with equals", mainCmd: "docker", raw: "docker --context=prod build -t app .", wantIdx: 2},
 		{name: "docker short flag without value", mainCmd: "docker", raw: "docker -v build", wantIdx: 2},
+		{name: "aws option with value", mainCmd: "aws", raw: "aws --profile prod s3 ls", wantIdx: 3},
+		{name: "gcloud option with value", mainCmd: "gcloud", raw: "gcloud --project demo compute instances list", wantIdx: 3},
+		{name: "az option with value", mainCmd: "az", raw: "az --subscription demo group list", wantIdx: 3},
 		{name: "missing subcommand", mainCmd: "git", raw: "git -C repo", wantIdx: -1},
 	}
 
@@ -103,6 +109,15 @@ func TestOptionTakesValue(t *testing.T) {
 	}
 	if optionTakesValue("docker", "--rm") {
 		t.Fatal("Expected docker --rm to not be tracked as taking a value")
+	}
+	if !optionTakesValue("aws", "--profile") {
+		t.Fatal("Expected aws --profile to take a value")
+	}
+	if !optionTakesValue("gcloud", "--project") {
+		t.Fatal("Expected gcloud --project to take a value")
+	}
+	if !optionTakesValue("az", "--subscription") {
+		t.Fatal("Expected az --subscription to take a value")
 	}
 	if optionTakesValue("unknown", "--context") {
 		t.Fatal("Expected unknown command option to return false")
@@ -583,6 +598,31 @@ func TestEngine_TrySubcommandFix_ShellAndResolvedCommand(t *testing.T) {
 
 	if got := eng.trySubcommandFix("git -- stattus"); !got.Fixed || got.Command != "git -- status" {
 		t.Fatalf("Expected subcommand fix after double dash, got %+v", got)
+	}
+}
+
+func TestEngine_TrySubcommandFix_MultiLevelCloudCommands(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{name: "aws nested command", cmd: "aws s3 lss", wantCmd: "aws s3 ls"},
+		{name: "gcloud nested command", cmd: "gcloud compute isntances listt", wantCmd: "gcloud compute instances list"}, //nolint:misspell
+		{name: "az nested command", cmd: "az group lisr", wantCmd: "az group list"},
+		{name: "resolved main command and nested subcommands", cmd: "gclodu copmute isntances listt", wantCmd: "gcloud compute instances list"},                          //nolint:misspell
+		{name: "cloud options before nested subcommands", cmd: "gcloud --project demo copmute isntances listt", wantCmd: "gcloud --project demo compute instances list"}, //nolint:misspell
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+		})
 	}
 }
 

@@ -182,3 +182,119 @@ exit 1
 		t.Fatalf("dynamic go subcommand discovery failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }
+
+func TestE2ECloudDynamicSubcommandDiscovery(t *testing.T) {
+	tests := []struct {
+		name          string
+		tool          string
+		script        string
+		command       string
+		want          string
+		cachePath     string
+		cacheChildren []string
+	}{
+		{
+			name:    "aws nested discovery",
+			tool:    "aws",
+			command: "awss s3 lss",
+			want:    "aws s3 ls\n",
+			script: `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  printf 'SERVICES\n  s3          Amazon Simple Storage Service\n'
+  exit 0
+fi
+if [ "$1" = "s3" ] && [ "$2" = "help" ]; then
+  printf 'COMMANDS\n  ls          List objects\n  cp          Copy objects\n'
+  exit 0
+fi
+exit 1
+`,
+			cachePath:     "s3",
+			cacheChildren: []string{"ls", "cp"},
+		},
+		{
+			name:    "gcloud nested discovery",
+			tool:    "gcloud",
+			command: "gclodu copmute isntances listt", //nolint:misspell
+			want:    "gcloud compute instances list\n",
+			script: `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  printf 'GROUPS\n    compute     Read and write Compute Engine resources\n'
+  exit 0
+fi
+if [ "$1" = "compute" ] && [ "$2" = "--help" ]; then
+  printf 'GROUPS\n    instances   Read and write Compute Engine VM instances\n'
+  exit 0
+fi
+if [ "$1" = "compute" ] && [ "$2" = "instances" ] && [ "$3" = "--help" ]; then
+  printf 'COMMANDS\n    list        List Compute Engine instances\n'
+  exit 0
+fi
+exit 1
+`,
+			cachePath:     "compute instances",
+			cacheChildren: []string{"list"},
+		},
+		{
+			name:    "az nested discovery",
+			tool:    "az",
+			command: "azz gorup lisr",
+			want:    "az group list\n",
+			script: `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  printf 'Subgroups:\n  group        Manage resource groups.\n'
+  exit 0
+fi
+if [ "$1" = "group" ] && [ "$2" = "--help" ]; then
+  printf 'Commands:\n  list         List resource groups.\n'
+  exit 0
+fi
+exit 1
+`,
+			cachePath:     "group",
+			cacheChildren: []string{"list"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newE2EEnv(t)
+			env.removeSubcommandCache(t)
+			env.writeBinScript(t, tt.tool, tt.script)
+
+			result := env.run(t, "fix", tt.command)
+			if result.code != 0 || result.stdout != tt.want {
+				t.Fatalf("dynamic cloud discovery failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+			}
+
+			cacheFile := filepath.Join(env.configDir(), "subcommands.json")
+			data, err := os.ReadFile(cacheFile)
+			if err != nil {
+				t.Fatalf("failed to read subcommand cache: %v", err)
+			}
+
+			var caches []commands.SubcommandCache
+			if err := json.Unmarshal(data, &caches); err != nil {
+				t.Fatalf("failed to parse subcommand cache: %v", err)
+			}
+
+			for _, cache := range caches {
+				if cache.Tool != tt.tool {
+					continue
+				}
+				children := cache.Children[tt.cachePath]
+				if len(children) != len(tt.cacheChildren) {
+					t.Fatalf("expected cache path %q children %v, got %v", tt.cachePath, tt.cacheChildren, children)
+				}
+				for i, child := range tt.cacheChildren {
+					if children[i] != child {
+						t.Fatalf("expected cache path %q children[%d] = %q, got %q", tt.cachePath, i, child, children[i])
+					}
+				}
+				return
+			}
+
+			t.Fatalf("tool %s was not cached after dynamic discovery: %s", tt.tool, data)
+		})
+	}
+}

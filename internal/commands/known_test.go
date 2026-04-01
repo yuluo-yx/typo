@@ -34,7 +34,7 @@ func TestDiscoverCommon(t *testing.T) {
 		t.Error("Expected some common commands")
 	}
 
-	for _, expected := range []string{"git", "xargs"} {
+	for _, expected := range []string{"git", "xargs", "aws", "gcloud", "az"} {
 		found := false
 		for _, cmd := range cmds {
 			if cmd == expected {
@@ -121,6 +121,11 @@ func TestAddFileExtension(t *testing.T) {
 func TestIsCommonCommand(t *testing.T) {
 	if !IsCommonCommand("docker") {
 		t.Fatal("Expected docker to be a common command")
+	}
+	for _, cmd := range []string{"aws", "gcloud", "az"} {
+		if !IsCommonCommand(cmd) {
+			t.Fatalf("Expected %s to be a common command", cmd)
+		}
 	}
 	if IsCommonCommand("not-a-real-common-command") {
 		t.Fatal("Expected unknown command to not be common")
