@@ -727,8 +727,6 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 		return result
 	}
 
-	matchCfg := e.distanceMatchConfig()
-
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
 		return FixResult{Fixed: false}
@@ -751,42 +749,19 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 		return FixResult{Fixed: false}
 	}
 
-	subcmd := parts[subcmdIdx]
-	if commands.HasBuiltinSubcommand(mainCmd, subcmd) {
+	fixedParts, changed := e.fixSubcommandParts(mainCmd, parts, subcmdIdx)
+	if !changed {
 		return FixResult{Fixed: false}
 	}
 
-	// Fast-path obviously valid builtin subcommands to avoid synchronous help probing on cold start.
-	subcommands := e.subcommands.Get(mainCmd)
-	if len(subcommands) == 0 {
-		return FixResult{Fixed: false}
+	fixedParts[0] = mainCmd
+	fixedCommand := strings.Join(fixedParts, " ")
+	return FixResult{
+		Fixed:   true,
+		Command: fixedCommand,
+		Source:  "subcommand",
+		Message: fmt.Sprintf("did you mean: %s?", fixedCommand),
 	}
-
-	// Check if subcommand is already valid
-	if containsString(subcommands, subcmd) {
-		return FixResult{Fixed: false}
-	}
-
-	// Try to find closest subcommand.
-	bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, matchCfg)
-
-	// Threshold: distance <= 2 and similarity > 60%
-	if bestMatch != "" && bestDistance <= e.maxEditDistance {
-		similarity := Similarity(subcmd, bestMatch, e.keyboard)
-		if similarity >= e.similarityThreshold {
-			// Update main command if it was resolved
-			parts[0] = mainCmd
-			parts[subcmdIdx] = bestMatch
-			return FixResult{
-				Fixed:   true,
-				Command: strings.Join(parts, " "),
-				Source:  "subcommand",
-				Message: fmt.Sprintf("did you mean: %s?", bestMatch),
-			}
-		}
-	}
-
-	return FixResult{Fixed: false}
 }
 
 func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
@@ -794,8 +769,6 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 	if err != nil {
 		return FixResult{Fixed: false}, false
 	}
-
-	matchCfg := e.distanceMatchConfig()
 
 	for _, line := range lines {
 		mainCmd, resolvedCmd, resolveErr := e.resolveShellCommandLine(line)
@@ -808,35 +781,21 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 			continue
 		}
 
-		subcmd := line.args[subcmdIdx].Lit()
-		if commands.HasBuiltinSubcommand(mainCmd, subcmd) {
+		replacements, changed := e.fixSubcommandWords(mainCmd, line, subcmdIdx)
+		if !changed {
 			continue
 		}
 
-		// Fast-path obviously valid builtin subcommands to avoid synchronous help probing on cold start.
-		subcommands := e.subcommands.Get(mainCmd)
-		if len(subcommands) == 0 {
-			continue
-		}
-		if containsString(subcommands, subcmd) {
-			continue
-		}
-
-		bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, matchCfg)
-		if !isGoodDistanceMatch(subcmd, bestMatch, bestDistance, matchCfg) {
-			continue
-		}
-
-		replacements := []shellWordReplacement{{index: subcmdIdx, value: bestMatch}}
 		if resolvedCmd != "" {
 			replacements = append(replacements, shellWordReplacement{index: line.commandIdx, value: resolvedCmd})
 		}
 
+		fixedCommand := line.replaceWords(replacements...)
 		return FixResult{
 			Fixed:   true,
-			Command: line.replaceWords(replacements...),
+			Command: fixedCommand,
 			Source:  "subcommand",
-			Message: fmt.Sprintf("did you mean: %s?", bestMatch),
+			Message: fmt.Sprintf("did you mean: %s?", fixedCommand),
 		}, true
 	}
 
@@ -849,6 +808,153 @@ func (e *Engine) trySubcommandFixWithSource(cmd, source string) FixResult {
 		result.Source = source
 	}
 	return result
+}
+
+type subcommandReplacement struct {
+	index int
+	value string
+}
+
+func (e *Engine) fixSubcommandParts(mainCmd string, parts []string, startIdx int) ([]string, bool) {
+	fixed := append([]string(nil), parts...)
+	replacements, changed := e.collectSubcommandReplacements(mainCmd, fixed, startIdx)
+	for _, replacement := range replacements {
+		fixed[replacement.index] = replacement.value
+	}
+
+	return fixed, changed
+}
+
+func (e *Engine) fixSubcommandWords(mainCmd string, line *shellCommandLine, startIdx int) ([]shellWordReplacement, bool) {
+	tokens := make([]string, len(line.args))
+	for i, arg := range line.args {
+		tokens[i] = arg.Lit()
+	}
+
+	updates, changed := e.collectSubcommandReplacements(mainCmd, tokens, startIdx)
+	replacements := make([]shellWordReplacement, 0, len(updates))
+	for _, update := range updates {
+		replacements = append(replacements, shellWordReplacement(update))
+	}
+
+	return replacements, changed
+}
+
+func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, startIdx int) ([]subcommandReplacement, bool) {
+	cfg := e.distanceMatchConfig()
+	prefix := make([]string, 0, len(tokens)-startIdx)
+	replacements := make([]subcommandReplacement, 0)
+	changed := false
+	expectValue := false
+
+	for i := startIdx; i < len(tokens); i++ {
+		token := tokens[i]
+		if expectValue {
+			expectValue = false
+			continue
+		}
+
+		subcommands := e.subcommands.GetChildren(mainCmd, prefix)
+		if len(subcommands) == 0 {
+			break
+		}
+
+		if token == "--" {
+			break
+		}
+
+		if handled, needsValue := subcommandOptionBehavior(mainCmd, token, subcommands, tokenAt(tokens, i+1), tokenAt(tokens, i+2), cfg); handled {
+			expectValue = needsValue
+			continue
+		}
+
+		if containsString(subcommands, token) {
+			prefix = append(prefix, token)
+			continue
+		}
+
+		match, distance := closestSubcommand(token, subcommands, cfg)
+		if !isGoodDistanceMatch(token, match, distance, cfg) {
+			break
+		}
+
+		replacements = append(replacements, subcommandReplacement{index: i, value: match})
+		prefix = append(prefix, match)
+		changed = true
+	}
+
+	return replacements, changed
+}
+
+func subcommandOptionBehavior(mainCmd, token string, subcommands []string, nextToken, nextNextToken string, cfg distanceMatchConfig) (bool, bool) {
+	if token == "--" {
+		return false, false
+	}
+
+	name, suffix, isOption := splitToolOptionToken(token)
+	if isOption {
+		if suffix != "" {
+			return true, false
+		}
+
+		if optionTakesValue(mainCmd, name) || toolOptionTakesValue(mainCmd, name) {
+			return true, true
+		}
+
+		if shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken, subcommands, cfg) {
+			return true, true
+		}
+
+		return true, false
+	}
+
+	if !strings.HasPrefix(token, "-") || token == "-" {
+		return false, false
+	}
+
+	if optionTakesValue(mainCmd, token) || toolOptionTakesValue(mainCmd, token) {
+		return true, true
+	}
+
+	if shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken, subcommands, cfg) {
+		return true, true
+	}
+
+	return true, false
+}
+
+func shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken string, subcommands []string, cfg distanceMatchConfig) bool {
+	if nextToken == "" || nextNextToken == "" {
+		return false
+	}
+
+	if nextToken == "--" || strings.HasPrefix(nextToken, "-") {
+		return false
+	}
+
+	if isSubcommandCandidate(nextToken, subcommands, cfg) {
+		return false
+	}
+
+	// 层级子命令之间允许插入 `--flag value`，这里用下一层子命令候选做保守判断。
+	return isSubcommandCandidate(nextNextToken, subcommands, cfg)
+}
+
+func isSubcommandCandidate(token string, subcommands []string, cfg distanceMatchConfig) bool {
+	if containsString(subcommands, token) {
+		return true
+	}
+
+	match, distance := closestSubcommand(token, subcommands, cfg)
+	return isGoodDistanceMatch(token, match, distance, cfg)
+}
+
+func tokenAt(tokens []string, idx int) string {
+	if idx < 0 || idx >= len(tokens) {
+		return ""
+	}
+
+	return tokens[idx]
 }
 
 func (e *Engine) resolveShellCommandLine(line *shellCommandLine) (string, string, error) {
@@ -1329,6 +1435,39 @@ var subcommandPreOptionsWithValues = map[string]map[string]bool{
 		"--repository-cache":  true,
 		"--repository-config": true,
 		"-n":                  true,
+	},
+	"aws": {
+		"--ca-bundle":           true,
+		"--cli-binary-format":   true,
+		"--cli-connect-timeout": true,
+		"--cli-read-timeout":    true,
+		"--color":               true,
+		"--endpoint-url":        true,
+		"--output":              true,
+		"--profile":             true,
+		"--query":               true,
+		"--region":              true,
+	},
+	"gcloud": {
+		"--access-token-file":            true,
+		"--account":                      true,
+		"--billing-project":              true,
+		"--configuration":                true,
+		"--filter":                       true,
+		"--flags-file":                   true,
+		"--flatten":                      true,
+		"--format":                       true,
+		"--impersonate-service-account":  true,
+		"--project":                      true,
+		"--trace-token":                  true,
+		"--user-output-enabled-log-file": true,
+		"--verbosity":                    true,
+	},
+	"az": {
+		"--output":       true,
+		"--query":        true,
+		"--subscription": true,
+		"--tenant":       true,
 	},
 }
 

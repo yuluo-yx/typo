@@ -85,6 +85,7 @@ func DiscoverCommon() []string {
 		"mkdir", "rm", "cp", "mv", "touch",
 		"echo", "printf", "env", "export",
 		"kubectl", "helm", "terraform", "ansible",
+		"aws", "gcloud", "az",
 	}
 }
 

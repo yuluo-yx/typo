@@ -179,14 +179,22 @@ func TestRun(t *testing.T) {
 
 			code := run()
 
-			wOut.Close()
-			wErr.Close()
+			if err := wOut.Close(); err != nil {
+				t.Fatalf("Close stdout pipe failed: %v", err)
+			}
+			if err := wErr.Close(); err != nil {
+				t.Fatalf("Close stderr pipe failed: %v", err)
+			}
 			os.Stdout = oldStdout
 			os.Stderr = oldStderr
 
 			var bufOut, bufErr bytes.Buffer
-			bufOut.ReadFrom(rOut)
-			bufErr.ReadFrom(rErr)
+			if _, err := bufOut.ReadFrom(rOut); err != nil {
+				t.Fatalf("Read stdout pipe failed: %v", err)
+			}
+			if _, err := bufErr.ReadFrom(rErr); err != nil {
+				t.Fatalf("Read stderr pipe failed: %v", err)
+			}
 			output := bufOut.String() + bufErr.String()
 
 			if code != tt.wantCode {
@@ -292,11 +300,15 @@ func TestFixCommand(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -313,8 +325,16 @@ func TestFixDokcerPrefersDocker(t *testing.T) {
 
 	oldHome := os.Getenv("HOME")
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("HOME", oldHome)
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	tmpBin := t.TempDir()
@@ -341,11 +361,15 @@ func TestFixDokcerPrefersDocker(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -368,11 +392,15 @@ func TestFixNoMatch(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -391,12 +419,24 @@ func TestFixHistoryWriteError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close temp file failed: %v", err)
+	}
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpFile.Name())
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpFile.Name()); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "fix", "gut", "status"}
 
@@ -406,11 +446,15 @@ func TestFixHistoryWriteError(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -436,14 +480,22 @@ func TestFixValidCommandDoesNotReturnSuccess(t *testing.T) {
 
 	code := run()
 
-	wOut.Close()
-	wErr.Close()
+	if err := wOut.Close(); err != nil {
+		t.Fatalf("Close stdout pipe failed: %v", err)
+	}
+	if err := wErr.Close(); err != nil {
+		t.Fatalf("Close stderr pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 	os.Stderr = oldStderr
 
 	var bufOut, bufErr bytes.Buffer
-	bufOut.ReadFrom(rOut)
-	bufErr.ReadFrom(rErr)
+	if _, err := bufOut.ReadFrom(rOut); err != nil {
+		t.Fatalf("Read stdout pipe failed: %v", err)
+	}
+	if _, err := bufErr.ReadFrom(rErr); err != nil {
+		t.Fatalf("Read stderr pipe failed: %v", err)
+	}
 
 	if code != 1 {
 		t.Fatalf("Expected exit code 1 for unchanged valid command, got %d", code)
@@ -465,11 +517,19 @@ func TestFixWithStderrFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 
 	stderrContent := "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"
-	tmpFile.WriteString(stderrContent)
-	tmpFile.Close()
+	if _, err := tmpFile.WriteString(stderrContent); err != nil {
+		t.Fatalf("WriteString failed: %v", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close temp file failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "fix", "-s", tmpFile.Name(), "git", "remove", "-v"}
 
@@ -479,11 +539,15 @@ func TestFixWithStderrFile(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -502,7 +566,11 @@ func TestFixWithExitCodeAndPermissionDenied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 
 	if _, err := tmpFile.WriteString("mkdir: 1: Permission denied\n"); err != nil {
 		t.Fatalf("Failed to write temp file: %v", err)
@@ -519,11 +587,15 @@ func TestFixWithExitCodeAndPermissionDenied(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -546,11 +618,15 @@ func TestFixWithGlobalOptionBeforeSubcommand(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -573,11 +649,15 @@ func TestFixWithSudoWrappedCommand(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -600,11 +680,15 @@ func TestFixPreservesQuotedArguments(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -627,11 +711,15 @@ func TestFixPreservesCompoundCommandWithSemicolon(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -654,11 +742,15 @@ func TestFixWithSudoWrappedCompoundCommand(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -681,11 +773,15 @@ func TestFixCanCorrectMultipleTyposInCompoundCommand(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -709,11 +805,15 @@ func TestFixWithNonexistentStderrFile(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	// Should still fix the command even without stderr file
@@ -737,11 +837,15 @@ func TestRulesList(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -765,7 +869,9 @@ func TestRulesAddRemove(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	if code != 0 {
@@ -780,7 +886,9 @@ func TestRulesAddRemove(t *testing.T) {
 
 	code = run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	if code != 0 {
@@ -800,7 +908,9 @@ func TestRulesAddMissingArgs(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -820,7 +930,9 @@ func TestRulesRemoveMissingArgs(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -840,7 +952,9 @@ func TestRulesUnknownSubcommand(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -860,11 +974,15 @@ func TestHistoryList(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	_ = buf.String()
 
 	if code != 0 {
@@ -884,7 +1002,9 @@ func TestHistoryClear(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	if code != 0 {
@@ -904,7 +1024,9 @@ func TestRulesRemoveNonexistent(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -924,7 +1046,9 @@ func TestHistoryUnknownSubcommand(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -941,13 +1065,25 @@ func TestCmdLearnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close temp file failed: %v", err)
+	}
 
 	// Set config dir to the file path
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpFile.Name())
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpFile.Name()); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "learn", "wrongcmd", "rightcmd"}
 
@@ -957,7 +1093,9 @@ func TestCmdLearnError(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -974,12 +1112,24 @@ func TestHistoryClearError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close temp file failed: %v", err)
+	}
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpFile.Name())
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpFile.Name()); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "history", "clear"}
 
@@ -989,7 +1139,9 @@ func TestHistoryClearError(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -1006,12 +1158,24 @@ func TestRulesAddError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close temp file failed: %v", err)
+	}
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpFile.Name())
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpFile.Name()); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "rules", "add", "fromcmd", "tocmd"}
 
@@ -1021,7 +1185,9 @@ func TestRulesAddError(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -1044,14 +1210,22 @@ func TestFixWithMessage(t *testing.T) {
 
 	code := run()
 
-	wOut.Close()
-	wErr.Close()
+	if err := wOut.Close(); err != nil {
+		t.Fatalf("Close stdout pipe failed: %v", err)
+	}
+	if err := wErr.Close(); err != nil {
+		t.Fatalf("Close stderr pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 	os.Stderr = oldStderr
 
 	var bufOut, bufErr bytes.Buffer
-	bufOut.ReadFrom(rOut)
-	bufErr.ReadFrom(rErr)
+	if _, err := bufOut.ReadFrom(rOut); err != nil {
+		t.Fatalf("Read stdout pipe failed: %v", err)
+	}
+	if _, err := bufErr.ReadFrom(rErr); err != nil {
+		t.Fatalf("Read stderr pipe failed: %v", err)
+	}
 	output := bufOut.String() + bufErr.String()
 
 	if code != 0 {
@@ -1064,9 +1238,15 @@ func TestFixWithMessage(t *testing.T) {
 
 func TestCreateEngineWithEmptyPath(t *testing.T) {
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
-	os.Setenv("PATH", "")
+	if err := os.Setenv("PATH", ""); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 
 	cfg := &config.Config{ConfigDir: ""}
 	eng := createEngine(cfg)
@@ -1088,7 +1268,9 @@ func TestInitMissingShell(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	if code != 1 {
@@ -1103,11 +1285,15 @@ func TestPrintUsage(t *testing.T) {
 
 	printUsage()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if !bytes.Contains([]byte(output), []byte("typo")) {
@@ -1122,11 +1308,15 @@ func TestCmdVersion(t *testing.T) {
 
 	cmdVersion()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if !bytes.Contains([]byte(output), []byte("typo")) {
@@ -1225,11 +1415,15 @@ func TestPrintZshIntegration(t *testing.T) {
 
 	printIntegrationScript("zsh")
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if output != installscript.ZshScript {
@@ -1253,11 +1447,15 @@ func TestPrintZshIntegrationAddsTrailingNewline(t *testing.T) {
 
 	printIntegrationScript("zsh")
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 
 	if buf.String() != "echo test\n" {
 		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
@@ -1271,11 +1469,15 @@ func TestPrintBashIntegration(t *testing.T) {
 
 	printIntegrationScript("bash")
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if output != installscript.BashScript {
@@ -1299,11 +1501,15 @@ func TestPrintBashIntegrationAddsTrailingNewline(t *testing.T) {
 
 	printIntegrationScript("bash")
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 
 	if buf.String() != "echo test\n" {
 		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
@@ -1314,9 +1520,21 @@ func TestGetGoBinDir(t *testing.T) {
 	oldGoBin := os.Getenv("GOBIN")
 	oldGoPath := os.Getenv("GOPATH")
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("GOBIN", oldGoBin)
-	defer os.Setenv("GOPATH", oldGoPath)
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("GOBIN", oldGoBin); err != nil {
+			t.Fatalf("Restore GOBIN failed: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Setenv("GOPATH", oldGoPath); err != nil {
+			t.Fatalf("Restore GOPATH failed: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	if err := os.Setenv("GOBIN", "/tmp/custom-bin"); err != nil {
 		t.Fatalf("Setenv GOBIN failed: %v", err)
@@ -1325,7 +1543,9 @@ func TestGetGoBinDir(t *testing.T) {
 		t.Fatalf("getGoBinDir() with GOBIN = %q", got)
 	}
 
-	os.Unsetenv("GOBIN")
+	if err := os.Unsetenv("GOBIN"); err != nil {
+		t.Fatalf("Unsetenv GOBIN failed: %v", err)
+	}
 	if err := os.Setenv("GOPATH", "/tmp/custom-gopath"); err != nil {
 		t.Fatalf("Setenv GOPATH failed: %v", err)
 	}
@@ -1333,7 +1553,9 @@ func TestGetGoBinDir(t *testing.T) {
 		t.Fatalf("getGoBinDir() with GOPATH = %q", got)
 	}
 
-	os.Unsetenv("GOPATH")
+	if err := os.Unsetenv("GOPATH"); err != nil {
+		t.Fatalf("Unsetenv GOPATH failed: %v", err)
+	}
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
 		t.Fatalf("Setenv HOME failed: %v", err)
@@ -1347,12 +1569,24 @@ func TestGetGoBinDir_UserHomeError(t *testing.T) {
 	oldGoBin := os.Getenv("GOBIN")
 	oldGoPath := os.Getenv("GOPATH")
 	oldUserHomeDir := userHomeDir
-	defer os.Setenv("GOBIN", oldGoBin)
-	defer os.Setenv("GOPATH", oldGoPath)
+	defer func() {
+		if err := os.Setenv("GOBIN", oldGoBin); err != nil {
+			t.Fatalf("Restore GOBIN failed: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Setenv("GOPATH", oldGoPath); err != nil {
+			t.Fatalf("Restore GOPATH failed: %v", err)
+		}
+	}()
 	defer func() { userHomeDir = oldUserHomeDir }()
 
-	os.Unsetenv("GOBIN")
-	os.Unsetenv("GOPATH")
+	if err := os.Unsetenv("GOBIN"); err != nil {
+		t.Fatalf("Unsetenv GOBIN failed: %v", err)
+	}
+	if err := os.Unsetenv("GOPATH"); err != nil {
+		t.Fatalf("Unsetenv GOPATH failed: %v", err)
+	}
 	userHomeDir = func() (string, error) {
 		return "", os.ErrNotExist
 	}
@@ -1365,11 +1599,21 @@ func TestGetGoBinDir_UserHomeError(t *testing.T) {
 func TestCheckGoBinTypo(t *testing.T) {
 	oldGoBin := os.Getenv("GOBIN")
 	oldGoPath := os.Getenv("GOPATH")
-	defer os.Setenv("GOBIN", oldGoBin)
-	defer os.Setenv("GOPATH", oldGoPath)
+	defer func() {
+		if err := os.Setenv("GOBIN", oldGoBin); err != nil {
+			t.Fatalf("Restore GOBIN failed: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Setenv("GOPATH", oldGoPath); err != nil {
+			t.Fatalf("Restore GOPATH failed: %v", err)
+		}
+	}()
 
 	goBinDir := t.TempDir()
-	os.Unsetenv("GOPATH")
+	if err := os.Unsetenv("GOPATH"); err != nil {
+		t.Fatalf("Unsetenv GOPATH failed: %v", err)
+	}
 	if err := os.Setenv("GOBIN", goBinDir); err != nil {
 		t.Fatalf("Setenv GOBIN failed: %v", err)
 	}
@@ -1392,12 +1636,24 @@ func TestCheckGoBinTypo_EmptyGoBinDir(t *testing.T) {
 	oldGoBin := os.Getenv("GOBIN")
 	oldGoPath := os.Getenv("GOPATH")
 	oldUserHomeDir := userHomeDir
-	defer os.Setenv("GOBIN", oldGoBin)
-	defer os.Setenv("GOPATH", oldGoPath)
+	defer func() {
+		if err := os.Setenv("GOBIN", oldGoBin); err != nil {
+			t.Fatalf("Restore GOBIN failed: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Setenv("GOPATH", oldGoPath); err != nil {
+			t.Fatalf("Restore GOPATH failed: %v", err)
+		}
+	}()
 	defer func() { userHomeDir = oldUserHomeDir }()
 
-	os.Unsetenv("GOBIN")
-	os.Unsetenv("GOPATH")
+	if err := os.Unsetenv("GOBIN"); err != nil {
+		t.Fatalf("Unsetenv GOBIN failed: %v", err)
+	}
+	if err := os.Unsetenv("GOPATH"); err != nil {
+		t.Fatalf("Unsetenv GOPATH failed: %v", err)
+	}
 	userHomeDir = func() (string, error) {
 		return "", os.ErrNotExist
 	}
@@ -1432,11 +1688,23 @@ func TestDoctor(t *testing.T) {
 	}
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
-	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
-	os.Unsetenv("TYPO_SHELL_INTEGRATION")
+	defer func() {
+		if err := os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv); err != nil {
+			t.Fatalf("Restore TYPO_SHELL_INTEGRATION failed: %v", err)
+		}
+	}()
+	if err := os.Unsetenv("TYPO_SHELL_INTEGRATION"); err != nil {
+		t.Fatalf("Unsetenv TYPO_SHELL_INTEGRATION failed: %v", err)
+	}
 	oldShell := os.Getenv("SHELL")
-	defer os.Setenv("SHELL", oldShell)
-	os.Setenv("SHELL", "/bin/zsh")
+	defer func() {
+		if err := os.Setenv("SHELL", oldShell); err != nil {
+			t.Fatalf("Restore SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("SHELL", "/bin/zsh"); err != nil {
+		t.Fatalf("Setenv SHELL failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "doctor"}
 
@@ -1446,11 +1714,15 @@ func TestDoctor(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -1489,14 +1761,24 @@ func TestDoctorShowsBashHintsWhenShellIsBash(t *testing.T) {
 	}
 
 	oldShell := os.Getenv("SHELL")
-	defer os.Setenv("SHELL", oldShell)
+	defer func() {
+		if err := os.Setenv("SHELL", oldShell); err != nil {
+			t.Fatalf("Restore SHELL failed: %v", err)
+		}
+	}()
 	if err := os.Setenv("SHELL", "/bin/bash"); err != nil {
 		t.Fatalf("Setenv SHELL failed: %v", err)
 	}
 
 	oldIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
-	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldIntegration)
-	os.Unsetenv("TYPO_SHELL_INTEGRATION")
+	defer func() {
+		if err := os.Setenv("TYPO_SHELL_INTEGRATION", oldIntegration); err != nil {
+			t.Fatalf("Restore TYPO_SHELL_INTEGRATION failed: %v", err)
+		}
+	}()
+	if err := os.Unsetenv("TYPO_SHELL_INTEGRATION"); err != nil {
+		t.Fatalf("Unsetenv TYPO_SHELL_INTEGRATION failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "doctor"}
 
@@ -1506,11 +1788,15 @@ func TestDoctorShowsBashHintsWhenShellIsBash(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -1534,11 +1820,23 @@ func TestDoctorWithShellIntegration(t *testing.T) {
 	}
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
-	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
-	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	defer func() {
+		if err := os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv); err != nil {
+			t.Fatalf("Restore TYPO_SHELL_INTEGRATION failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("TYPO_SHELL_INTEGRATION", "1"); err != nil {
+		t.Fatalf("Setenv TYPO_SHELL_INTEGRATION failed: %v", err)
+	}
 	oldShell := os.Getenv("SHELL")
-	defer os.Setenv("SHELL", oldShell)
-	os.Setenv("SHELL", "/bin/zsh")
+	defer func() {
+		if err := os.Setenv("SHELL", oldShell); err != nil {
+			t.Fatalf("Restore SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("SHELL", "/bin/zsh"); err != nil {
+		t.Fatalf("Setenv SHELL failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "doctor"}
 
@@ -1548,11 +1846,15 @@ func TestDoctorWithShellIntegration(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -1585,8 +1887,14 @@ func TestDoctorGoBinNotInPath(t *testing.T) {
 	defer func() { lookPath = oldLookPath }()
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
-	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
-	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	defer func() {
+		if err := os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv); err != nil {
+			t.Fatalf("Restore TYPO_SHELL_INTEGRATION failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("TYPO_SHELL_INTEGRATION", "1"); err != nil {
+		t.Fatalf("Setenv TYPO_SHELL_INTEGRATION failed: %v", err)
+	}
 
 	tmpDir := t.TempDir()
 	goBinDir := filepath.Join(tmpDir, "bin")
@@ -1595,12 +1903,24 @@ func TestDoctorGoBinNotInPath(t *testing.T) {
 	}
 
 	oldGoBin := os.Getenv("GOBIN")
-	defer os.Setenv("GOBIN", oldGoBin)
-	os.Setenv("GOBIN", goBinDir)
+	defer func() {
+		if err := os.Setenv("GOBIN", oldGoBin); err != nil {
+			t.Fatalf("Restore GOBIN failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("GOBIN", goBinDir); err != nil {
+		t.Fatalf("Setenv GOBIN failed: %v", err)
+	}
 
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
-	os.Setenv("PATH", "/usr/bin:/bin")
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("PATH", "/usr/bin:/bin"); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 
 	lookPath = func(file string) (string, error) {
 		return filepath.Join(goBinDir, "typo"), nil
@@ -1614,11 +1934,15 @@ func TestDoctorGoBinNotInPath(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -1639,8 +1963,14 @@ func TestDoctorTypoMissingFromPath(t *testing.T) {
 	}
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
-	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
-	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	defer func() {
+		if err := os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv); err != nil {
+			t.Fatalf("Restore TYPO_SHELL_INTEGRATION failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("TYPO_SHELL_INTEGRATION", "1"); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "doctor"}
 
@@ -1650,11 +1980,15 @@ func TestDoctorTypoMissingFromPath(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -1675,11 +2009,21 @@ func TestDoctorPrintsCustomConfig(t *testing.T) {
 	}
 
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
-	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
-	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	defer func() {
+		if err := os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv); err != nil {
+			t.Fatalf("Restore TYPO_SHELL_INTEGRATION failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("TYPO_SHELL_INTEGRATION", "1"); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
 		t.Fatalf("Setenv HOME failed: %v", err)
@@ -1701,11 +2045,15 @@ func TestDoctorPrintsCustomConfig(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -1730,7 +2078,11 @@ func TestFixWritesUsageHistory(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -1745,7 +2097,9 @@ func TestFixWritesUsageHistory(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	if code != 0 {
@@ -1763,7 +2117,11 @@ func TestFixWithPermissionParser_DoesNotWriteUsageHistory(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -1774,7 +2132,11 @@ func TestFixWithPermissionParser_DoesNotWriteUsageHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 
 	if _, err := tmpFile.WriteString("mkdir: /root/test: Permission denied\n"); err != nil {
 		t.Fatalf("Failed to write temp file: %v", err)
@@ -1791,11 +2153,15 @@ func TestFixWithPermissionParser_DoesNotWriteUsageHistory(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -1816,7 +2182,11 @@ func TestFixWithParser_DoesNotWriteUsageHistory(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -1827,7 +2197,11 @@ func TestFixWithParser_DoesNotWriteUsageHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 
 	if _, err := tmpFile.WriteString("git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"); err != nil {
 		t.Fatalf("Failed to write temp file: %v", err)
@@ -1844,11 +2218,15 @@ func TestFixWithParser_DoesNotWriteUsageHistory(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -1869,7 +2247,11 @@ func TestFixNoHistoryFlag_DoesNotWriteUsageHistory(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -1884,11 +2266,15 @@ func TestFixNoHistoryFlag_DoesNotWriteUsageHistory(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -1925,11 +2311,15 @@ func TestLearnSurvivesHistoryClear(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -1946,8 +2336,16 @@ func TestLearnOverridesConflictingHistory(t *testing.T) {
 
 	oldHome := os.Getenv("HOME")
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("HOME", oldHome)
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	tmpBin := t.TempDir()
@@ -1989,11 +2387,15 @@ func TestLearnOverridesConflictingHistory(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -2157,11 +2559,21 @@ func TestUninstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+	}()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpDir)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
 
 	// Create ~/.typo directory
 	typoDir := tmpDir + "/.typo"
@@ -2177,11 +2589,15 @@ func TestUninstall(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -2211,11 +2627,21 @@ func TestUninstallNonexistentConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+	}()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpDir)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
 
 	// Don't create .typo directory
 
@@ -2227,11 +2653,15 @@ func TestUninstallNonexistentConfig(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -2250,11 +2680,21 @@ func TestUninstallWithZshrcHint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+	}()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpDir)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
 
 	if err := os.WriteFile(filepath.Join(tmpDir, ".zshrc"), []byte("eval \"$(typo init zsh)\"\n"), 0600); err != nil {
 		t.Fatalf("Failed to create .zshrc: %v", err)
@@ -2268,11 +2708,15 @@ func TestUninstallWithZshrcHint(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -2291,11 +2735,21 @@ func TestUninstallWithBashrcHint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+	}()
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpDir)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
 
 	if err := os.WriteFile(filepath.Join(tmpDir, ".bashrc"), []byte("eval \"$(typo init bash)\"\n"), 0600); err != nil {
 		t.Fatalf("Failed to create .bashrc: %v", err)
@@ -2309,11 +2763,15 @@ func TestUninstallWithBashrcHint(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 0 {
@@ -2332,12 +2790,24 @@ func TestUninstallConfigRemoveFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close temp file failed: %v", err)
+	}
 
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tmpFile.Name())
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpFile.Name()); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
 
 	os.Args = []string{"typo", "uninstall"}
 
@@ -2347,11 +2817,15 @@ func TestUninstallConfigRemoveFailure(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -2389,11 +2863,15 @@ func TestUninstallInjectedErrors(t *testing.T) {
 
 	code := run()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if code != 1 {
@@ -2426,8 +2904,12 @@ func runCLI(t *testing.T, args []string) (int, string, string) {
 
 	code := run()
 
-	wOut.Close()
-	wErr.Close()
+	if err := wOut.Close(); err != nil {
+		t.Fatalf("Close stdout pipe failed: %v", err)
+	}
+	if err := wErr.Close(); err != nil {
+		t.Fatalf("Close stderr pipe failed: %v", err)
+	}
 	os.Stdout = oldStdout
 	os.Stderr = oldStderr
 
@@ -2440,7 +2922,11 @@ func runCLI(t *testing.T, args []string) (int, string, string) {
 
 func TestConfigCommandLifecycle(t *testing.T) {
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -2488,7 +2974,11 @@ func TestConfigCommandLifecycle(t *testing.T) {
 
 func TestConfigGenRequiresForce(t *testing.T) {
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -2515,7 +3005,11 @@ func TestConfigGenRequiresForce(t *testing.T) {
 
 func TestConfigCommandErrors(t *testing.T) {
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -2552,13 +3046,21 @@ func TestConfigCommandErrors(t *testing.T) {
 
 func TestConfigCommandWriteFailures(t *testing.T) {
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpFile, err := os.CreateTemp("", "typo-home-file-*")
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 	_ = tmpFile.Close()
 
 	if err := os.Setenv("HOME", tmpFile.Name()); err != nil {
@@ -2588,7 +3090,11 @@ func TestConfigCommandWriteFailures(t *testing.T) {
 
 func TestFixUsesGlobalHistoryDisabledConfig(t *testing.T) {
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	tmpHome := t.TempDir()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
@@ -2668,11 +3174,15 @@ func TestDisabledCommandsFromConfigIgnoresUnknownScopesWithWarning(t *testing.T)
 
 	got := disabledCommandsFromConfig(cfg)
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
 	output := buf.String()
 
 	if !strings.Contains(output, "unknown disabled rule scopes") || !strings.Contains(output, "rust") {

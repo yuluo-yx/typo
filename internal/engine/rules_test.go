@@ -101,7 +101,9 @@ func TestRules_RemoveUserRule(t *testing.T) {
 
 	// Add then remove
 	rule := Rule{From: "testcmd", To: "correctcmd"}
-	r.AddUserRule(rule)
+	if err := r.AddUserRule(rule); err != nil {
+		t.Fatalf("AddUserRule failed: %v", err)
+	}
 
 	if err := r.RemoveUserRule("testcmd"); err != nil {
 		t.Fatalf("RemoveUserRule failed: %v", err)
@@ -159,7 +161,9 @@ func TestRules_EnableRuleSet(t *testing.T) {
 	}
 
 	// Re-enable
-	r.EnableRuleSet("git", true)
+	if err := r.EnableRuleSet("git", true); err != nil {
+		t.Fatalf("EnableRuleSet failed: %v", err)
+	}
 	rule, ok = r.Match("gut")
 	if !ok {
 		t.Error("Expected 'gut' rule to be re-enabled")
@@ -196,7 +200,9 @@ func TestRules_LoadExistingUserRules(t *testing.T) {
 	}
 	data, _ := jsonMarshal(existingRules)
 	rulesFile := filepath.Join(tmpDir, "rules.json")
-	os.WriteFile(rulesFile, data, 0644)
+	if err := os.WriteFile(rulesFile, data, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
 
 	// Load rules
 	r := NewRules(tmpDir)
@@ -262,7 +268,9 @@ func TestRules_LoadInvalidJSON(t *testing.T) {
 
 	// Write invalid JSON
 	rulesFile := filepath.Join(tmpDir, "rules.json")
-	os.WriteFile(rulesFile, []byte("invalid json {"), 0644)
+	if err := os.WriteFile(rulesFile, []byte("invalid json {"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
 
 	// Load rules - should not panic
 	r := NewRules(tmpDir)
@@ -291,8 +299,14 @@ func TestRules_SaveMkdirError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+			t.Fatalf("Remove temp file failed: %v", removeErr)
+		}
+	}()
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		t.Fatalf("Close temp file failed: %v", closeErr)
+	}
 
 	// Use the file path as config dir (will fail MkdirAll)
 	r := NewRules(tmpFile.Name())
@@ -309,7 +323,9 @@ func TestRules_ListRules_WithUserRules(t *testing.T) {
 	r := NewRules(tmpDir)
 
 	// Add user rule
-	r.AddUserRule(Rule{From: "mycustom", To: "mycorrect"})
+	if err := r.AddUserRule(Rule{From: "mycustom", To: "mycorrect"}); err != nil {
+		t.Fatalf("AddUserRule failed: %v", err)
+	}
 
 	rules := r.ListRules()
 
@@ -332,7 +348,9 @@ func TestRules_Match_DisabledRule(t *testing.T) {
 
 	// Add a disabled rule
 	rule := Rule{From: "disabledcmd", To: "correctcmd", Enable: false}
-	r.AddUserRule(rule)
+	if err := r.AddUserRule(rule); err != nil {
+		t.Fatalf("AddUserRule failed: %v", err)
+	}
 
 	// Manually set the rule to disabled
 	r.mu.Lock()
