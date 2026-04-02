@@ -57,6 +57,9 @@ func TestFindSubcommandIndex(t *testing.T) {
 		{name: "docker short flag without value", mainCmd: "docker", parts: []string{"docker", "-v", "build"}, wantIdx: 2},
 		{name: "git short option with value", mainCmd: "git", parts: []string{"git", "-C", "repo", "status"}, wantIdx: 3},
 		{name: "kubectl double dash", mainCmd: "kubectl", parts: []string{"kubectl", "--", "logs"}, wantIdx: 2},
+		{name: "aws option with value", mainCmd: "aws", parts: []string{"aws", "--profile", "prod", "s3", "ls"}, wantIdx: 3},
+		{name: "gcloud option with value", mainCmd: "gcloud", parts: []string{"gcloud", "--project", "demo", "compute", "instances", "list"}, wantIdx: 3},
+		{name: "az option with value", mainCmd: "az", parts: []string{"az", "--subscription", "demo", "group", "list"}, wantIdx: 3},
 		{name: "no subcommand", mainCmd: "git", parts: []string{"git"}, wantIdx: -1},
 	}
 
@@ -81,6 +84,9 @@ func TestFindSubcommandWordIndex(t *testing.T) {
 		{name: "kubectl double dash", mainCmd: "kubectl", raw: "kubectl -- logs pod/nginx", wantIdx: 2},
 		{name: "docker option with equals", mainCmd: "docker", raw: "docker --context=prod build -t app .", wantIdx: 2},
 		{name: "docker short flag without value", mainCmd: "docker", raw: "docker -v build", wantIdx: 2},
+		{name: "aws option with value", mainCmd: "aws", raw: "aws --profile prod s3 ls", wantIdx: 3},
+		{name: "gcloud option with value", mainCmd: "gcloud", raw: "gcloud --project demo compute instances list", wantIdx: 3},
+		{name: "az option with value", mainCmd: "az", raw: "az --subscription demo group list", wantIdx: 3},
 		{name: "missing subcommand", mainCmd: "git", raw: "git -C repo", wantIdx: -1},
 	}
 
@@ -103,6 +109,15 @@ func TestOptionTakesValue(t *testing.T) {
 	}
 	if optionTakesValue("docker", "--rm") {
 		t.Fatal("Expected docker --rm to not be tracked as taking a value")
+	}
+	if !optionTakesValue("aws", "--profile") {
+		t.Fatal("Expected aws --profile to take a value")
+	}
+	if !optionTakesValue("gcloud", "--project") {
+		t.Fatal("Expected gcloud --project to take a value")
+	}
+	if !optionTakesValue("az", "--subscription") {
+		t.Fatal("Expected az --subscription to take a value")
 	}
 	if optionTakesValue("unknown", "--context") {
 		t.Fatal("Expected unknown command option to return false")
@@ -675,6 +690,38 @@ func TestEngine_TrySubcommandFix_ShellAndResolvedCommand(t *testing.T) {
 	}
 }
 
+func TestEngine_TrySubcommandFix_MultiLevelCloudCommands(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name        string
+		cmd         string
+		wantCmd     string
+		wantMessage string
+	}{
+		{name: "aws nested command", cmd: "aws s3 lss", wantCmd: "aws s3 ls", wantMessage: "did you mean: aws s3 ls?"},
+		{name: "gcloud nested command", cmd: "gcloud compute isntances listt", wantCmd: "gcloud compute instances list", wantMessage: "did you mean: gcloud compute instances list?"}, //nolint:misspell
+		{name: "az nested command", cmd: "az group lisr", wantCmd: "az group list", wantMessage: "did you mean: az group list?"},
+		{name: "resolved main command and nested subcommands", cmd: "gclodu copmute isntances listt", wantCmd: "gcloud compute instances list", wantMessage: "did you mean: gcloud compute instances list?"},                                                   //nolint:misspell
+		{name: "cloud options before nested subcommands", cmd: "gcloud --project demo copmute isntances listt", wantCmd: "gcloud --project demo compute instances list", wantMessage: "did you mean: gcloud --project demo compute instances list?"},           //nolint:misspell
+		{name: "cloud option between nested subcommands", cmd: "gcloud compute --zone us-east1 isntances listt", wantCmd: "gcloud compute --zone us-east1 instances list", wantMessage: "did you mean: gcloud compute --zone us-east1 instances list?"},        //nolint:misspell
+		{name: "cloud inline option between nested subcommands", cmd: "gcloud compute --zone=us-east1 isntances listt", wantCmd: "gcloud compute --zone=us-east1 instances list", wantMessage: "did you mean: gcloud compute --zone=us-east1 instances list?"}, //nolint:misspell
+		{name: "cloud flag without value between nested subcommands", cmd: "gcloud compute --quiet isntances listt", wantCmd: "gcloud compute --quiet instances list", wantMessage: "did you mean: gcloud compute --quiet instances list?"},                    //nolint:misspell
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+			if got.Message != tt.wantMessage {
+				t.Fatalf("Fix(%q).Message = %q, want %q", tt.cmd, got.Message, tt.wantMessage)
+			}
+		})
+	}
+}
+
 func TestEngine_TrySubcommandFix_EmptyDynamicSubcommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(
@@ -774,8 +821,14 @@ func TestEngine_LearnAndAddRule_ErrorPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close temp file failed: %v", err)
+	}
 
 	rules := NewRules(tmpFile.Name())
 	eng := NewEngine(

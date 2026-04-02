@@ -134,6 +134,10 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 		{name: "helm main command", command: "helmm list", want: "helm list\n"},
 		{name: "helm subcommand", command: "helm temlpate chart", want: "helm template chart\n"},
 		{name: "helm subcommand after global option with value", command: "helm --kube-context prod temlpate chart", want: "helm --kube-context prod template chart\n"},
+		{name: "aws main command", command: "awss s3 ls", want: "aws s3 ls\n"},
+		{name: "gcloud main command", command: "gclodu auth login", want: "gcloud auth login\n"},
+		{name: "gcloud nested subcommand after interleaved option with value", command: "gcloud compute --zone us-east1 isntances listt", want: "gcloud compute --zone us-east1 instances list\n"}, //nolint:misspell
+		{name: "az main command", command: "azz group list", want: "az group list\n"},
 	}
 
 	for _, tt := range tests {

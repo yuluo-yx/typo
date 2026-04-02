@@ -34,7 +34,7 @@ func TestDiscoverCommon(t *testing.T) {
 		t.Error("Expected some common commands")
 	}
 
-	for _, expected := range []string{"git", "xargs"} {
+	for _, expected := range []string{"git", "xargs", "aws", "gcloud", "az"} {
 		found := false
 		for _, cmd := range cmds {
 			if cmd == expected {
@@ -122,6 +122,11 @@ func TestIsCommonCommand(t *testing.T) {
 	if !IsCommonCommand("docker") {
 		t.Fatal("Expected docker to be a common command")
 	}
+	for _, cmd := range []string{"aws", "gcloud", "az"} {
+		if !IsCommonCommand(cmd) {
+			t.Fatalf("Expected %s to be a common command", cmd)
+		}
+	}
 	if IsCommonCommand("not-a-real-common-command") {
 		t.Fatal("Expected unknown command to not be common")
 	}
@@ -182,9 +187,15 @@ func TestDiscoverInDir(t *testing.T) {
 
 func TestDiscover_EmptyPath(t *testing.T) {
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
-	os.Setenv("PATH", "")
+	if err := os.Setenv("PATH", ""); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	cmds := Discover()
 	if len(cmds) != 0 {
 		t.Errorf("Expected empty slice with empty PATH, got %d", len(cmds))
@@ -202,9 +213,15 @@ func TestDiscoverInDir_NonexistentDir(t *testing.T) {
 
 func TestGetPath_EmptyPath(t *testing.T) {
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
-	os.Setenv("PATH", "")
+	if err := os.Setenv("PATH", ""); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	path := GetPath("ls")
 	if path != "" {
 		t.Errorf("Expected empty path with empty PATH, got %s", path)

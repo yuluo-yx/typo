@@ -19,9 +19,10 @@ import (
 
 // SubcommandCache represents cached subcommands for a tool.
 type SubcommandCache struct {
-	Tool        string    `json:"tool"`
-	Subcommands []string  `json:"subcommands"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Tool        string              `json:"tool"`
+	Subcommands []string            `json:"subcommands"`
+	Children    map[string][]string `json:"children,omitempty"`
+	UpdatedAt   time.Time           `json:"updated_at"`
 }
 
 // SubcommandRegistry manages subcommands for various tools.
@@ -34,7 +35,11 @@ type SubcommandRegistry struct {
 	helpTimeout time.Duration
 }
 
-const defaultHelpTimeout = 1000 * time.Millisecond
+const (
+	defaultHelpTimeout             = 1000 * time.Millisecond
+	maxHierarchicalSubcommandDepth = 3
+	rootSubcommandPath             = ""
+)
 
 // NewSubcommandRegistry creates a new subcommand registry.
 func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
@@ -50,48 +55,60 @@ func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
 
 // Get returns subcommands for a tool, fetching from cache or dynamically.
 func (r *SubcommandRegistry) Get(tool string) []string {
-	builtin := builtinSubcommandsForTool(tool)
+	return r.GetChildren(tool, nil)
+}
+
+// GetChildren returns subcommands for a tool under the given prefix path.
+func (r *SubcommandRegistry) GetChildren(tool string, prefix []string) []string {
+	pathKey := subcommandPathKey(prefix)
+	builtin := builtinSubcommandsForPath(tool, prefix)
 
 	r.mu.RLock()
-	if cached, ok := r.cache[tool]; ok {
-		if time.Since(cached.UpdatedAt) < r.cacheExpiry {
+	if cached, ok := r.cache[tool]; ok && time.Since(cached.UpdatedAt) < r.cacheExpiry {
+		if children, found := cached.childrenFor(pathKey); found {
 			r.mu.RUnlock()
-			return mergeUniqueStrings(cached.Subcommands, builtin...)
+			return mergeUniqueStrings(children, builtin...)
 		}
 	}
 	r.mu.RUnlock()
 
-	// Need to fetch
-	subcommands := mergeUniqueStrings(r.fetchSubcommands(tool), builtin...)
-	if len(subcommands) > 0 {
-		r.mu.Lock()
-		r.cache[tool] = &SubcommandCache{
-			Tool:        tool,
-			Subcommands: subcommands,
-			UpdatedAt:   time.Now(),
-		}
-		r.mu.Unlock()
-		r.saveCache()
+	subcommands := mergeUniqueStrings(r.fetchSubcommands(tool, prefix...), builtin...)
+	if len(subcommands) == 0 {
+		return nil
 	}
+
+	r.mu.Lock()
+	cache := r.cache[tool]
+	if cache == nil {
+		cache = &SubcommandCache{Tool: tool}
+		r.cache[tool] = cache
+	}
+	cache.setChildren(pathKey, subcommands)
+	cache.UpdatedAt = time.Now()
+	r.mu.Unlock()
+	r.saveCache()
 
 	return append([]string(nil), subcommands...)
 }
 
 // fetchSubcommands dynamically fetches subcommands for a tool.
 // Results are cached to ~/.typo/subcommands.json
-func (r *SubcommandRegistry) fetchSubcommands(tool string) []string {
+func (r *SubcommandRegistry) fetchSubcommands(tool string, prefix ...string) []string {
 	// Check if tool exists in PATH
 	if GetPath(tool) == "" {
 		return nil
 	}
 
 	// Try to get help output
-	helpOutput, err := r.getHelpOutput(tool)
+	helpOutput, err := r.getHelpOutputAtPath(tool, prefix...)
 	if err != nil || helpOutput == "" {
 		return nil
 	}
 
-	// Parse subcommands based on tool type
+	return parseToolHelp(tool, prefix, helpOutput)
+}
+
+func parseToolHelp(tool string, prefix []string, helpOutput string) []string {
 	switch tool {
 	case "git":
 		return parseGitHelp(helpOutput)
@@ -109,9 +126,22 @@ func (r *SubcommandRegistry) fetchSubcommands(tool string) []string {
 		return parseGoHelp(helpOutput)
 	case "brew":
 		return parseBrewHelp(helpOutput)
+	case "aws":
+		return parseAWSHelp(helpOutput)
+	case "gcloud":
+		return parseGCloudHelp(helpOutput)
+	case "az":
+		return parseAzureHelp(helpOutput)
 	default:
 		return parseGenericHelp(helpOutput)
 	}
+}
+
+func (r *SubcommandRegistry) getHelpOutputAtPath(tool string, prefix ...string) (string, error) {
+	if len(prefix) > 0 {
+		return r.getNestedHelpOutput(tool, prefix)
+	}
+	return r.getHelpOutput(tool)
 }
 
 func (r *SubcommandRegistry) getHelpOutput(tool string) (string, error) {
@@ -150,6 +180,21 @@ func (r *SubcommandRegistry) getHelpOutput(tool string) (string, error) {
 		}
 	}
 	return output, nil
+}
+
+func (r *SubcommandRegistry) getNestedHelpOutput(tool string, prefix []string) (string, error) {
+	if len(prefix) == 0 || len(prefix) > maxHierarchicalSubcommandDepth || !supportsHierarchicalDiscovery(tool) {
+		return "", nil
+	}
+
+	switch tool {
+	case "aws":
+		return r.runHelpCommand(tool, append(append([]string(nil), prefix...), "help")...)
+	case "gcloud", "az":
+		return r.runHelpCommand(tool, append(append([]string(nil), prefix...), "--help")...)
+	default:
+		return "", nil
+	}
 }
 
 func (r *SubcommandRegistry) runHelpCommand(tool string, args ...string) (string, error) {
@@ -222,11 +267,18 @@ func (r *SubcommandRegistry) saveCache() {
 	r.mu.RLock()
 	caches := make([]SubcommandCache, 0, len(r.cache))
 	for _, c := range r.cache {
-		caches = append(caches, SubcommandCache{
+		cache := SubcommandCache{
 			Tool:        c.Tool,
 			Subcommands: append([]string(nil), c.Subcommands...),
 			UpdatedAt:   c.UpdatedAt,
-		})
+		}
+		if len(c.Children) > 0 {
+			cache.Children = make(map[string][]string, len(c.Children))
+			for key, values := range c.Children {
+				cache.Children[key] = append([]string(nil), values...)
+			}
+		}
+		caches = append(caches, cache)
 	}
 	r.mu.RUnlock()
 
@@ -462,6 +514,18 @@ func parseBrewHelp(output string) []string {
 	return subcommands
 }
 
+func parseAWSHelp(output string) []string {
+	return parseSectionedHelp(output, "SERVICES", "AVAILABLE SERVICES", "COMMANDS", "AVAILABLE COMMANDS")
+}
+
+func parseGCloudHelp(output string) []string {
+	return parseSectionedHelp(output, "GROUPS", "COMMANDS")
+}
+
+func parseAzureHelp(output string) []string {
+	return parseSectionedHelp(output, "GROUPS", "SUBGROUPS", "COMMANDS")
+}
+
 func parseGenericHelp(output string) []string {
 	// Generic help format - try to find lines that look like commands
 	// Pattern: whitespace + word + whitespace + description
@@ -477,6 +541,57 @@ func parseGenericHelp(output string) []string {
 	}
 
 	return subcommands
+}
+
+func parseSectionedHelp(output string, headers ...string) []string {
+	allowed := make(map[string]bool, len(headers))
+	for _, header := range headers {
+		allowed[normalizeHelpSection(header)] = true
+	}
+
+	subcommands := make([]string, 0)
+	seen := make(map[string]bool)
+	re := regexp.MustCompile(`^[\t ]{2,}([a-z][a-z0-9-]*)\b`)
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	inSection := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		normalized := normalizeHelpSection(trimmed)
+		if allowed[normalized] {
+			inSection = true
+			continue
+		}
+
+		if !inSection {
+			continue
+		}
+
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+			inSection = false
+			continue
+		}
+
+		matches := re.FindStringSubmatch(line)
+		if len(matches) <= 1 || seen[matches[1]] {
+			continue
+		}
+
+		seen[matches[1]] = true
+		subcommands = append(subcommands, matches[1])
+	}
+
+	return subcommands
+}
+
+func normalizeHelpSection(value string) string {
+	trimmed := strings.TrimSpace(strings.TrimSuffix(value, ":"))
+	return strings.ToUpper(trimmed)
 }
 
 // HasSubcommands checks if a tool is known to have subcommands.
@@ -496,6 +611,9 @@ func (r *SubcommandRegistry) HasSubcommands(tool string) bool {
 		"terraform": true,
 		"helm":      true,
 		"brew":      true,
+		"aws":       true,
+		"gcloud":    true,
+		"az":        true,
 	}
 	return knownTools[tool]
 }
@@ -511,6 +629,9 @@ var builtinSubcommands = map[string][]string{
 	"brew":      {"cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"},
 	"terraform": {"apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"},
 	"helm":      {"dependency", "get", "install", "lint", "list", "package", "pull", "repo", "search", "template", "upgrade"},
+	"aws":       {"cloudwatch", "dynamodb", "ec2", "iam", "lambda", "rds", "s3", "sns", "sqs", "sts"},
+	"gcloud":    {"bigquery", "compute", "functions", "iam", "kubernetes", "pubsub", "services", "storage"},
+	"az":        {"account", "aks", "functionapp", "group", "network", "storage", "vm", "webapp"},
 }
 
 var builtinSubcommandSet = buildBuiltinSubcommandSet()
@@ -541,6 +662,14 @@ func builtinSubcommandsForTool(tool string) []string {
 	return append([]string(nil), builtinSubcommands[tool]...)
 }
 
+func builtinSubcommandsForPath(tool string, prefix []string) []string {
+	if len(prefix) > 0 {
+		return nil
+	}
+
+	return builtinSubcommandsForTool(tool)
+}
+
 func mergeUniqueStrings(base []string, extra ...string) []string {
 	result := append([]string(nil), base...)
 	seen := make(map[string]bool, len(result)+len(extra))
@@ -559,9 +688,58 @@ func mergeUniqueStrings(base []string, extra ...string) []string {
 	return result
 }
 
+func supportsHierarchicalDiscovery(tool string) bool {
+	switch tool {
+	case "aws", "gcloud", "az":
+		return true
+	default:
+		return false
+	}
+}
+
+func subcommandPathKey(prefix []string) string {
+	if len(prefix) == 0 {
+		return rootSubcommandPath
+	}
+	return strings.Join(prefix, " ")
+}
+
+func (c *SubcommandCache) childrenFor(pathKey string) ([]string, bool) {
+	if pathKey == rootSubcommandPath {
+		if len(c.Subcommands) == 0 {
+			return nil, false
+		}
+		return append([]string(nil), c.Subcommands...), true
+	}
+
+	if len(c.Children) == 0 {
+		return nil, false
+	}
+
+	children, ok := c.Children[pathKey]
+	if !ok {
+		return nil, false
+	}
+
+	return append([]string(nil), children...), true
+}
+
+func (c *SubcommandCache) setChildren(pathKey string, children []string) {
+	cloned := append([]string(nil), children...)
+	if pathKey == rootSubcommandPath {
+		c.Subcommands = cloned
+		return
+	}
+
+	if c.Children == nil {
+		c.Children = make(map[string][]string)
+	}
+	c.Children[pathKey] = cloned
+}
+
 // PreFetch prefetches subcommands for common tools.
 func (r *SubcommandRegistry) PreFetch() {
-	tools := []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "go"}
+	tools := []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "go", "aws", "gcloud", "az"}
 
 	var wg sync.WaitGroup
 	for _, tool := range tools {

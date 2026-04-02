@@ -28,7 +28,9 @@ func TestHistory_Record(t *testing.T) {
 	}
 
 	// Record again, should increment count
-	h.Record("gut", "git")
+	if err := h.Record("gut", "git"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 	entry, _ = h.Lookup("gut")
 	if entry.Count != 2 {
 		t.Errorf("Expected count 2, got %d", entry.Count)
@@ -52,7 +54,9 @@ func TestHistory_Lookup(t *testing.T) {
 	}
 
 	// Record and lookup
-	h.Record("test", "correct")
+	if err := h.Record("test", "correct"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 	entry, ok := h.Lookup("test")
 	if !ok {
 		t.Error("Expected to find entry")
@@ -67,8 +71,12 @@ func TestHistory_Remove(t *testing.T) {
 	h := NewHistory(tmpDir)
 
 	// Record then remove
-	h.Record("test", "correct")
-	h.Remove("test")
+	if err := h.Record("test", "correct"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+	if err := h.Remove("test"); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
 
 	_, ok := h.Lookup("test")
 	if ok {
@@ -110,8 +118,12 @@ func TestHistory_Clear(t *testing.T) {
 	h := NewHistory(tmpDir)
 
 	// Record multiple entries
-	h.Record("test1", "correct1")
-	h.Record("test2", "correct2")
+	if err := h.Record("test1", "correct1"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+	if err := h.Record("test2", "correct2"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	// Clear
 	if err := h.Clear(); err != nil {
@@ -129,8 +141,12 @@ func TestHistory_List(t *testing.T) {
 	h := NewHistory(tmpDir)
 
 	// Record multiple entries
-	h.Record("test1", "correct1")
-	h.Record("test2", "correct2")
+	if err := h.Record("test1", "correct1"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+	if err := h.Record("test2", "correct2"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	entries := h.List()
 	if len(entries) != 2 {
@@ -160,7 +176,9 @@ func TestHistory_Count(t *testing.T) {
 		t.Errorf("Expected count 0, got %d", h.Count())
 	}
 
-	h.Record("test", "correct")
+	if err := h.Record("test", "correct"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 	if h.Count() != 1 {
 		t.Errorf("Expected count 1, got %d", h.Count())
 	}
@@ -171,10 +189,14 @@ func TestHistory_UpdatePreference(t *testing.T) {
 	h := NewHistory(tmpDir)
 
 	// Record initial correction
-	h.Record("test", "correct1")
+	if err := h.Record("test", "correct1"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	// User changes preference
-	h.Record("test", "correct2")
+	if err := h.Record("test", "correct2"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	entry, _ := h.Lookup("test")
 	if entry.To != "correct2" {
@@ -191,7 +213,9 @@ func TestHistory_LoadExisting(t *testing.T) {
 	}
 	data, _ := jsonMarshalHistory(existing)
 	historyFile := filepath.Join(tmpDir, usageHistoryFileName)
-	os.WriteFile(historyFile, data, 0644)
+	if err := os.WriteFile(historyFile, data, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
 
 	// Load history
 	h := NewHistory(tmpDir)
@@ -232,7 +256,9 @@ func TestHistory_LoadInvalidJSON(t *testing.T) {
 
 	// Write invalid JSON
 	historyFile := filepath.Join(tmpDir, usageHistoryFileName)
-	os.WriteFile(historyFile, []byte("invalid json {"), 0644)
+	if err := os.WriteFile(historyFile, []byte("invalid json {"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
 
 	// Load history - should not panic
 	h := NewHistory(tmpDir)
@@ -257,8 +283,14 @@ func TestHistory_SaveMkdirError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+			t.Fatalf("Remove temp file failed: %v", removeErr)
+		}
+	}()
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		t.Fatalf("Close temp file failed: %v", closeErr)
+	}
 
 	// Use the file path as config dir (will fail MkdirAll)
 	h := NewHistory(tmpFile.Name())
@@ -276,8 +308,14 @@ func TestHistory_ClearError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() {
+		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+			t.Fatalf("Remove temp file failed: %v", removeErr)
+		}
+	}()
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		t.Fatalf("Close temp file failed: %v", closeErr)
+	}
 
 	h := NewHistory(tmpFile.Name())
 	err = h.Clear()

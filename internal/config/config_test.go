@@ -87,9 +87,15 @@ func TestConfig_Debug(t *testing.T) {
 
 func TestDefaultConfigDir_NoHome(t *testing.T) {
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
-	os.Unsetenv("HOME")
+	if err := os.Unsetenv("HOME"); err != nil {
+		t.Fatalf("Unsetenv HOME failed: %v", err)
+	}
 	dir := DefaultConfigDir()
 	if dir != "" {
 		t.Errorf("Expected empty dir when no home, got %s", dir)
@@ -134,7 +140,11 @@ func TestDefaultUserConfig(t *testing.T) {
 func TestLoad_MergesPartialConfigFile(t *testing.T) {
 	tmpHome := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 
 	if err := os.Setenv("HOME", tmpHome); err != nil {
 		t.Fatalf("Setenv HOME failed: %v", err)
@@ -226,7 +236,11 @@ func TestConfigSaveFailsForInvalidConfigAndBadDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 	_ = tmpFile.Close()
 
 	cfg = &Config{ConfigDir: tmpFile.Name(), User: DefaultUserConfig()}
@@ -424,7 +438,11 @@ func TestConfigSetLeavesConfigUnchangedWhenSaveFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 	_ = tmpFile.Close()
 
 	cfg := &Config{ConfigDir: tmpFile.Name(), User: DefaultUserConfig()}
@@ -443,7 +461,11 @@ func TestConfigResetLeavesConfigUnchangedWhenSaveFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 	_ = tmpFile.Close()
 
 	cfg := &Config{ConfigDir: tmpFile.Name(), User: DefaultUserConfig()}
@@ -463,7 +485,11 @@ func TestConfigGenerateLeavesConfigUnchangedWhenSaveFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Fatalf("Remove temp file failed: %v", err)
+		}
+	}()
 	_ = tmpFile.Close()
 
 	cfg := &Config{ConfigDir: tmpFile.Name(), User: DefaultUserConfig()}
@@ -482,7 +508,11 @@ func TestLoad_InvalidJSONAndInvalidConfigFallBackToDefaults(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		tmpHome := t.TempDir()
 		oldHome := os.Getenv("HOME")
-		defer os.Setenv("HOME", oldHome)
+		defer func() {
+			if err := os.Setenv("HOME", oldHome); err != nil {
+				t.Fatalf("Restore HOME failed: %v", err)
+			}
+		}()
 		if err := os.Setenv("HOME", tmpHome); err != nil {
 			t.Fatalf("Setenv HOME failed: %v", err)
 		}
@@ -513,7 +543,11 @@ func TestLoad_InvalidJSONAndInvalidConfigFallBackToDefaults(t *testing.T) {
 	t.Run("invalid semantic config", func(t *testing.T) {
 		tmpHome := t.TempDir()
 		oldHome := os.Getenv("HOME")
-		defer os.Setenv("HOME", oldHome)
+		defer func() {
+			if err := os.Setenv("HOME", oldHome); err != nil {
+				t.Fatalf("Restore HOME failed: %v", err)
+			}
+		}()
 		if err := os.Setenv("HOME", tmpHome); err != nil {
 			t.Fatalf("Setenv HOME failed: %v", err)
 		}
@@ -542,7 +576,11 @@ func TestLoad_InvalidJSONAndInvalidConfigFallBackToDefaults(t *testing.T) {
 func TestLoad_AllowsUnknownRuleScopesWithWarning(t *testing.T) {
 	tmpHome := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
 	if err := os.Setenv("HOME", tmpHome); err != nil {
 		t.Fatalf("Setenv HOME failed: %v", err)
 	}
