@@ -187,9 +187,15 @@ func TestDiscoverInDir(t *testing.T) {
 
 func TestDiscover_EmptyPath(t *testing.T) {
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
-	os.Setenv("PATH", "")
+	if err := os.Setenv("PATH", ""); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	cmds := Discover()
 	if len(cmds) != 0 {
 		t.Errorf("Expected empty slice with empty PATH, got %d", len(cmds))
@@ -207,9 +213,15 @@ func TestDiscoverInDir_NonexistentDir(t *testing.T) {
 
 func TestGetPath_EmptyPath(t *testing.T) {
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
-	os.Setenv("PATH", "")
+	if err := os.Setenv("PATH", ""); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	path := GetPath("ls")
 	if path != "" {
 		t.Errorf("Expected empty path with empty PATH, got %s", path)

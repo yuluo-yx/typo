@@ -900,7 +900,11 @@ func TestFetchSubcommands_Yarn(t *testing.T) {
 func TestGetHelpOutput_GitPrefersHelpA(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	gitPath := filepath.Join(tmpDir, "git")
 	script := "#!/bin/sh\nif [ \"$1\" = \"help\" ] && [ \"$2\" = \"-a\" ]; then\n  echo git-help-a\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo git-help\n  exit 0\nfi\nexit 1\n"
@@ -908,7 +912,9 @@ func TestGetHelpOutput_GitPrefersHelpA(t *testing.T) {
 		t.Fatalf("Failed to write git stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("git")
 	if err != nil {
@@ -922,7 +928,11 @@ func TestGetHelpOutput_GitPrefersHelpA(t *testing.T) {
 func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	toolPath := filepath.Join(tmpDir, "mytool")
 	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  exit 1\nfi\nif [ \"$1\" = \"help\" ]; then\n  echo fallback-help\n  exit 0\nfi\nexit 1\n"
@@ -930,7 +940,9 @@ func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 		t.Fatalf("Failed to write tool stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("mytool")
 	if err != nil {
@@ -944,7 +956,11 @@ func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 func TestGetHelpOutputAtPath_CloudCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	scripts := map[string]string{
 		"aws":    "#!/bin/sh\nif [ \"$1\" = \"s3\" ] && [ \"$2\" = \"help\" ]; then\n  echo aws-s3-help\n  exit 0\nfi\nexit 1\n",
@@ -958,7 +974,9 @@ func TestGetHelpOutputAtPath_CloudCommands(t *testing.T) {
 		}
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 
 	tests := []struct {
@@ -985,7 +1003,11 @@ func TestGetHelpOutputAtPath_CloudCommands(t *testing.T) {
 func TestGetHelpOutput_BrewUsesCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	brewPath := filepath.Join(tmpDir, "brew")
 	script := "#!/bin/sh\nif [ \"$1\" = \"commands\" ]; then\n  echo install\n  echo upgrade\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo should-not-be-used\n  exit 0\nfi\nexit 1\n"
@@ -993,7 +1015,9 @@ func TestGetHelpOutput_BrewUsesCommands(t *testing.T) {
 		t.Fatalf("Failed to write brew stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("brew")
 	if err != nil {
@@ -1007,7 +1031,11 @@ func TestGetHelpOutput_BrewUsesCommands(t *testing.T) {
 func TestGetHelpOutput_GitFallsBackToHelp(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	gitPath := filepath.Join(tmpDir, "git")
 	script := "#!/bin/sh\nif [ \"$1\" = \"help\" ] && [ \"$2\" = \"-a\" ]; then\n  exit 1\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo git-help\n  exit 0\nfi\nexit 1\n"
@@ -1015,7 +1043,9 @@ func TestGetHelpOutput_GitFallsBackToHelp(t *testing.T) {
 		t.Fatalf("Failed to write git fallback stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("git")
 	if err != nil {
@@ -1029,7 +1059,11 @@ func TestGetHelpOutput_GitFallsBackToHelp(t *testing.T) {
 func TestGetHelpOutput_BrewFallsBackToHelp(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	brewPath := filepath.Join(tmpDir, "brew")
 	script := "#!/bin/sh\nif [ \"$1\" = \"commands\" ]; then\n  exit 1\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo fallback-brew-help\n  exit 0\nfi\nexit 1\n"
@@ -1037,7 +1071,9 @@ func TestGetHelpOutput_BrewFallsBackToHelp(t *testing.T) {
 		t.Fatalf("Failed to write brew fallback stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("brew")
 	if err != nil {
@@ -1051,7 +1087,11 @@ func TestGetHelpOutput_BrewFallsBackToHelp(t *testing.T) {
 func TestGetHelpOutput_Timeout(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	toolPath := filepath.Join(tmpDir, "slowtool")
 	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  /bin/sleep 1\n  echo slow-help\n  exit 0\nfi\nexit 1\n"
@@ -1059,7 +1099,9 @@ func TestGetHelpOutput_Timeout(t *testing.T) {
 		t.Fatalf("Failed to write slow tool stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
 
 	start := time.Now()
@@ -1080,7 +1122,11 @@ func TestGetHelpOutput_Timeout(t *testing.T) {
 func TestGetHelpOutput_GitTimeoutStopsFallback(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	gitPath := filepath.Join(tmpDir, "git")
 	script := "#!/bin/sh\nif [ \"$1\" = \"help\" ] && [ \"$2\" = \"-a\" ]; then\n  /bin/sleep 1\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo should-not-run\n  exit 0\nfi\nexit 1\n"
@@ -1088,7 +1134,9 @@ func TestGetHelpOutput_GitTimeoutStopsFallback(t *testing.T) {
 		t.Fatalf("Failed to write git timeout stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
 	output, err := r.getHelpOutput("git")
 	if err == nil {
@@ -1102,7 +1150,11 @@ func TestGetHelpOutput_GitTimeoutStopsFallback(t *testing.T) {
 func TestGetHelpOutput_BrewTimeoutStopsFallback(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	brewPath := filepath.Join(tmpDir, "brew")
 	script := "#!/bin/sh\nif [ \"$1\" = \"commands\" ]; then\n  /bin/sleep 1\n  exit 0\nfi\nif [ \"$1\" = \"--help\" ]; then\n  echo should-not-run\n  exit 0\nfi\nexit 1\n"
@@ -1110,7 +1162,9 @@ func TestGetHelpOutput_BrewTimeoutStopsFallback(t *testing.T) {
 		t.Fatalf("Failed to write brew timeout stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
 	output, err := r.getHelpOutput("brew")
 	if err == nil {
@@ -1124,7 +1178,11 @@ func TestGetHelpOutput_BrewTimeoutStopsFallback(t *testing.T) {
 func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	toolPath := filepath.Join(tmpDir, "mytool")
 	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  printf 'Usage: mytool <command>\\n\\n  start    Start service\\n  stop     Stop service\\n'\n  exit 0\nfi\nexit 1\n"
@@ -1132,7 +1190,9 @@ func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
 		t.Fatalf("Failed to write tool stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{
 		cache:       make(map[string]*SubcommandCache),
 		cacheDir:    "",
@@ -1149,7 +1209,11 @@ func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
 func TestFetchSubcommands_GCloudNestedWithStub(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	toolPath := filepath.Join(tmpDir, "gcloud")
 	script := `#!/bin/sh
@@ -1171,7 +1235,9 @@ exit 1
 		t.Fatalf("Failed to write gcloud stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{
 		cache:       make(map[string]*SubcommandCache),
 		cacheDir:    "",
@@ -1198,7 +1264,11 @@ exit 1
 func TestFetchSubcommands_EmptyHelpOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
+	defer func() {
+		if err := os.Setenv("PATH", oldPath); err != nil {
+			t.Fatalf("Restore PATH failed: %v", err)
+		}
+	}()
 
 	toolPath := filepath.Join(tmpDir, "emptytool")
 	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  exit 0\nfi\nexit 1\n"
@@ -1206,7 +1276,9 @@ func TestFetchSubcommands_EmptyHelpOutput(t *testing.T) {
 		t.Fatalf("Failed to write empty tool stub: %v", err)
 	}
 
-	os.Setenv("PATH", tmpDir)
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
 	r := &SubcommandRegistry{
 		cache:       make(map[string]*SubcommandCache),
 		cacheDir:    "",

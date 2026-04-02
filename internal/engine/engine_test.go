@@ -74,7 +74,9 @@ func TestEngine_FixWithHistory(t *testing.T) {
 	history := NewHistory(tmpDir)
 
 	// Record a correction
-	history.Record("mytypo", "mycommand")
+	if err := history.Record("mytypo", "mycommand"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	eng := NewEngine(WithHistory(history))
 
@@ -492,7 +494,9 @@ func TestEngine_FixCommand_Empty(t *testing.T) {
 func TestEngine_FixCommand_WithHistory(t *testing.T) {
 	tmpDir := t.TempDir()
 	history := NewHistory(tmpDir)
-	history.Record("mycmd", "myrealcmd")
+	if err := history.Record("mycmd", "myrealcmd"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	eng := NewEngine(WithHistory(history))
 
@@ -517,7 +521,9 @@ func TestEngine_FixCommand_NoMatch(t *testing.T) {
 func TestEngine_TryHistory_WithArgs(t *testing.T) {
 	tmpDir := t.TempDir()
 	history := NewHistory(tmpDir)
-	history.Record("mycmd", "realcmd")
+	if err := history.Record("mycmd", "realcmd"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	eng := NewEngine(WithHistory(history))
 
@@ -706,7 +712,9 @@ func TestEngine_Priority(t *testing.T) {
 	rules := NewRules(tmpDir)
 
 	// Set up history with a different correction than the rule
-	history.Record("gut", "customgit")
+	if err := history.Record("gut", "customgit"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
 
 	eng := NewEngine(
 		WithRules(rules),
@@ -1132,6 +1140,12 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			name:    "helm subcommand typo after global option with value",
 			cmd:     "helm --kube-context prod temlpate chart",
 			wantCmd: "helm --kube-context prod template chart",
+		},
+		{
+			name: "gcloud nested subcommand typo after interleaved option with value",
+			//nolint:misspell
+			cmd:     "gcloud compute --zone us-east1 isntances listt",
+			wantCmd: "gcloud compute --zone us-east1 instances list",
 		},
 	}
 

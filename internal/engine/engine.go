@@ -727,8 +727,6 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 		return result
 	}
 
-	matchCfg := e.distanceMatchConfig()
-
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
 		return FixResult{Fixed: false}
@@ -751,17 +749,18 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 		return FixResult{Fixed: false}
 	}
 
-	fixedParts, bestMatch, changed := e.fixSubcommandParts(mainCmd, parts, subcmdIdx)
+	fixedParts, changed := e.fixSubcommandParts(mainCmd, parts, subcmdIdx)
 	if !changed {
 		return FixResult{Fixed: false}
 	}
 
 	fixedParts[0] = mainCmd
+	fixedCommand := strings.Join(fixedParts, " ")
 	return FixResult{
 		Fixed:   true,
-		Command: strings.Join(fixedParts, " "),
+		Command: fixedCommand,
 		Source:  "subcommand",
-		Message: fmt.Sprintf("did you mean: %s?", bestMatch),
+		Message: fmt.Sprintf("did you mean: %s?", fixedCommand),
 	}
 }
 
@@ -770,8 +769,6 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 	if err != nil {
 		return FixResult{Fixed: false}, false
 	}
-
-	matchCfg := e.distanceMatchConfig()
 
 	for _, line := range lines {
 		mainCmd, resolvedCmd, resolveErr := e.resolveShellCommandLine(line)
@@ -784,7 +781,7 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 			continue
 		}
 
-		replacements, bestMatch, changed := e.fixSubcommandWords(mainCmd, line, subcmdIdx)
+		replacements, changed := e.fixSubcommandWords(mainCmd, line, subcmdIdx)
 		if !changed {
 			continue
 		}
@@ -793,11 +790,12 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 			replacements = append(replacements, shellWordReplacement{index: line.commandIdx, value: resolvedCmd})
 		}
 
+		fixedCommand := line.replaceWords(replacements...)
 		return FixResult{
 			Fixed:   true,
-			Command: line.replaceWords(replacements...),
+			Command: fixedCommand,
 			Source:  "subcommand",
-			Message: fmt.Sprintf("did you mean: %s?", bestMatch),
+			Message: fmt.Sprintf("did you mean: %s?", fixedCommand),
 		}, true
 	}
 
@@ -812,49 +810,62 @@ func (e *Engine) trySubcommandFixWithSource(cmd, source string) FixResult {
 	return result
 }
 
-func (e *Engine) fixSubcommandParts(mainCmd string, parts []string, startIdx int) ([]string, string, bool) {
-	fixed := append([]string(nil), parts...)
-	prefix := make([]string, 0, len(parts)-startIdx)
-	bestMatch := ""
-	changed := false
-
-	for i := startIdx; i < len(fixed); i++ {
-		token := fixed[i]
-		subcommands := e.subcommands.GetChildren(mainCmd, prefix)
-		if len(subcommands) == 0 {
-			break
-		}
-
-		if containsString(subcommands, token) {
-			prefix = append(prefix, token)
-			continue
-		}
-
-		match, distance := closestSubcommand(token, subcommands, e.keyboard)
-		if !isGoodDistanceMatch(token, match, distance, e.keyboard) {
-			break
-		}
-
-		fixed[i] = match
-		prefix = append(prefix, match)
-		bestMatch = match
-		changed = true
-	}
-
-	return fixed, bestMatch, changed
+type subcommandReplacement struct {
+	index int
+	value string
 }
 
-func (e *Engine) fixSubcommandWords(mainCmd string, line *shellCommandLine, startIdx int) ([]shellWordReplacement, string, bool) {
-	prefix := make([]string, 0, len(line.args)-startIdx)
-	replacements := make([]shellWordReplacement, 0)
-	bestMatch := ""
-	changed := false
+func (e *Engine) fixSubcommandParts(mainCmd string, parts []string, startIdx int) ([]string, bool) {
+	fixed := append([]string(nil), parts...)
+	replacements, changed := e.collectSubcommandReplacements(mainCmd, fixed, startIdx)
+	for _, replacement := range replacements {
+		fixed[replacement.index] = replacement.value
+	}
 
-	for i := startIdx; i < len(line.args); i++ {
-		token := line.args[i].Lit()
+	return fixed, changed
+}
+
+func (e *Engine) fixSubcommandWords(mainCmd string, line *shellCommandLine, startIdx int) ([]shellWordReplacement, bool) {
+	tokens := make([]string, len(line.args))
+	for i, arg := range line.args {
+		tokens[i] = arg.Lit()
+	}
+
+	updates, changed := e.collectSubcommandReplacements(mainCmd, tokens, startIdx)
+	replacements := make([]shellWordReplacement, 0, len(updates))
+	for _, update := range updates {
+		replacements = append(replacements, shellWordReplacement(update))
+	}
+
+	return replacements, changed
+}
+
+func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, startIdx int) ([]subcommandReplacement, bool) {
+	cfg := e.distanceMatchConfig()
+	prefix := make([]string, 0, len(tokens)-startIdx)
+	replacements := make([]subcommandReplacement, 0)
+	changed := false
+	expectValue := false
+
+	for i := startIdx; i < len(tokens); i++ {
+		token := tokens[i]
+		if expectValue {
+			expectValue = false
+			continue
+		}
+
 		subcommands := e.subcommands.GetChildren(mainCmd, prefix)
 		if len(subcommands) == 0 {
 			break
+		}
+
+		if token == "--" {
+			break
+		}
+
+		if handled, needsValue := subcommandOptionBehavior(mainCmd, token, subcommands, tokenAt(tokens, i+1), tokenAt(tokens, i+2), cfg); handled {
+			expectValue = needsValue
+			continue
 		}
 
 		if containsString(subcommands, token) {
@@ -862,18 +873,88 @@ func (e *Engine) fixSubcommandWords(mainCmd string, line *shellCommandLine, star
 			continue
 		}
 
-		match, distance := closestSubcommand(token, subcommands, e.keyboard)
-		if !isGoodDistanceMatch(token, match, distance, e.keyboard) {
+		match, distance := closestSubcommand(token, subcommands, cfg)
+		if !isGoodDistanceMatch(token, match, distance, cfg) {
 			break
 		}
 
-		replacements = append(replacements, shellWordReplacement{index: i, value: match})
+		replacements = append(replacements, subcommandReplacement{index: i, value: match})
 		prefix = append(prefix, match)
-		bestMatch = match
 		changed = true
 	}
 
-	return replacements, bestMatch, changed
+	return replacements, changed
+}
+
+func subcommandOptionBehavior(mainCmd, token string, subcommands []string, nextToken, nextNextToken string, cfg distanceMatchConfig) (bool, bool) {
+	if token == "--" {
+		return false, false
+	}
+
+	name, suffix, isOption := splitToolOptionToken(token)
+	if isOption {
+		if suffix != "" {
+			return true, false
+		}
+
+		if optionTakesValue(mainCmd, name) || toolOptionTakesValue(mainCmd, name) {
+			return true, true
+		}
+
+		if shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken, subcommands, cfg) {
+			return true, true
+		}
+
+		return true, false
+	}
+
+	if !strings.HasPrefix(token, "-") || token == "-" {
+		return false, false
+	}
+
+	if optionTakesValue(mainCmd, token) || toolOptionTakesValue(mainCmd, token) {
+		return true, true
+	}
+
+	if shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken, subcommands, cfg) {
+		return true, true
+	}
+
+	return true, false
+}
+
+func shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken string, subcommands []string, cfg distanceMatchConfig) bool {
+	if nextToken == "" || nextNextToken == "" {
+		return false
+	}
+
+	if nextToken == "--" || strings.HasPrefix(nextToken, "-") {
+		return false
+	}
+
+	if isSubcommandCandidate(nextToken, subcommands, cfg) {
+		return false
+	}
+
+	// 层级子命令之间允许插入 `--flag value`，这里用下一层子命令候选做保守判断。
+	return isSubcommandCandidate(nextNextToken, subcommands, cfg)
+}
+
+func isSubcommandCandidate(token string, subcommands []string, cfg distanceMatchConfig) bool {
+	if containsString(subcommands, token) {
+		return true
+	}
+
+	match, distance := closestSubcommand(token, subcommands, cfg)
+	return isGoodDistanceMatch(token, match, distance, cfg)
+}
+
+func tokenAt(tokens []string, idx int) string {
+	if idx < 0 || idx >= len(tokens) {
+		return ""
+	}
+
+	return tokens[idx]
 }
 
 func (e *Engine) resolveShellCommandLine(line *shellCommandLine) (string, string, error) {
