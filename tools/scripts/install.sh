@@ -82,6 +82,18 @@ normalize_arch() {
   esac
 }
 
+detect_shell() {
+  local shell_name
+  shell_name="$(basename "${SHELL:-}")"
+
+  case "$shell_name" in
+    zsh)  echo "zsh" ;;
+    bash) echo "bash" ;;
+    fish) echo "fish" ;;
+    *)    echo "" ;;
+  esac
+}
+
 normalize_tag() {
   local input="$1"
 
@@ -239,7 +251,17 @@ main() {
   fi
 
   install_binary "$binary_path" "$install_dir"
-  echo "Please add 'eval \"\$(typo init zsh)\"' to your shell configuration file (e.g., ~/.zshrc) to enable shell integration. Not forgotten to source it!"
+
+  # fetch shell
+  local shell
+  shell="$(detect_shell)"
+  if [[ -z "$shell" ]]; then
+    echo "Warning: Unrecognised shell '${SHELL:-}'. Add 'eval \"\$(typo init <shell>)\"' to your shell config manually." >&2
+  elif [[ "$shell" == "fish" ]]; then
+    echo "Please add 'typo init fish | source' to your shell configuration file (e.g., ~/.config/fish/config.fish) to enable shell integration. Not forgotten to source it!"
+  else
+    echo "Please add 'eval \"\$(typo init ${shell})\"' to your shell configuration file (e.g., ~/.${shell}rc) to enable shell integration. Not forgotten to source it!"
+  fi
 }
 
 main "$@"
