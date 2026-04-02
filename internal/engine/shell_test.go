@@ -111,6 +111,14 @@ func TestFindExecutableArgIndex_SyntheticArgs(t *testing.T) {
 	if got := findExecutableArgIndex(args); got != 3 {
 		t.Fatalf("Expected stacked wrapper index 3, got %d", got)
 	}
+
+	args = []*syntax.Word{
+		litWord("time"),
+		litWord("-p"),
+	}
+	if got := findExecutableArgIndex(args); got != -1 {
+		t.Fatalf("Expected missing time command to return -1, got %d", got)
+	}
 }
 
 func TestHandleLongWrapperOption(t *testing.T) {
@@ -125,6 +133,7 @@ func TestHandleLongWrapperOption(t *testing.T) {
 		{name: "long option with separate value", arg: "--user", wantHandled: true, wantNeedValue: true},
 		{name: "long flag without value", arg: "--stdin", wantHandled: true, wantNeedValue: false},
 		{name: "unknown long option", arg: "--unknown", wantHandled: true, wantNeedValue: false},
+		{name: "unknown long option with inline value", arg: "--unknown=value", wantHandled: false, wantNeedValue: false},
 	}
 
 	for _, tt := range tests {
@@ -169,6 +178,11 @@ func TestSkipWrapperOptions(t *testing.T) {
 		t.Fatalf("skipWrapperOptions() = %d, want 4", got)
 	}
 
+	args = parseCallArgs(t, "sudo -u root git status")
+	if got := skipWrapperOptions(args, 1, sudoWrapperOptionsWithValues, sudoWrapperOptions); got != 3 {
+		t.Fatalf("skipWrapperOptions() short value option = %d, want 3", got)
+	}
+
 	args = parseCallArgs(t, "sudo -- git status")
 	if got := skipWrapperOptions(args, 1, sudoWrapperOptionsWithValues, sudoWrapperOptions); got != 2 {
 		t.Fatalf("skipWrapperOptions() with -- = %d, want 2", got)
@@ -177,6 +191,11 @@ func TestSkipWrapperOptions(t *testing.T) {
 	args = parseCallArgs(t, "sudo --user root")
 	if got := skipWrapperOptions(args, 1, sudoWrapperOptionsWithValues, sudoWrapperOptions); got != -1 {
 		t.Fatalf("skipWrapperOptions() missing command = %d, want -1", got)
+	}
+
+	args = parseCallArgs(t, "sudo --user=root git status")
+	if got := skipWrapperOptions(args, 1, sudoWrapperOptionsWithValues, sudoWrapperOptions); got != 2 {
+		t.Fatalf("skipWrapperOptions() inline value = %d, want 2", got)
 	}
 }
 
@@ -233,6 +252,9 @@ func TestShellCommandLineReplacementHelpers(t *testing.T) {
 	if got := line.replaceCommandSuffixDedup("sudo"); got != "sudo sudo" {
 		t.Fatalf("replaceCommandSuffixDedup() empty normalized branch = %q, want sudo sudo", got)
 	}
+	if got := line.replaceCommandSuffixDedup("sudo git remote -v && echo ok"); got != "sudo sudo git remote -v && echo ok" {
+		t.Fatalf("replaceCommandSuffixDedup() multi command = %q, want raw replacement branch", got)
+	}
 
 	lines, err = parseShellCommandLines("docker --context prod ps")
 	if err != nil {
@@ -261,6 +283,9 @@ func TestTrimShellWordPrefix(t *testing.T) {
 	}
 	if got := trimShellWordPrefix("broken '", []string{"sudo"}); got != "broken '" {
 		t.Fatalf("trimShellWordPrefix() parse failure = %q, want original", got)
+	}
+	if got := trimShellWordPrefix("git", []string{"sudo", "git"}); got != "git" {
+		t.Fatalf("trimShellWordPrefix() long prefix = %q, want original", got)
 	}
 }
 

@@ -176,7 +176,7 @@ func (r *Rules) EnableRuleSet(scope string, enable bool) error {
 		}
 	}
 
-	return r.saveUserRules()
+	return nil
 }
 
 // GetRuleSets returns all rule sets.

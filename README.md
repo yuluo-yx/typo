@@ -85,6 +85,17 @@ typo learn "gst" "git status"         # Recommended for recurring personal fixes
 
 Use `learn` for normal day-to-day teaching. `typo learn` and `typo rules add` both add the same user rule and clear conflicting history; `learn` is the simpler user-facing command, while `rules add` fits explicit rule management alongside `rules list` and `rules remove`.
 
+### `typo config` - Manage global settings
+
+```bash
+typo config list                         # List all effective config values
+typo config get keyboard                 # Show one config value
+typo config set keyboard dvorak          # Persist a config override
+typo config reset                        # Reset config.json to defaults
+typo config gen                          # Generate the default config file
+typo config gen --force                  # Overwrite an existing config file
+```
+
 ### `typo rules` - Manage rules
 
 ```bash
@@ -103,7 +114,7 @@ typo history clear     # Clear history
 ### `typo doctor` - Diagnose issues
 
 ```bash
-typo doctor            # Check configuration status
+typo doctor            # Check environment status and print effective config
 ```
 
 ### Other commands
@@ -160,10 +171,13 @@ Files stored in `~/.typo/`:
 
 ```
 ~/.typo/
+├── config.json                 # Global runtime settings managed by `typo config`
 ├── rules.json                  # Learned and user-defined rules
 ├── usage_history.json          # Correction history persisted from accepted/direct fixes
 └── subcommands.json            # Subcommand cache
 ```
+
+`config.json` controls thresholds, keyboard layout, history recording, and rule-set toggles. Use `typo config gen` to create a full editable file with defaults.
 
 ## Build
 

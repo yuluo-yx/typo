@@ -1122,3 +1122,166 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyboardByName(t *testing.T) {
+	tests := []struct {
+		name    string
+		layout  string
+		wantErr bool
+	}{
+		{name: "default qwerty", layout: "qwerty"},
+		{name: "dvorak", layout: "dvorak"},
+		{name: "colemak", layout: "colemak"},
+		{name: "unknown", layout: "unknown", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kb, err := KeyboardByName(tt.layout)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("KeyboardByName should fail")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("KeyboardByName failed: %v", err)
+			}
+			if kb == nil {
+				t.Fatal("KeyboardByName returned nil keyboard")
+			}
+		})
+	}
+}
+
+func TestAdditionalKeyboardLayouts_IsAdjacent(t *testing.T) {
+	dvorak := NewDvorakKeyboard()
+	if !dvorak.IsAdjacent('a', 'o') {
+		t.Fatal("Dvorak keyboard should treat a and o as adjacent")
+	}
+	if dvorak.IsAdjacent('a', 'z') {
+		t.Fatal("Dvorak keyboard should not treat a and z as adjacent")
+	}
+
+	colemak := NewColemakKeyboard()
+	if !colemak.IsAdjacent('a', 'r') {
+		t.Fatal("Colemak keyboard should treat a and r as adjacent")
+	}
+	if colemak.IsAdjacent('a', 'p') {
+		t.Fatal("Colemak keyboard should not treat a and p as adjacent")
+	}
+}
+
+func TestEngineConfigurableDistanceMatch(t *testing.T) {
+	matchCfg := distanceMatchConfig{
+		keyboard:            NewQWERTYKeyboard(),
+		maxEditDistance:     2,
+		similarityThreshold: 0.6,
+	}
+
+	if !isGoodDistanceMatch("cloen", "clone", 2, matchCfg) {
+		t.Fatal("expected threshold 0.6 and distance 2 to accept clone")
+	}
+	matchCfg.similarityThreshold = 0.61
+	if isGoodDistanceMatch("cloen", "clone", 2, matchCfg) {
+		t.Fatal("expected threshold 0.61 to reject clone")
+	}
+	matchCfg.similarityThreshold = 0.6
+	matchCfg.maxEditDistance = 1
+	if isGoodDistanceMatch("cloen", "clone", 2, matchCfg) {
+		t.Fatal("expected max edit distance 1 to reject clone")
+	}
+}
+
+func TestEngineMaxFixPasses(t *testing.T) {
+	tmpDir := t.TempDir()
+	rules := NewRules(tmpDir)
+	if err := rules.AddUserRule(Rule{From: "aaa", To: "bbb"}); err != nil {
+		t.Fatalf("AddUserRule aaa failed: %v", err)
+	}
+	if err := rules.AddUserRule(Rule{From: "bbb", To: "ccc"}); err != nil {
+		t.Fatalf("AddUserRule bbb failed: %v", err)
+	}
+
+	onePass := NewEngine(WithRules(rules), WithMaxFixPasses(1))
+	if got := onePass.Fix("aaa", ""); !got.Fixed || got.Command != "bbb" {
+		t.Fatalf("onePass.Fix() = %+v, want bbb", got)
+	}
+
+	twoPasses := NewEngine(WithRules(rules), WithMaxFixPasses(2))
+	if got := twoPasses.Fix("aaa", ""); !got.Fixed || got.Command != "ccc" {
+		t.Fatalf("twoPasses.Fix() = %+v, want ccc", got)
+	}
+}
+
+func TestEngineOptionsAndDisabledCommands(t *testing.T) {
+	eng := NewEngine(
+		WithSimilarityThreshold(0.8),
+		WithMaxEditDistance(4),
+		WithMaxFixPasses(9),
+		WithDisabledCommands([]string{"git", "docker"}),
+		WithCommands([]string{"git", "docker", "grep"}),
+	)
+
+	if eng.similarityThreshold != 0.8 {
+		t.Fatalf("similarityThreshold = %v, want 0.8", eng.similarityThreshold)
+	}
+	if eng.maxEditDistance != 4 {
+		t.Fatalf("maxEditDistance = %d, want 4", eng.maxEditDistance)
+	}
+	if eng.maxFixPasses != 9 {
+		t.Fatalf("maxFixPasses = %d, want 9", eng.maxFixPasses)
+	}
+	if !eng.disabledCommands["git"] || !eng.disabledCommands["docker"] {
+		t.Fatalf("disabledCommands not applied: %v", eng.disabledCommands)
+	}
+
+	available := eng.availableCommands()
+	if len(available) != 1 || available[0] != "grep" {
+		t.Fatalf("availableCommands() = %v, want [grep]", available)
+	}
+
+	filtered := eng.filterDisabledCommands([]string{"git", "grep", "docker", "sed"})
+	if len(filtered) != 2 || filtered[0] != "grep" || filtered[1] != "sed" {
+		t.Fatalf("filterDisabledCommands() = %v, want [grep sed]", filtered)
+	}
+}
+
+func TestEngineDisabledCommandsOptionOrderDoesNotMatter(t *testing.T) {
+	first := NewEngine(
+		WithDisabledCommands([]string{"git", "docker"}),
+		WithCommands([]string{"git", "docker", "grep"}),
+	)
+	second := NewEngine(
+		WithCommands([]string{"git", "docker", "grep"}),
+		WithDisabledCommands([]string{"git", "docker"}),
+	)
+
+	firstAvailable := first.availableCommands()
+	secondAvailable := second.availableCommands()
+
+	if len(firstAvailable) != 1 || firstAvailable[0] != "grep" {
+		t.Fatalf("first.availableCommands() = %v, want [grep]", firstAvailable)
+	}
+	if len(secondAvailable) != 1 || secondAvailable[0] != "grep" {
+		t.Fatalf("second.availableCommands() = %v, want [grep]", secondAvailable)
+	}
+}
+
+func TestEngineAvailableCommandsUsesCachedSlice(t *testing.T) {
+	eng := NewEngine(
+		WithDisabledCommands([]string{"git", "docker"}),
+		WithCommands([]string{"git", "docker", "grep"}),
+	)
+
+	allocs := testing.AllocsPerRun(1000, func() {
+		available := eng.availableCommands()
+		if len(available) != 1 || available[0] != "grep" {
+			t.Fatalf("availableCommands() = %v, want [grep]", available)
+		}
+	})
+
+	if allocs != 0 {
+		t.Fatalf("availableCommands() allocs = %v, want 0", allocs)
+	}
+}
