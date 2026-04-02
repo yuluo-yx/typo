@@ -45,22 +45,22 @@ func WithKeyboard(kb KeyboardWeights) Option {
 	return func(e *Engine) { e.keyboard = kb }
 }
 
-// WithSimilarityThreshold 设置编辑距离候选的最小相似度阈值。
+// WithSimilarityThreshold sets the minimum similarity threshold for edit-distance candidates.
 func WithSimilarityThreshold(threshold float64) Option {
 	return func(e *Engine) { e.similarityThreshold = threshold }
 }
 
-// WithMaxEditDistance 设置允许的最大编辑距离。
+// WithMaxEditDistance sets the maximum allowed edit distance.
 func WithMaxEditDistance(distance int) Option {
 	return func(e *Engine) { e.maxEditDistance = distance }
 }
 
-// WithMaxFixPasses 设置一次修复链允许执行的最大轮数。
+// WithMaxFixPasses sets the maximum number of passes allowed in one fix chain.
 func WithMaxFixPasses(passes int) Option {
 	return func(e *Engine) { e.maxFixPasses = passes }
 }
 
-// WithDisabledCommands 设置在候选命令集中需要排除的命令。
+// WithDisabledCommands excludes commands from the candidate command set.
 func WithDisabledCommands(commands []string) Option {
 	return func(e *Engine) {
 		if e.disabledCommands == nil {

@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-// KeyboardWeights 定义键盘布局相关的邻键判断能力。
+// KeyboardWeights defines adjacency checks for a keyboard layout.
 type KeyboardWeights interface {
 	IsAdjacent(a, b rune) bool
 }
@@ -15,7 +15,7 @@ type adjacencyKeyboard struct {
 	adjacentKeys map[rune]map[rune]bool
 }
 
-// IsAdjacent 判断两个字符在当前键盘布局下是否相邻。
+// IsAdjacent reports whether two characters are adjacent on the current layout.
 func (kb *adjacencyKeyboard) IsAdjacent(a, b rune) bool {
 	a = unicode.ToLower(a)
 	b = unicode.ToLower(b)
@@ -26,22 +26,22 @@ func (kb *adjacencyKeyboard) IsAdjacent(a, b rune) bool {
 	return false
 }
 
-// QWERTYKeyboard 表示标准 QWERTY 键盘布局。
+// QWERTYKeyboard represents the standard QWERTY layout.
 type QWERTYKeyboard struct {
 	adjacencyKeyboard
 }
 
-// DvorakKeyboard 表示 Dvorak 键盘布局。
+// DvorakKeyboard represents the Dvorak layout.
 type DvorakKeyboard struct {
 	adjacencyKeyboard
 }
 
-// ColemakKeyboard 表示 Colemak 键盘布局。
+// ColemakKeyboard represents the Colemak layout.
 type ColemakKeyboard struct {
 	adjacencyKeyboard
 }
 
-// NewQWERTYKeyboard 创建 QWERTY 键盘布局实例。
+// NewQWERTYKeyboard creates a QWERTY keyboard layout instance.
 func NewQWERTYKeyboard() *QWERTYKeyboard {
 	return &QWERTYKeyboard{
 		adjacencyKeyboard: adjacencyKeyboard{
@@ -50,7 +50,7 @@ func NewQWERTYKeyboard() *QWERTYKeyboard {
 	}
 }
 
-// NewDvorakKeyboard 创建 Dvorak 键盘布局实例。
+// NewDvorakKeyboard creates a Dvorak keyboard layout instance.
 func NewDvorakKeyboard() *DvorakKeyboard {
 	return &DvorakKeyboard{
 		adjacencyKeyboard: adjacencyKeyboard{
@@ -59,7 +59,7 @@ func NewDvorakKeyboard() *DvorakKeyboard {
 	}
 }
 
-// NewColemakKeyboard 创建 Colemak 键盘布局实例。
+// NewColemakKeyboard creates a Colemak keyboard layout instance.
 func NewColemakKeyboard() *ColemakKeyboard {
 	return &ColemakKeyboard{
 		adjacencyKeyboard: adjacencyKeyboard{
@@ -68,7 +68,7 @@ func NewColemakKeyboard() *ColemakKeyboard {
 	}
 }
 
-// KeyboardByName 根据名称返回对应的键盘布局实例。
+// KeyboardByName returns a keyboard layout instance by name.
 func KeyboardByName(name string) (KeyboardWeights, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", "qwerty":
@@ -222,5 +222,5 @@ var colemakAdjacencyList = map[string]string{
 	"/": ".",
 }
 
-// DefaultKeyboard 是默认使用的 QWERTY 键盘布局。
+// DefaultKeyboard is the default QWERTY keyboard layout.
 var DefaultKeyboard KeyboardWeights = NewQWERTYKeyboard()

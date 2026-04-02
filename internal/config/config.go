@@ -48,14 +48,14 @@ var (
 	}
 )
 
-// Config 表示 typo 的运行时配置与本地配置目录。
+// Config represents Typo runtime settings and the local config directory.
 type Config struct {
 	ConfigDir string
 	Debug     bool
 	User      UserConfig
 }
 
-// UserConfig 表示持久化到用户配置文件中的设置。
+// UserConfig represents settings persisted in the user config file.
 type UserConfig struct {
 	SimilarityThreshold float64                  `json:"similarity_threshold"`
 	MaxEditDistance     int                      `json:"max_edit_distance"`
@@ -65,17 +65,17 @@ type UserConfig struct {
 	Rules               map[string]RuleSetConfig `json:"rules"`
 }
 
-// HistoryConfig 控制纠错历史记录的持久化行为。
+// HistoryConfig controls persistence for correction history.
 type HistoryConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
-// RuleSetConfig 控制单个规则集的启用状态。
+// RuleSetConfig controls whether a single rule set is enabled.
 type RuleSetConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
-// Setting 表示用于 CLI 展示的单条配置项。
+// Setting represents one config item displayed by the CLI.
 type Setting struct {
 	Key   string
 	Value string
@@ -98,7 +98,7 @@ type fileRuleConfig struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
-// DefaultConfigDir 返回默认的配置目录路径。
+// DefaultConfigDir returns the default config directory path.
 func DefaultConfigDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -107,7 +107,7 @@ func DefaultConfigDir() string {
 	return filepath.Join(homeDir, ".typo")
 }
 
-// DefaultUserConfig 返回内置默认用户配置。
+// DefaultUserConfig returns the built-in default user config.
 func DefaultUserConfig() UserConfig {
 	rules := make(map[string]RuleSetConfig, len(defaultRuleScopes))
 	for _, scope := range defaultRuleScopes {
@@ -124,7 +124,7 @@ func DefaultUserConfig() UserConfig {
 	}
 }
 
-// Load 加载并合并默认配置与本地用户配置。
+// Load loads and merges the default config with local user config.
 func Load() *Config {
 	cfg := &Config{
 		ConfigDir: DefaultConfigDir(),
@@ -134,7 +134,7 @@ func Load() *Config {
 	return cfg
 }
 
-// EnsureConfigDir 确保配置目录存在。
+// EnsureConfigDir makes sure the config directory exists.
 func (c *Config) EnsureConfigDir() error {
 	if c.ConfigDir == "" {
 		return nil
@@ -142,7 +142,7 @@ func (c *Config) EnsureConfigDir() error {
 	return os.MkdirAll(c.ConfigDir, 0755)
 }
 
-// ConfigFilePath 返回配置文件的绝对路径。
+// ConfigFilePath returns the absolute path to the config file.
 func (c *Config) ConfigFilePath() string {
 	if c.ConfigDir == "" {
 		return ""
@@ -150,7 +150,7 @@ func (c *Config) ConfigFilePath() string {
 	return filepath.Join(c.ConfigDir, configFileName)
 }
 
-// Save 校验并将当前用户配置写入磁盘。
+// Save validates and writes the current user config to disk.
 func (c *Config) Save() error {
 	if err := c.User.Validate(); err != nil {
 		return err
@@ -171,13 +171,13 @@ func (c *Config) Save() error {
 	return storage.WriteFileAtomic(configFile, data, 0600)
 }
 
-// Reset 将用户配置恢复为默认值并写回磁盘。
+// Reset restores the user config to defaults and writes it back to disk.
 func (c *Config) Reset() error {
 	c.User = DefaultUserConfig()
 	return c.Save()
 }
 
-// Generate 在目标位置生成默认配置文件。
+// Generate creates a default config file at the target location.
 func (c *Config) Generate(force bool) error {
 	configFile := c.ConfigFilePath()
 	if configFile == "" {
@@ -196,7 +196,7 @@ func (c *Config) Generate(force bool) error {
 	return c.Save()
 }
 
-// ListSettings 返回用于 `typo config list` 输出的配置项列表。
+// ListSettings returns config items for `typo config list`.
 func (c *Config) ListSettings() []Setting {
 	settings := make([]Setting, 0, 5+len(c.User.Rules))
 	settings = append(settings,
@@ -217,7 +217,7 @@ func (c *Config) ListSettings() []Setting {
 	return settings
 }
 
-// Get 读取指定配置键对应的字符串值。
+// Get reads the string value for the given config key.
 func (c *Config) Get(key string) (string, error) {
 	switch key {
 	case "similarity-threshold":
@@ -243,7 +243,7 @@ func (c *Config) Get(key string) (string, error) {
 	}
 }
 
-// Set 更新指定配置键并持久化到磁盘。
+// Set updates the given config key and persists it to disk.
 func (c *Config) Set(key, value string) error {
 	switch key {
 	case "similarity-threshold":
@@ -265,7 +265,11 @@ func (c *Config) Set(key, value string) error {
 		}
 		c.User.MaxFixPasses = parsed
 	case "keyboard":
-		c.User.Keyboard = strings.ToLower(strings.TrimSpace(value))
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if !supportedKeyboardLayouts[normalized] {
+			return fmt.Errorf("unsupported keyboard layout: %s", normalized)
+		}
+		c.User.Keyboard = normalized
 	case "history.enabled":
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
@@ -290,7 +294,7 @@ func (c *Config) Set(key, value string) error {
 	return c.Save()
 }
 
-// Validate 检查用户配置是否满足允许范围与已知枚举。
+// Validate checks whether the user config matches allowed ranges and known enums.
 func (u UserConfig) Validate() error {
 	if u.SimilarityThreshold < minSimilarityThreshold || u.SimilarityThreshold > maxSimilarityThreshold {
 		return fmt.Errorf("similarity_threshold must be between %.1f and %.1f", minSimilarityThreshold, maxSimilarityThreshold)
