@@ -52,12 +52,14 @@ See: https://ghostty.org/docs/help/terminfo#ssh
 
 ## 3. Why doesn't the `Esc` binding work in a JetBrains Remote IDE terminal launched via Gateway?
 
-This appears to be a JetBrains IDE limitation. Change the binding in `typo init zsh` to another key, and it should work again.
+This appears to be a JetBrains IDE limitation. Change the binding in your shell integration script (`typo init zsh` or `typo init bash`) to another key, and it should work again.
 
 ```shell
+# zsh
 bindkey '\e\e' _typo_fix_command
-
-->
-
 bindkey '^T' _typo_fix_command
+
+# bash
+bind -x '"\e\e":_typo_fix_command'
+bind -x '"\C-t":_typo_fix_command'
 ```

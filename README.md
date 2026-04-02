@@ -58,6 +58,9 @@ Note: The install script currently supports macOS and Linux.
 ```bash
 # Add to ~/.zshrc
 eval "$(typo init zsh)"
+
+# Or add to ~/.bashrc
+eval "$(typo init bash)"
 ```
 
 Restart your terminal, then press `Esc` `Esc` after a typo. (No Enter can!)
@@ -107,6 +110,7 @@ typo doctor            # Check configuration status
 
 ```bash
 typo init zsh          # Print shell integration script
+typo init bash         # Print shell integration script
 typo version           # Show version
 typo uninstall         # Remove local config and print remaining cleanup steps
 ```
@@ -128,7 +132,7 @@ Typo corrects commands in this priority:
 - **docker**: Unknown command suggestions
 - **npm**: Command not found suggestions
 
-`-s <file>` tells `typo fix` to read stderr from a file. This is mainly for parser-based fixes and is usually passed automatically by the zsh integration after a command fails.
+`-s <file>` tells `typo fix` to read stderr from a file. This is mainly for parser-based fixes and is usually passed automatically by the shell integration after a command fails.
 
 Examples:
 

@@ -290,6 +290,22 @@ func (e *e2eEnv) initZshScript(t *testing.T) string {
 	return scriptPath
 }
 
+func (e *e2eEnv) initBashScript(t *testing.T) string {
+	t.Helper()
+
+	result := e.run(t, "init", "bash")
+	if result.code != 0 {
+		t.Fatalf("failed to generate bash init script: %s", result.stderr)
+	}
+
+	scriptPath := filepath.Join(e.tmpDir, "typo-init.bash")
+	if err := os.WriteFile(scriptPath, []byte(result.stdout), 0600); err != nil {
+		t.Fatalf("failed to write bash init script: %v", err)
+	}
+
+	return scriptPath
+}
+
 func (e *e2eEnv) runZsh(t *testing.T, initScriptPath, script string) e2eResult {
 	t.Helper()
 
@@ -323,6 +339,39 @@ func (e *e2eEnv) runZsh(t *testing.T, initScriptPath, script string) e2eResult {
 	}
 }
 
+func (e *e2eEnv) runBash(t *testing.T, initScriptPath, script string) e2eResult {
+	t.Helper()
+
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not available; skipping bash e2e test")
+	}
+
+	cmd := exec.Command("bash", "-c", script, "bash", initScriptPath)
+	cmd.Dir = e.root
+	cmd.Env = e.commandEnv()
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to execute bash e2e script: %v", err)
+		}
+	}
+
+	return e2eResult{
+		stdout: stdout.String(),
+		stderr: stderr.String(),
+		code:   code,
+	}
+}
+
 func TestE2EReadmeExamples(t *testing.T) {
 	env := newE2EEnv(t)
 
@@ -334,6 +383,11 @@ func TestE2EReadmeExamples(t *testing.T) {
 	initZsh := env.run(t, "init", "zsh")
 	if initZsh.code != 0 || !strings.Contains(initZsh.stdout, "bindkey '\\e\\e'") {
 		t.Fatalf("unexpected init zsh output: stdout=%q stderr=%q code=%d", initZsh.stdout, initZsh.stderr, initZsh.code)
+	}
+
+	initBash := env.run(t, "init", "bash")
+	if initBash.code != 0 || !strings.Contains(initBash.stdout, "bind -x") {
+		t.Fatalf("unexpected init bash output: stdout=%q stderr=%q code=%d", initBash.stdout, initBash.stderr, initBash.code)
 	}
 
 	fixCases := []struct {
@@ -474,6 +528,10 @@ func TestE2EUninstallWorkflow(t *testing.T) {
 	if err := os.WriteFile(zshrc, []byte("eval \"$(typo init zsh)\"\n"), 0600); err != nil {
 		t.Fatalf("failed to write .zshrc: %v", err)
 	}
+	bashrc := filepath.Join(env.home, ".bashrc")
+	if err := os.WriteFile(bashrc, []byte("eval \"$(typo init bash)\"\n"), 0600); err != nil {
+		t.Fatalf("failed to write .bashrc: %v", err)
+	}
 
 	uninstall := env.run(t, "uninstall")
 	if uninstall.code != 0 {
@@ -482,7 +540,9 @@ func TestE2EUninstallWorkflow(t *testing.T) {
 	if _, err := os.Stat(env.configDir()); !os.IsNotExist(err) {
 		t.Fatalf("config directory still exists after uninstall: %v", err)
 	}
-	if !strings.Contains(uninstall.stdout, "eval \"$(typo init zsh)\"") || !strings.Contains(uninstall.stdout, env.bin) {
+	if !strings.Contains(uninstall.stdout, "eval \"$(typo init zsh)\"") ||
+		!strings.Contains(uninstall.stdout, "eval \"$(typo init bash)\"") ||
+		!strings.Contains(uninstall.stdout, env.bin) {
 		t.Fatalf("uninstall output is incomplete: stdout=%q stderr=%q", uninstall.stdout, uninstall.stderr)
 	}
 }
@@ -667,5 +727,38 @@ print -r -- "$BUFFER"
 `)
 	if complexFix.code != 0 || !strings.Contains(complexFix.stdout, "git status | grep main && docker ps") {
 		t.Fatalf("zsh complex flow fix failed: stdout=%q stderr=%q code=%d", complexFix.stdout, complexFix.stderr, complexFix.code)
+	}
+}
+
+func TestE2EBashIntegrationDailyFlow(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initBashScript(t)
+
+	bufferFix := env.runBash(t, initScript, `
+source "$1"
+trap - DEBUG
+READLINE_LINE="gti stauts && dcoker ps"
+_typo_fix_command
+[[ "$READLINE_LINE" == "git status && docker ps" ]] || { printf "%s\n" "$READLINE_LINE"; exit 71; }
+printf "%s\n" "$READLINE_LINE"
+`)
+	if bufferFix.code != 0 || !strings.Contains(bufferFix.stdout, "git status && docker ps") {
+		t.Fatalf("bash buffer fix failed: stdout=%q stderr=%q code=%d", bufferFix.stdout, bufferFix.stderr, bufferFix.code)
+	}
+
+	stderrFix := env.runBash(t, initScript, `
+source "$1"
+trap - DEBUG
+printf "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n" > "$TYPO_STDERR_CACHE"
+fc() { printf "%s\n" "git remove -v"; }
+sed() { while IFS= read -r line; do printf "%s\n" "$line"; done; }
+TYPO_LAST_EXIT_CODE=1
+READLINE_LINE=""
+_typo_fix_command
+[[ "$READLINE_LINE" == "git remote -v" ]] || { printf "%s\n" "$READLINE_LINE"; exit 72; }
+printf "%s\n" "$READLINE_LINE"
+`)
+	if stderrFix.code != 0 || !strings.Contains(stderrFix.stdout, "git remote -v") {
+		t.Fatalf("bash stderr fix failed: stdout=%q stderr=%q code=%d", stderrFix.stdout, stderrFix.stderr, stderrFix.code)
 	}
 }
