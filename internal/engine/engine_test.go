@@ -1019,9 +1019,10 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 
 	return NewEngine(
 		WithRules(NewRules(tmpDir)),
-		WithCommands([]string{"git", "docker", "npm", "cargo", "kubectl", "brew", "terraform", "helm"}),
+		WithCommands([]string{"git", "docker", "npm", "cargo", "kubectl", "brew", "terraform", "helm", "typo"}),
 		WithKeyboard(NewQWERTYKeyboard()),
 		WithSubcommands(subcmdRegistry),
+		WithCommandTrees(commands.NewCommandTreeRegistry()),
 	)
 }
 

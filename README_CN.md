@@ -77,6 +77,8 @@ eval "$(typo init bash)"
 typo fix "gut stauts"                 # → git status
 typo fix "gut status && dcoker ps"    # → git status && docker ps
 typo fix "gut status | grep main"     # → git status | grep main
+typo fix "typ doctro"                 # → typo doctor
+typo fix "typo hsitory lsit"          # → typo history list
 ```
 
 ### `typo learn` - 学习修正规则

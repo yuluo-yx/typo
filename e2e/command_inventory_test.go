@@ -18,6 +18,7 @@ func TestE2EInventory_BuiltinsAndSystemCommands(t *testing.T) {
 		{name: "unset builtin", command: "unsett VAR", want: "unset VAR\n"},
 		{name: "history builtin", command: "historyy", want: "history\n"},
 		{name: "type builtin", command: "typ git", want: "type git\n"},
+		{name: "type builtin transposition avoids fuzzy mismatch", command: "tyep git", want: "type git\n"},
 		{name: "hash builtin", command: "hasj git", want: "hash git\n"},
 		{name: "help builtin", command: "helpp git", want: "help git\n"},
 		{name: "test builtin", command: "testt -f file", want: "test -f file\n"},
@@ -133,6 +134,33 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 		{name: "helm main command", command: "helmm list", want: "helm list\n"},
 		{name: "helm subcommand", command: "helm temlpate chart", want: "helm template chart\n"},
 		{name: "helm subcommand after global option with value", command: "helm --kube-context prod temlpate chart", want: "helm --kube-context prod template chart\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := env.run(t, "fix", tt.command)
+			if result.code != 0 || result.stdout != tt.want {
+				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+			}
+		})
+	}
+}
+
+func TestE2EInventory_TypoCommandTree(t *testing.T) {
+	env := newE2EEnv(t)
+
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "root typo prefers typo over type", command: "typ doctro", want: "typo doctor\n"},
+		{name: "root transposition typo", command: "tpyo doctro", want: "typo doctor\n"},
+		{name: "nested typo subcommands", command: "typo hsitory lsit", want: "typo history list\n"},
+		{name: "rules second level typo", command: "typo rulse lset", want: "typo rules list\n"},
+		{name: "init second level typo", command: "typo inti zsh", want: "typo init zsh\n"},
+		{name: "config subcommand typo", command: "typo config gte keyboard", want: "typo config get keyboard\n"},
+		{name: "free form fix payload preserved", command: "typo fxi gut status", want: "typo fix gut status\n"},
 	}
 
 	for _, tt := range tests {

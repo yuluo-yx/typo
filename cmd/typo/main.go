@@ -21,7 +21,7 @@ import (
 var (
 	version = "dev"
 	commit  = "none"
-	date    = "unknown"
+	date    = unknownValue
 
 	readBuildInfo = debug.ReadBuildInfo
 	lookPath      = exec.LookPath
@@ -31,7 +31,10 @@ var (
 	statPath      = os.Stat
 )
 
-const commandDiscoveryTimeout = 150 * time.Millisecond
+const (
+	commandDiscoveryTimeout = 150 * time.Millisecond
+	unknownValue            = "unknown"
+)
 
 var ruleScopeDisabledCommands = map[string][]string{
 	"git":       {"git"},
@@ -439,7 +442,7 @@ func resolveVersionInfo() (string, string, string) {
 		}
 	}
 
-	if resolvedDate == "" || resolvedDate == "unknown" {
+	if resolvedDate == "" || resolvedDate == unknownValue {
 		if vcsTime := settings["vcs.time"]; vcsTime != "" {
 			resolvedDate = formatBuildDate(vcsTime)
 		}
@@ -594,12 +597,12 @@ func checkDoctorGoBinPath(typoPath string) bool {
 func currentShellName() string {
 	shellPath := strings.TrimSpace(os.Getenv("SHELL"))
 	if shellPath == "" {
-		return "unknown"
+		return unknownValue
 	}
 
 	shellBase := strings.ToLower(filepath.Base(shellPath))
 	if shellBase == "" || shellBase == "." {
-		return "unknown"
+		return unknownValue
 	}
 
 	return shellBase
@@ -734,7 +737,8 @@ func printIntegrationScript(shell string) {
 }
 
 func createEngine(cfg *config.Config) *engine.Engine {
-	seedCommands := append(commands.DiscoverCommon(), commands.ShellBuiltins()...)
+	seedCommands := append([]string{"typo"}, commands.DiscoverCommon()...)
+	seedCommands = append(seedCommands, commands.ShellBuiltins()...)
 	disabledCommands := disabledCommandsFromConfig(cfg)
 
 	rules := engine.NewRules(cfg.ConfigDir)
@@ -750,6 +754,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 	}
 
 	subcmdRegistry := commands.NewSubcommandRegistry(cfg.ConfigDir)
+	commandTreeRegistry := commands.NewCommandTreeRegistry()
 
 	return engine.NewEngine(
 		engine.WithKeyboard(keyboard),
@@ -765,6 +770,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 			return discoverCommandsWithinTimeout(commands.Discover, commandDiscoveryTimeout)
 		}),
 		engine.WithSubcommands(subcmdRegistry),
+		engine.WithCommandTrees(commandTreeRegistry),
 	)
 }
 
