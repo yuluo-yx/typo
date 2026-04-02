@@ -2628,26 +2628,6 @@ func TestCreateEngineAppliesDisabledRuleScopes(t *testing.T) {
 	}
 }
 
-func TestCurrentShellName(t *testing.T) {
-	oldShell := os.Getenv("SHELL")
-	defer os.Setenv("SHELL", oldShell)
-
-	os.Setenv("SHELL", "/bin/zsh")
-	if got := currentShellName(); got != "zsh" {
-		t.Fatalf("currentShellName() = %q, want zsh", got)
-	}
-
-	os.Unsetenv("SHELL")
-	if got := currentShellName(); got != "unknown" {
-		t.Fatalf("currentShellName() without SHELL = %q, want unknown", got)
-	}
-
-	os.Setenv("SHELL", "/")
-	if got := currentShellName(); got != "unknown" {
-		t.Fatalf("currentShellName() for root path = %q, want unknown", got)
-	}
-}
-
 func TestDisabledCommandsFromConfig(t *testing.T) {
 	if got := disabledCommandsFromConfig(nil); got != nil {
 		t.Fatalf("disabledCommandsFromConfig(nil) = %v, want nil", got)

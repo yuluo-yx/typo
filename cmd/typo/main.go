@@ -511,16 +511,14 @@ func cmdDoctor() int {
 	} else {
 		fmt.Println("⊘ unavailable")
 	}
-	printEffectiveConfig(cfg)
 
 	// Check shell integration
 	fmt.Print("[4/5] shell integration: ")
 	shellIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
-	currentShell := currentShellName()
 	if shellIntegration == "1" {
-		fmt.Printf("✓ loaded (shell: %s)\n", currentShell)
+		fmt.Println("✓ loaded")
 	} else {
-		fmt.Printf("✗ not loaded (shell: %s)\n", currentShell)
+		fmt.Println("✗ not loaded")
 		fmt.Println()
 		if shellName != "" {
 			fmt.Printf("To enable shell integration, add to your %s:\n", shellRC)

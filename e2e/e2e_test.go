@@ -372,23 +372,55 @@ func (e *e2eEnv) runBash(t *testing.T, initScriptPath, script string) e2eResult 
 	}
 }
 
+func assertE2EStdoutContains(t *testing.T, result e2eResult, want, message string) {
+	t.Helper()
+
+	if result.code != 0 || !strings.Contains(result.stdout, want) {
+		t.Fatalf("%s: stdout=%q stderr=%q code=%d", message, result.stdout, result.stderr, result.code)
+	}
+}
+
+func assertE2EStdoutEquals(t *testing.T, result e2eResult, want, message string) {
+	t.Helper()
+
+	if result.code != 0 || result.stdout != want {
+		t.Fatalf("%s: stdout=%q stderr=%q code=%d", message, result.stdout, result.stderr, result.code)
+	}
+}
+
+func runReadmeFixCase(t *testing.T, env *e2eEnv, command, want string) {
+	t.Helper()
+
+	result := env.run(t, "fix", command)
+	assertE2EStdoutEquals(t, result, want, "unexpected fix result")
+}
+
+func readmeParserArgs(name, stderrFile, command string) []string {
+	if name == "permission stderr parser" {
+		return []string{"fix", "--exit-code", "1", "-s", stderrFile, command}
+	}
+
+	return []string{"fix", "-s", stderrFile, command}
+}
+
+func runReadmeParserCase(t *testing.T, env *e2eEnv, name, command, stderrFile, want string) {
+	t.Helper()
+
+	result := env.run(t, readmeParserArgs(name, stderrFile, command)...)
+	assertE2EStdoutEquals(t, result, want, "unexpected stderr parser result")
+}
+
 func TestE2EReadmeExamples(t *testing.T) {
 	env := newE2EEnv(t)
 
 	version := env.run(t, "version")
-	if version.code != 0 || !strings.Contains(version.stdout, "typo") {
-		t.Fatalf("unexpected version output: stdout=%q stderr=%q code=%d", version.stdout, version.stderr, version.code)
-	}
+	assertE2EStdoutContains(t, version, "typo", "unexpected version output")
 
 	initZsh := env.run(t, "init", "zsh")
-	if initZsh.code != 0 || !strings.Contains(initZsh.stdout, "bindkey '\\e\\e'") {
-		t.Fatalf("unexpected init zsh output: stdout=%q stderr=%q code=%d", initZsh.stdout, initZsh.stderr, initZsh.code)
-	}
+	assertE2EStdoutContains(t, initZsh, "bindkey '\\e\\e'", "unexpected init zsh output")
 
 	initBash := env.run(t, "init", "bash")
-	if initBash.code != 0 || !strings.Contains(initBash.stdout, "bind -x") {
-		t.Fatalf("unexpected init bash output: stdout=%q stderr=%q code=%d", initBash.stdout, initBash.stderr, initBash.code)
-	}
+	assertE2EStdoutContains(t, initBash, "bind -x", "unexpected init bash output")
 
 	fixCases := []struct {
 		name    string
@@ -404,10 +436,7 @@ func TestE2EReadmeExamples(t *testing.T) {
 
 	for _, tt := range fixCases {
 		t.Run(tt.name, func(t *testing.T) {
-			result := env.run(t, "fix", tt.command)
-			if result.code != 0 || result.stdout != tt.want {
-				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
-			}
+			runReadmeFixCase(t, env, tt.command, tt.want)
 		})
 	}
 
@@ -430,21 +459,12 @@ func TestE2EReadmeExamples(t *testing.T) {
 
 	for _, tt := range parserCases {
 		t.Run(tt.name, func(t *testing.T) {
-			args := []string{"fix", "-s", tt.stderrFile, tt.command}
-			if tt.name == "permission stderr parser" {
-				args = []string{"fix", "--exit-code", "1", "-s", tt.stderrFile, tt.command}
-			}
-			result := env.run(t, args...)
-			if result.code != 0 || result.stdout != tt.want {
-				t.Fatalf("unexpected stderr parser result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
-			}
+			runReadmeParserCase(t, env, tt.name, tt.command, tt.stderrFile, tt.want)
 		})
 	}
 
 	doctor := env.runWithEnv(t, []string{"TYPO_SHELL_INTEGRATION=1"}, "doctor")
-	if doctor.code != 0 || !strings.Contains(doctor.stdout, "All checks passed") {
-		t.Fatalf("doctor e2e failed: stdout=%q stderr=%q code=%d", doctor.stdout, doctor.stderr, doctor.code)
-	}
+	assertE2EStdoutContains(t, doctor, "All checks passed", "doctor e2e failed")
 }
 
 func TestE2ELearnHistoryWorkflow(t *testing.T) {
