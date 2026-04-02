@@ -31,10 +31,17 @@ type Engine struct {
 	history             *History
 	parser              *parser.Registry
 	commands            []string // Loaded command set, seeded first and expanded on demand.
+	availableCmds       []string // Cached command set after disabled-command filtering.
 	commandLoader       func() []string
 	commandsLoadOnce    sync.Once
 	commandsFullyLoad   bool
 	subcommands         *commands.SubcommandRegistry
+}
+
+type distanceMatchConfig struct {
+	keyboard            KeyboardWeights
+	maxEditDistance     int
+	similarityThreshold float64
 }
 
 // Option is a functional option for Engine.
@@ -122,6 +129,8 @@ func NewEngine(opts ...Option) *Engine {
 	for _, opt := range opts {
 		opt(e)
 	}
+
+	e.refreshAvailableCommands()
 
 	return e
 }
@@ -554,13 +563,15 @@ func (e *Engine) tryDistanceWithShell(cmd string) (FixResult, bool) {
 		return FixResult{Fixed: false}, false
 	}
 
+	matchCfg := e.distanceMatchConfig()
+
 	for _, line := range lines {
 		if e.isProtectedCommandWord(line.commandWord()) {
 			continue
 		}
 
 		bestMatch, bestDistance := e.closestKnownCommand(line.commandWord())
-		if !isGoodDistanceMatch(line.commandWord(), bestMatch, bestDistance, e.keyboard, e.maxEditDistance, e.similarityThreshold) {
+		if !isGoodDistanceMatch(line.commandWord(), bestMatch, bestDistance, matchCfg) {
 			continue
 		}
 		if bestMatch == line.commandWord() {
@@ -587,6 +598,8 @@ func (e *Engine) tryToolOptionFix(cmd string) FixResult {
 	if result, parsed := e.tryToolOptionFixWithShell(cmd); parsed {
 		return result
 	}
+
+	matchCfg := e.distanceMatchConfig()
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
@@ -627,7 +640,7 @@ func (e *Engine) tryToolOptionFix(cmd string) FixResult {
 			continue
 		}
 
-		replacement := closestToolOption(mainCmd, name, e.keyboard, e.maxEditDistance, e.similarityThreshold)
+		replacement := closestToolOption(mainCmd, name, matchCfg)
 		if replacement == "" {
 			continue
 		}
@@ -649,6 +662,8 @@ func (e *Engine) tryToolOptionFixWithShell(cmd string) (FixResult, bool) {
 	if err != nil {
 		return FixResult{Fixed: false}, false
 	}
+
+	matchCfg := e.distanceMatchConfig()
 
 	for _, line := range lines {
 		mainCmd, resolvedCmd, resolveErr := e.resolveShellCommandLine(line)
@@ -680,7 +695,7 @@ func (e *Engine) tryToolOptionFixWithShell(cmd string) (FixResult, bool) {
 				continue
 			}
 
-			replacement := closestToolOption(mainCmd, name, e.keyboard, e.maxEditDistance, e.similarityThreshold)
+			replacement := closestToolOption(mainCmd, name, matchCfg)
 			if replacement == "" {
 				continue
 			}
@@ -710,6 +725,8 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	if result, parsed := e.trySubcommandFixWithShell(cmd); parsed {
 		return result
 	}
+
+	matchCfg := e.distanceMatchConfig()
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
@@ -750,7 +767,7 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	}
 
 	// Try to find closest subcommand.
-	bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, e.keyboard, e.maxEditDistance, e.similarityThreshold)
+	bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, matchCfg)
 
 	// Threshold: distance <= 2 and similarity > 60%
 	if bestMatch != "" && bestDistance <= e.maxEditDistance {
@@ -777,6 +794,8 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 		return FixResult{Fixed: false}, false
 	}
 
+	matchCfg := e.distanceMatchConfig()
+
 	for _, line := range lines {
 		mainCmd, resolvedCmd, resolveErr := e.resolveShellCommandLine(line)
 		if resolveErr != nil {
@@ -802,8 +821,8 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 			continue
 		}
 
-		bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, e.keyboard, e.maxEditDistance, e.similarityThreshold)
-		if !isGoodDistanceMatch(subcmd, bestMatch, bestDistance, e.keyboard, e.maxEditDistance, e.similarityThreshold) {
+		bestMatch, bestDistance := closestSubcommand(subcmd, subcommands, matchCfg)
+		if !isGoodDistanceMatch(subcmd, bestMatch, bestDistance, matchCfg) {
 			continue
 		}
 
@@ -845,16 +864,18 @@ func (e *Engine) resolveShellCommandLine(line *shellCommandLine) (string, string
 }
 
 func (e *Engine) findClosestCommand(cmd string) string {
+	matchCfg := e.distanceMatchConfig()
 	bestMatch, bestDistance := e.closestKnownCommand(cmd)
-	if isGoodDistanceMatch(cmd, bestMatch, bestDistance, e.keyboard, e.maxEditDistance, e.similarityThreshold) {
+	if isGoodDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) {
 		return bestMatch
 	}
 	return ""
 }
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
+	matchCfg := e.distanceMatchConfig()
 	bestMatch, bestDistance := e.closestKnownCommandFromSlice(cmd, e.availableCommands())
-	if isGoodDistanceMatch(cmd, bestMatch, bestDistance, e.keyboard, e.maxEditDistance, e.similarityThreshold) || e.commandLoader == nil || e.commandsFullyLoad {
+	if isGoodDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) || e.commandLoader == nil || e.commandsFullyLoad {
 		return bestMatch, bestDistance
 	}
 
@@ -902,29 +923,33 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 }
 
 func (e *Engine) availableCommands() []string {
-	if len(e.disabledCommands) == 0 {
-		return e.commands
-	}
-
-	commands := make([]string, 0, len(e.commands))
-	for _, command := range e.commands {
-		if !e.disabledCommands[command] {
-			commands = append(commands, command)
-		}
-	}
-	return commands
+	return e.availableCmds
 }
 
 func (e *Engine) loadCommands() {
 	e.commandsLoadOnce.Do(func() {
 		if e.commandLoader == nil {
+			e.refreshAvailableCommands()
 			e.commandsFullyLoad = true
 			return
 		}
 
 		e.commands = mergeUniqueStrings(e.commands, e.filterDisabledCommands(e.commandLoader())...)
+		e.refreshAvailableCommands()
 		e.commandsFullyLoad = true
 	})
+}
+
+func (e *Engine) refreshAvailableCommands() {
+	e.availableCmds = e.filterDisabledCommands(e.commands)
+}
+
+func (e *Engine) distanceMatchConfig() distanceMatchConfig {
+	return distanceMatchConfig{
+		keyboard:            e.keyboard,
+		maxEditDistance:     e.maxEditDistance,
+		similarityThreshold: e.similarityThreshold,
+	}
 }
 
 func (e *Engine) filterDisabledCommands(commands []string) []string {
@@ -998,17 +1023,17 @@ func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) Fi
 	return result
 }
 
-func closestSubcommand(subcmd string, knownSubcommands []string, keyboard KeyboardWeights, maxEditDistance int, similarityThreshold float64) (string, int) {
+func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMatchConfig) (string, int) {
 	bestMatch := ""
 	bestDistance := 999
 	bestLengthDelta := 999
 	bestSimilarity := -1.0
 
 	for _, known := range knownSubcommands {
-		d := Distance(subcmd, known, keyboard)
+		d := Distance(subcmd, known, cfg.keyboard)
 		lengthDelta := abs(len(subcmd) - len(known))
-		similarity := Similarity(subcmd, known, keyboard)
-		if !isGoodDistanceMatch(subcmd, known, d, keyboard, maxEditDistance, similarityThreshold) {
+		similarity := Similarity(subcmd, known, cfg.keyboard)
+		if !isGoodDistanceMatch(subcmd, known, d, cfg) {
 			continue
 		}
 		if d < bestDistance ||
@@ -1031,12 +1056,12 @@ func abs(value int) int {
 	return value
 }
 
-func isGoodDistanceMatch(original, candidate string, distance int, keyboard KeyboardWeights, maxEditDistance int, similarityThreshold float64) bool {
-	if candidate == "" || distance > maxEditDistance {
+func isGoodDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
+	if candidate == "" || distance > cfg.maxEditDistance {
 		return false
 	}
 
-	return Similarity(original, candidate, keyboard) >= similarityThreshold
+	return Similarity(original, candidate, cfg.keyboard) >= cfg.similarityThreshold
 }
 
 func isMeaningfulFix(original string, result FixResult) bool {
@@ -1191,7 +1216,7 @@ func toolOptionTakesValue(mainCmd, option string) bool {
 	return ok && options[option]
 }
 
-func closestToolOption(mainCmd, option string, keyboard KeyboardWeights, maxEditDistance int, similarityThreshold float64) string {
+func closestToolOption(mainCmd, option string, cfg distanceMatchConfig) string {
 	candidates := builtinToolOptions[mainCmd]
 	if len(candidates) == 0 {
 		return ""
@@ -1209,14 +1234,14 @@ func closestToolOption(mainCmd, option string, keyboard KeyboardWeights, maxEdit
 			}
 		}
 
-		distance := Distance(option, candidate, keyboard)
+		distance := Distance(option, candidate, cfg.keyboard)
 		if distance < bestDistance {
 			bestDistance = distance
 			bestMatch = candidate
 		}
 	}
 
-	if !isGoodDistanceMatch(option, bestMatch, bestDistance, keyboard, maxEditDistance, similarityThreshold) {
+	if !isGoodDistanceMatch(option, bestMatch, bestDistance, cfg) {
 		return ""
 	}
 

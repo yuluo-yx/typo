@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,25 @@ var (
 )
 
 const commandDiscoveryTimeout = 150 * time.Millisecond
+
+var ruleScopeDisabledCommands = map[string][]string{
+	"git":       {"git"},
+	"docker":    {"docker"},
+	"npm":       {"npm"},
+	"yarn":      {"yarn"},
+	"kubectl":   {"kubectl"},
+	"cargo":     {"cargo"},
+	"brew":      {"brew"},
+	"helm":      {"helm"},
+	"terraform": {"terraform"},
+	"python":    {"python", "python3"},
+	"pip":       {"pip"},
+	"go":        {"go"},
+	"java":      {"java"},
+	// The system scope groups many shell builtins and common utilities. Disabling the
+	// rules must not remove those commands from the known-command pool.
+	"system": nil,
+}
 
 func main() {
 	os.Exit(run())
@@ -239,7 +259,11 @@ func cmdConfigSet(cfg *config.Config, args []string) int {
 		return 1
 	}
 
-	if err := cfg.Set(args[1], args[2]); err != nil {
+	if err := cfg.SetValue(args[1], args[2]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	if err := cfg.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
@@ -690,22 +714,35 @@ func disabledCommandsFromConfig(cfg *config.Config) []string {
 	}
 
 	disabled := make([]string, 0)
+	unknownScopes := make([]string, 0)
 	for scope, ruleCfg := range cfg.User.Rules {
 		if ruleCfg.Enabled {
 			continue
 		}
 
-		switch scope {
-		case "system":
+		commands, ok := disabledCommandsForRuleScope(scope)
+		if !ok {
+			unknownScopes = append(unknownScopes, scope)
 			continue
-		case "python":
-			disabled = append(disabled, "python", "python3")
-		default:
-			disabled = append(disabled, scope)
 		}
+		disabled = append(disabled, commands...)
+	}
+
+	if len(unknownScopes) > 0 {
+		sort.Strings(unknownScopes)
+		fmt.Fprintf(
+			os.Stderr,
+			"typo: ignoring unknown disabled rule scopes for command filtering: %s\n",
+			strings.Join(unknownScopes, ", "),
+		)
 	}
 
 	return disabled
+}
+
+func disabledCommandsForRuleScope(scope string) ([]string, bool) {
+	commands, ok := ruleScopeDisabledCommands[scope]
+	return commands, ok
 }
 
 func discoverCommandsWithinTimeout(loader func() []string, timeout time.Duration) []string {

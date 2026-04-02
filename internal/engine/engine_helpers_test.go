@@ -489,6 +489,28 @@ func TestEngine_LoadCommandsWithoutLoader(t *testing.T) {
 	}
 }
 
+func TestEngine_LoadCommandsRefreshesAvailableCommandsCache(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git"}),
+		WithDisabledCommands([]string{"kubectl"}),
+		WithCommandLoader(func() []string {
+			return []string{"kubectl", "grep"}
+		}),
+	)
+
+	initial := eng.availableCommands()
+	if len(initial) != 1 || initial[0] != "git" {
+		t.Fatalf("initial availableCommands() = %v, want [git]", initial)
+	}
+
+	eng.loadCommands()
+
+	available := eng.availableCommands()
+	if len(available) != 2 || available[0] != "git" || available[1] != "grep" {
+		t.Fatalf("availableCommands() after load = %v, want [git grep]", available)
+	}
+}
+
 func misspelledLongVersionOption() string {
 	return "--ver" + "soin"
 }
@@ -556,16 +578,22 @@ func TestToolOptionHelpers(t *testing.T) {
 		}
 	}
 
-	if got := closestToolOption("cargo", misspelledLongVersionOption(), NewQWERTYKeyboard(), 2, 0.6); got != "--version" {
+	matchCfg := distanceMatchConfig{
+		keyboard:            NewQWERTYKeyboard(),
+		maxEditDistance:     2,
+		similarityThreshold: 0.6,
+	}
+
+	if got := closestToolOption("cargo", misspelledLongVersionOption(), matchCfg); got != "--version" {
 		t.Fatalf("closestToolOption() = %q, want --version", got)
 	}
-	if got := closestToolOption("cargo", "-V", NewQWERTYKeyboard(), 2, 0.6); got != "-V" {
+	if got := closestToolOption("cargo", "-V", matchCfg); got != "-V" {
 		t.Fatalf("closestToolOption() short exact = %q, want -V", got)
 	}
-	if got := closestToolOption("cargo", mixedPrefixVersionOption(), NewQWERTYKeyboard(), 2, 0.6); got != "" {
+	if got := closestToolOption("cargo", mixedPrefixVersionOption(), matchCfg); got != "" {
 		t.Fatalf("closestToolOption() mixed prefix = %q, want empty", got)
 	}
-	if got := closestToolOption("unknown", misspelledLongVersionOption(), NewQWERTYKeyboard(), 2, 0.6); got != "" {
+	if got := closestToolOption("unknown", misspelledLongVersionOption(), matchCfg); got != "" {
 		t.Fatalf("closestToolOption() unknown command = %q, want empty", got)
 	}
 }

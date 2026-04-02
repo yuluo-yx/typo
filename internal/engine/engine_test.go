@@ -1173,15 +1173,22 @@ func TestAdditionalKeyboardLayouts_IsAdjacent(t *testing.T) {
 }
 
 func TestEngineConfigurableDistanceMatch(t *testing.T) {
-	kb := NewQWERTYKeyboard()
+	matchCfg := distanceMatchConfig{
+		keyboard:            NewQWERTYKeyboard(),
+		maxEditDistance:     2,
+		similarityThreshold: 0.6,
+	}
 
-	if !isGoodDistanceMatch("cloen", "clone", 2, kb, 2, 0.6) {
+	if !isGoodDistanceMatch("cloen", "clone", 2, matchCfg) {
 		t.Fatal("expected threshold 0.6 and distance 2 to accept clone")
 	}
-	if isGoodDistanceMatch("cloen", "clone", 2, kb, 2, 0.61) {
+	matchCfg.similarityThreshold = 0.61
+	if isGoodDistanceMatch("cloen", "clone", 2, matchCfg) {
 		t.Fatal("expected threshold 0.61 to reject clone")
 	}
-	if isGoodDistanceMatch("cloen", "clone", 2, kb, 1, 0.6) {
+	matchCfg.similarityThreshold = 0.6
+	matchCfg.maxEditDistance = 1
+	if isGoodDistanceMatch("cloen", "clone", 2, matchCfg) {
 		t.Fatal("expected max edit distance 1 to reject clone")
 	}
 }
@@ -1237,5 +1244,44 @@ func TestEngineOptionsAndDisabledCommands(t *testing.T) {
 	filtered := eng.filterDisabledCommands([]string{"git", "grep", "docker", "sed"})
 	if len(filtered) != 2 || filtered[0] != "grep" || filtered[1] != "sed" {
 		t.Fatalf("filterDisabledCommands() = %v, want [grep sed]", filtered)
+	}
+}
+
+func TestEngineDisabledCommandsOptionOrderDoesNotMatter(t *testing.T) {
+	first := NewEngine(
+		WithDisabledCommands([]string{"git", "docker"}),
+		WithCommands([]string{"git", "docker", "grep"}),
+	)
+	second := NewEngine(
+		WithCommands([]string{"git", "docker", "grep"}),
+		WithDisabledCommands([]string{"git", "docker"}),
+	)
+
+	firstAvailable := first.availableCommands()
+	secondAvailable := second.availableCommands()
+
+	if len(firstAvailable) != 1 || firstAvailable[0] != "grep" {
+		t.Fatalf("first.availableCommands() = %v, want [grep]", firstAvailable)
+	}
+	if len(secondAvailable) != 1 || secondAvailable[0] != "grep" {
+		t.Fatalf("second.availableCommands() = %v, want [grep]", secondAvailable)
+	}
+}
+
+func TestEngineAvailableCommandsUsesCachedSlice(t *testing.T) {
+	eng := NewEngine(
+		WithDisabledCommands([]string{"git", "docker"}),
+		WithCommands([]string{"git", "docker", "grep"}),
+	)
+
+	allocs := testing.AllocsPerRun(1000, func() {
+		available := eng.availableCommands()
+		if len(available) != 1 || available[0] != "grep" {
+			t.Fatalf("availableCommands() = %v, want [grep]", available)
+		}
+	})
+
+	if allocs != 0 {
+		t.Fatalf("availableCommands() allocs = %v, want 0", allocs)
 	}
 }

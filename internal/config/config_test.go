@@ -1,11 +1,37 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func captureConfigStderr(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() failed: %v", err)
+	}
+	os.Stderr = w
+	defer func() {
+		os.Stderr = oldStderr
+		_ = w.Close()
+		_ = r.Close()
+	}()
+
+	fn()
+
+	_ = w.Close()
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	return buf.String()
+}
 
 func TestDefaultConfigDir(t *testing.T) {
 	dir := DefaultConfigDir()
@@ -238,8 +264,11 @@ func mustSetConfigValues(t *testing.T, cfg *Config, values map[string]string) {
 	t.Helper()
 
 	for key, value := range values {
-		if err := cfg.Set(key, value); err != nil {
-			t.Fatalf("Set(%q, %q) failed: %v", key, value, err)
+		if err := cfg.SetValue(key, value); err != nil {
+			t.Fatalf("SetValue(%q, %q) failed: %v", key, value, err)
+		}
+		if err := cfg.Save(); err != nil {
+			t.Fatalf("Save() after SetValue(%q, %q) failed: %v", key, value, err)
 		}
 	}
 }
@@ -291,8 +320,8 @@ func TestUserConfigValidate(t *testing.T) {
 
 	cfg = DefaultUserConfig()
 	cfg.Rules["unknown"] = RuleSetConfig{Enabled: true}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate should reject unknown rule scope")
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate should allow unknown rule scope for forward compatibility: %v", err)
 	}
 
 	cfg = DefaultUserConfig()
@@ -347,6 +376,105 @@ func TestConfigGetAndSetErrors(t *testing.T) {
 		if err := cfg.Set(tt.key, tt.value); err == nil {
 			t.Fatalf("Set(%q, %q) should fail", tt.key, tt.value)
 		}
+	}
+}
+
+func TestConfigSetValueMutatesInMemoryWithoutSaving(t *testing.T) {
+	cfg := &Config{ConfigDir: t.TempDir(), User: DefaultUserConfig()}
+
+	if err := cfg.SetValue("keyboard", "colemak"); err != nil {
+		t.Fatalf("SetValue() failed: %v", err)
+	}
+	if cfg.User.Keyboard != "colemak" {
+		t.Fatalf("Keyboard after SetValue() = %q, want colemak", cfg.User.Keyboard)
+	}
+	if _, err := os.Stat(cfg.ConfigFilePath()); !os.IsNotExist(err) {
+		t.Fatalf("expected config file to stay absent before Save(), got %v", err)
+	}
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() failed: %v", err)
+	}
+	if _, err := os.Stat(cfg.ConfigFilePath()); err != nil {
+		t.Fatalf("expected config file after Save(), got %v", err)
+	}
+}
+
+func TestConfigSetValueLeavesConfigUnchangedOnFailure(t *testing.T) {
+	cfg := &Config{ConfigDir: t.TempDir(), User: DefaultUserConfig()}
+	original := cloneUserConfig(cfg.User)
+
+	if err := cfg.SetValue("max-fix-passes", "0"); err == nil {
+		t.Fatal("SetValue() should fail validation for zero max fix passes")
+	}
+	if !reflect.DeepEqual(cfg.User, original) {
+		t.Fatalf("SetValue() mutated config on validation failure: got %+v want %+v", cfg.User, original)
+	}
+
+	if err := cfg.SetValue("history.enabled", "maybe"); err == nil {
+		t.Fatal("SetValue() should fail parsing for invalid bool")
+	}
+	if !reflect.DeepEqual(cfg.User, original) {
+		t.Fatalf("SetValue() mutated config on parse failure: got %+v want %+v", cfg.User, original)
+	}
+}
+
+func TestConfigSetLeavesConfigUnchangedWhenSaveFails(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "typo-config-dir-*")
+	if err != nil {
+		t.Fatalf("CreateTemp failed: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	_ = tmpFile.Close()
+
+	cfg := &Config{ConfigDir: tmpFile.Name(), User: DefaultUserConfig()}
+	original := cloneUserConfig(cfg.User)
+
+	if err := cfg.Set("keyboard", "colemak"); err == nil {
+		t.Fatal("Set() should fail when config dir is a file")
+	}
+	if !reflect.DeepEqual(cfg.User, original) {
+		t.Fatalf("Set() mutated config on save failure: got %+v want %+v", cfg.User, original)
+	}
+}
+
+func TestConfigResetLeavesConfigUnchangedWhenSaveFails(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "typo-config-dir-*")
+	if err != nil {
+		t.Fatalf("CreateTemp failed: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	_ = tmpFile.Close()
+
+	cfg := &Config{ConfigDir: tmpFile.Name(), User: DefaultUserConfig()}
+	cfg.User.Keyboard = "colemak"
+	original := cloneUserConfig(cfg.User)
+
+	if err := cfg.Reset(); err == nil {
+		t.Fatal("Reset() should fail when config dir is a file")
+	}
+	if !reflect.DeepEqual(cfg.User, original) {
+		t.Fatalf("Reset() mutated config on save failure: got %+v want %+v", cfg.User, original)
+	}
+}
+
+func TestConfigGenerateLeavesConfigUnchangedWhenSaveFails(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "typo-config-dir-*")
+	if err != nil {
+		t.Fatalf("CreateTemp failed: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	_ = tmpFile.Close()
+
+	cfg := &Config{ConfigDir: tmpFile.Name(), User: DefaultUserConfig()}
+	cfg.User.Keyboard = "colemak"
+	original := cloneUserConfig(cfg.User)
+
+	if err := cfg.Generate(true); err == nil {
+		t.Fatal("Generate(true) should fail when config dir is a file")
+	}
+	if !reflect.DeepEqual(cfg.User, original) {
+		t.Fatalf("Generate() mutated config on save failure: got %+v want %+v", cfg.User, original)
 	}
 }
 
@@ -409,6 +537,100 @@ func TestLoad_InvalidJSONAndInvalidConfigFallBackToDefaults(t *testing.T) {
 			t.Fatalf("SimilarityThreshold = %v, want default 0.6 after invalid config", cfg.User.SimilarityThreshold)
 		}
 	})
+}
+
+func TestLoad_AllowsUnknownRuleScopesWithWarning(t *testing.T) {
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	configDir := filepath.Join(tmpHome, ".typo")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+
+	configFile := filepath.Join(configDir, configFileName)
+	data := []byte(`{
+  "rules": {
+    "rust": { "enabled": false },
+    "docker": { "enabled": false }
+  }
+}`)
+	if err := os.WriteFile(configFile, data, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	var cfg *Config
+	output := captureConfigStderr(t, func() {
+		cfg = Load()
+	})
+
+	if cfg == nil {
+		t.Fatal("Load() returned nil")
+	}
+	if cfg.User.Rules["rust"].Enabled {
+		t.Fatal("rules.rust.enabled should be false after loading unknown scope")
+	}
+	if cfg.User.Rules["docker"].Enabled {
+		t.Fatal("rules.docker.enabled should stay false after loading config")
+	}
+	if !strings.Contains(output, "unknown rule scopes") || !strings.Contains(output, "rust") {
+		t.Fatalf("expected unknown scope warning, got %q", output)
+	}
+}
+
+func TestConfigSavePreservesUnknownRuleScopes(t *testing.T) {
+	cfg := &Config{ConfigDir: t.TempDir(), User: DefaultUserConfig()}
+	cfg.User.Rules["rust"] = RuleSetConfig{Enabled: false}
+
+	if err := cfg.SetValue("keyboard", "colemak"); err != nil {
+		t.Fatalf("SetValue() failed: %v", err)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() failed: %v", err)
+	}
+
+	loaded := &Config{ConfigDir: cfg.ConfigDir, User: DefaultUserConfig()}
+	output := captureConfigStderr(t, func() {
+		loaded.loadUserConfig()
+	})
+
+	if loaded.User.Keyboard != "colemak" {
+		t.Fatalf("Keyboard after reload = %q, want colemak", loaded.User.Keyboard)
+	}
+	rule, ok := loaded.User.Rules["rust"]
+	if !ok {
+		t.Fatal("expected unknown rust scope to be preserved after save/load")
+	}
+	if rule.Enabled {
+		t.Fatal("expected rust scope to remain disabled after save/load")
+	}
+	if !strings.Contains(output, "rust") {
+		t.Fatalf("expected warning mentioning rust scope, got %q", output)
+	}
+}
+
+func TestConfigGetAndSetValueSupportUnknownPresentRuleScope(t *testing.T) {
+	cfg := &Config{ConfigDir: t.TempDir(), User: DefaultUserConfig()}
+	cfg.User.Rules["rust"] = RuleSetConfig{Enabled: false}
+
+	value, err := cfg.Get("rules.rust.enabled")
+	if err != nil {
+		t.Fatalf("Get(rules.rust.enabled) failed: %v", err)
+	}
+	if value != "false" {
+		t.Fatalf("Get(rules.rust.enabled) = %q, want false", value)
+	}
+
+	if err := cfg.SetValue("rules.rust.enabled", "true"); err != nil {
+		t.Fatalf("SetValue(rules.rust.enabled) failed: %v", err)
+	}
+	if cfg.User.Rules["rust"] != (RuleSetConfig{Enabled: true}) {
+		t.Fatalf("rules.rust.enabled after SetValue = %+v, want enabled", cfg.User.Rules["rust"])
+	}
 }
 
 func TestParseRuleScopeKey(t *testing.T) {

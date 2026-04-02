@@ -2468,6 +2468,52 @@ func TestDisabledCommandsFromConfig(t *testing.T) {
 	}
 }
 
+func TestDisabledCommandsFromConfigIgnoresUnknownScopesWithWarning(t *testing.T) {
+	cfg := &config.Config{User: config.DefaultUserConfig()}
+	cfg.User.Rules["git"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["rust"] = config.RuleSetConfig{Enabled: false}
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	got := disabledCommandsFromConfig(cfg)
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "unknown disabled rule scopes") || !strings.Contains(output, "rust") {
+		t.Fatalf("expected unknown disabled scope warning, got %q", output)
+	}
+	for _, name := range got {
+		if name == "rust" {
+			t.Fatalf("disabledCommandsFromConfig() should ignore unknown scope names, got %v", got)
+		}
+	}
+	foundGit := false
+	for _, name := range got {
+		if name == "git" {
+			foundGit = true
+			break
+		}
+	}
+	if !foundGit {
+		t.Fatalf("disabledCommandsFromConfig() should keep known disabled commands, got %v", got)
+	}
+}
+
+func TestRuleScopeDisabledCommandsCoversDefaultScopes(t *testing.T) {
+	for scope := range config.DefaultUserConfig().Rules {
+		if _, ok := ruleScopeDisabledCommands[scope]; !ok {
+			t.Fatalf("ruleScopeDisabledCommands missing scope %q", scope)
+		}
+	}
+}
+
 func TestCreateEngineFallsBackToDefaultKeyboard(t *testing.T) {
 	cfg := &config.Config{
 		ConfigDir: t.TempDir(),

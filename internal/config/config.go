@@ -152,29 +152,17 @@ func (c *Config) ConfigFilePath() string {
 
 // Save validates and writes the current user config to disk.
 func (c *Config) Save() error {
-	if err := c.User.Validate(); err != nil {
-		return err
-	}
-	if err := c.EnsureConfigDir(); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(c.User, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	configFile := c.ConfigFilePath()
-	if configFile == "" {
-		return nil
-	}
-	return storage.WriteFileAtomic(configFile, data, 0600)
+	return c.saveUserConfig(c.User)
 }
 
 // Reset restores the user config to defaults and writes it back to disk.
 func (c *Config) Reset() error {
-	c.User = DefaultUserConfig()
-	return c.Save()
+	next := DefaultUserConfig()
+	if err := c.saveUserConfig(next); err != nil {
+		return err
+	}
+	c.User = next
+	return nil
 }
 
 // Generate creates a default config file at the target location.
@@ -192,8 +180,12 @@ func (c *Config) Generate(force bool) error {
 		}
 	}
 
-	c.User = DefaultUserConfig()
-	return c.Save()
+	next := DefaultUserConfig()
+	if err := c.saveUserConfig(next); err != nil {
+		return err
+	}
+	c.User = next
+	return nil
 }
 
 // ListSettings returns config items for `typo config list`.
@@ -245,53 +237,81 @@ func (c *Config) Get(key string) (string, error) {
 
 // Set updates the given config key and persists it to disk.
 func (c *Config) Set(key, value string) error {
+	next, err := c.updatedUserConfig(key, value)
+	if err != nil {
+		return err
+	}
+	if err := c.saveUserConfig(next); err != nil {
+		return err
+	}
+	c.User = next
+	return nil
+}
+
+// SetValue updates the given config key in memory without persisting it.
+func (c *Config) SetValue(key, value string) error {
+	next, err := c.updatedUserConfig(key, value)
+	if err != nil {
+		return err
+	}
+	c.User = next
+	return nil
+}
+
+func (c *Config) updatedUserConfig(key, value string) (UserConfig, error) {
+	next := cloneUserConfig(c.User)
+
 	switch key {
 	case "similarity-threshold":
 		parsed, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return fmt.Errorf("invalid float value %q for %s", value, key)
+			return UserConfig{}, fmt.Errorf("invalid float value %q for %s", value, key)
 		}
-		c.User.SimilarityThreshold = parsed
+		next.SimilarityThreshold = parsed
 	case "max-edit-distance":
 		parsed, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("invalid int value %q for %s", value, key)
+			return UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
 		}
-		c.User.MaxEditDistance = parsed
+		next.MaxEditDistance = parsed
 	case "max-fix-passes":
 		parsed, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("invalid int value %q for %s", value, key)
+			return UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
 		}
-		c.User.MaxFixPasses = parsed
+		next.MaxFixPasses = parsed
 	case "keyboard":
 		normalized := strings.ToLower(strings.TrimSpace(value))
 		if !supportedKeyboardLayouts[normalized] {
-			return fmt.Errorf("unsupported keyboard layout: %s", normalized)
+			return UserConfig{}, fmt.Errorf("unsupported keyboard layout: %s", normalized)
 		}
-		c.User.Keyboard = normalized
+		next.Keyboard = normalized
 	case "history.enabled":
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
-			return fmt.Errorf("invalid bool value %q for %s", value, key)
+			return UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
 		}
-		c.User.History.Enabled = parsed
+		next.History.Enabled = parsed
 	default:
 		scope, ok := parseRuleScopeKey(key)
 		if !ok {
-			return fmt.Errorf("unknown config key: %s", key)
+			return UserConfig{}, fmt.Errorf("unknown config key: %s", key)
 		}
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
-			return fmt.Errorf("invalid bool value %q for %s", value, key)
+			return UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
 		}
-		if _, exists := c.User.Rules[scope]; !exists {
-			return fmt.Errorf("unknown rule scope: %s", scope)
+		if _, exists := next.Rules[scope]; !exists {
+			return UserConfig{}, fmt.Errorf("unknown rule scope: %s", scope)
 		}
-		c.User.Rules[scope] = RuleSetConfig{Enabled: parsed}
+		next.Rules[scope] = RuleSetConfig{Enabled: parsed}
 	}
 
-	return c.Save()
+	if err := next.Validate(); err != nil {
+		return UserConfig{}, err
+	}
+
+	return next, nil
 }
 
 // Validate checks whether the user config matches allowed ranges and known enums.
@@ -309,12 +329,6 @@ func (u UserConfig) Validate() error {
 	keyboard := strings.ToLower(strings.TrimSpace(u.Keyboard))
 	if !supportedKeyboardLayouts[keyboard] {
 		return fmt.Errorf("keyboard must be one of: %s", strings.Join(sortedKeyboardLayouts(), ", "))
-	}
-
-	for scope := range u.Rules {
-		if !isKnownRuleScope(scope) {
-			return fmt.Errorf("unknown rule scope: %s", scope)
-		}
 	}
 
 	return nil
@@ -342,6 +356,14 @@ func (c *Config) loadUserConfig() {
 	if err := userCfg.Validate(); err != nil {
 		fmt.Fprintf(os.Stderr, "typo: invalid config file %s: %v\n", configFile, err)
 		return
+	}
+	if unknownScopes := unknownRuleScopes(userCfg.Rules); len(unknownScopes) > 0 {
+		fmt.Fprintf(
+			os.Stderr,
+			"typo: config file %s contains unknown rule scopes that will be preserved but ignored by this version: %s\n",
+			configFile,
+			strings.Join(unknownScopes, ", "),
+		)
 	}
 
 	c.User = userCfg
@@ -371,6 +393,44 @@ func applyFileConfig(dst *UserConfig, src fileUserConfig) {
 	}
 }
 
+func (c *Config) saveUserConfig(user UserConfig) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
+	if err := c.EnsureConfigDir(); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(user, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	configFile := c.ConfigFilePath()
+	if configFile == "" {
+		return nil
+	}
+	return storage.WriteFileAtomic(configFile, data, 0600)
+}
+
+func cloneUserConfig(src UserConfig) UserConfig {
+	dst := src
+	dst.Rules = cloneRuleSetConfigs(src.Rules)
+	return dst
+}
+
+func cloneRuleSetConfigs(src map[string]RuleSetConfig) map[string]RuleSetConfig {
+	if src == nil {
+		return nil
+	}
+
+	dst := make(map[string]RuleSetConfig, len(src))
+	for scope, rule := range src {
+		dst[scope] = rule
+	}
+	return dst
+}
+
 func parseRuleScopeKey(key string) (string, bool) {
 	if !strings.HasPrefix(key, "rules.") || !strings.HasSuffix(key, ".enabled") {
 		return "", false
@@ -389,6 +449,17 @@ func isKnownRuleScope(scope string) bool {
 		}
 	}
 	return false
+}
+
+func unknownRuleScopes(rules map[string]RuleSetConfig) []string {
+	scopes := make([]string, 0)
+	for scope := range rules {
+		if !isKnownRuleScope(scope) {
+			scopes = append(scopes, scope)
+		}
+	}
+	sort.Strings(scopes)
+	return scopes
 }
 
 func sortedRuleScopes(rules map[string]RuleSetConfig) []string {
