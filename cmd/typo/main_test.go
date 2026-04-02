@@ -57,6 +57,31 @@ func runZshIntegrationScript(t *testing.T, script string, extraEnv ...string) []
 	return output
 }
 
+func runBashIntegrationScript(t *testing.T, script string, extraEnv ...string) []byte {
+	t.Helper()
+
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not available")
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "typo.bash")
+	if err := os.WriteFile(scriptPath, []byte(installscript.BashScript), 0600); err != nil {
+		t.Fatalf("Failed to write bash script: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", script, "bash", scriptPath)
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir, "HOME="+tmpDir)
+	cmd.Env = append(cmd.Env, extraEnv...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash integration regression failed: %v\noutput:\n%s", err, output)
+	}
+
+	return output
+}
+
 func TestRun(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -116,10 +141,10 @@ func TestRun(t *testing.T) {
 			wantOutput: "bindkey",
 		},
 		{
-			name:       "init unsupported",
+			name:       "init bash",
 			args:       []string{"typo", "init", "bash"},
-			wantCode:   1,
-			wantOutput: "Unsupported",
+			wantCode:   0,
+			wantOutput: "bind -x",
 		},
 		{
 			name:       "learn without args",
@@ -1198,7 +1223,7 @@ func TestPrintZshIntegration(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printZshIntegration()
+	printIntegrationScript("zsh")
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -1226,7 +1251,53 @@ func TestPrintZshIntegrationAddsTrailingNewline(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printZshIntegration()
+	printIntegrationScript("zsh")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	if buf.String() != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+	}
+}
+
+func TestPrintBashIntegration(t *testing.T) {
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printIntegrationScript("bash")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if output != installscript.BashScript {
+		t.Error("Expected bash integration output to match embedded install script")
+	}
+	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
+		t.Error("Expected bash integration to include stale cache cleanup")
+	}
+}
+
+func TestPrintBashIntegrationAddsTrailingNewline(t *testing.T) {
+	original := installscript.BashScript
+	installscript.BashScript = "echo test"
+	t.Cleanup(func() {
+		installscript.BashScript = original
+	})
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printIntegrationScript("bash")
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -1405,6 +1476,51 @@ func TestDoctor(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("shell: zsh")) {
 		t.Error("Expected doctor output to contain current shell")
+	}
+}
+
+func TestDoctorShowsBashHintsWhenShellIsBash(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
+
+	oldShell := os.Getenv("SHELL")
+	defer os.Setenv("SHELL", oldShell)
+	if err := os.Setenv("SHELL", "/bin/bash"); err != nil {
+		t.Fatalf("Setenv SHELL failed: %v", err)
+	}
+
+	oldIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldIntegration)
+	os.Unsetenv("TYPO_SHELL_INTEGRATION")
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 1 {
+		t.Fatalf("Expected exit code 1, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("~/.bashrc")) {
+		t.Fatalf("Expected bashrc hint in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte(`eval "$(typo init bash)"`)) {
+		t.Fatalf("Expected init bash hint in doctor output, got: %s", output)
 	}
 }
 
@@ -1980,6 +2096,58 @@ _typo_zshexit
 `)
 }
 
+func TestBashIntegrationCleansAndRotatesStderrCache(t *testing.T) {
+	runBashIntegrationScript(t, `
+source "$1"
+trap - DEBUG
+
+stale="${TMPDIR:-/tmp}/typo-stderr-stale-test"
+printf "old" > "$stale"
+touch -t 202401010101 "$stale"
+_typo_cleanup_stale_caches
+[[ -e "$stale" ]] && exit 51
+
+_typo_preexec
+printf "first\n" >&2
+_typo_precmd
+sleep 0.1
+
+_typo_preexec
+printf "second\n" >&2
+_typo_precmd
+sleep 0.1
+
+grep -q "second" "$TYPO_STDERR_CACHE" || exit 52
+grep -q "first" "$TYPO_STDERR_CACHE" && exit 53
+
+cache="$TYPO_STDERR_CACHE"
+_typo_bashexit
+[[ ! -e "$cache" ]] || exit 54
+`)
+}
+
+func TestBashIntegrationFallsBackWhenMktempFails(t *testing.T) {
+	runBashIntegrationScript(t, `
+mktemp() { return 1; }
+source "$1"
+trap - DEBUG
+
+expected="${TMPDIR:-/tmp}/typo-stderr-$$"
+[[ "$TYPO_STDERR_CACHE" == "$expected" ]] || exit 61
+[[ "$TYPO_STDERR_CACHE_OWNER" == "$$" ]] || exit 62
+[[ -f "$expected" ]] || exit 63
+
+_typo_preexec
+printf "fallback-stderr\n" >&2
+_typo_precmd
+sleep 0.1
+grep -q "fallback-stderr" "$expected" || exit 64
+
+_typo_bashexit
+[[ ! -e "$expected" ]] || exit 65
+`)
+}
+
 func TestUninstall(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -2112,6 +2280,47 @@ func TestUninstallWithZshrcHint(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("manual cleanup required in ~/.zshrc")) {
 		t.Fatalf("Expected .zshrc cleanup hint, got %q", output)
+	}
+}
+
+func TestUninstallWithBashrcHint(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpDir, err := os.MkdirTemp("", "typo-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tmpDir)
+
+	if err := os.WriteFile(filepath.Join(tmpDir, ".bashrc"), []byte("eval \"$(typo init bash)\"\n"), 0600); err != nil {
+		t.Fatalf("Failed to create .bashrc: %v", err)
+	}
+
+	os.Args = []string{"typo", "uninstall"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected uninstall to succeed, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("manual cleanup required in ~/.bashrc")) {
+		t.Fatalf("Expected .bashrc cleanup hint, got %q", output)
 	}
 }
 

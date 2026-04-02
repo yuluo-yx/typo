@@ -111,6 +111,7 @@ Usage:
   typo history list                       List correction history
   typo history clear                      Clear correction history
   typo init zsh                           Print zsh integration script
+	typo init bash                          Print bash integration script
   typo doctor                             Check configuration status
   typo uninstall                          Remove local config and show remaining cleanup steps
   typo version                            Print version
@@ -123,7 +124,10 @@ Examples:
   eval "$(typo init zsh)"
 
 Zsh Integration:
-  After running 'eval "$(typo init zsh)"', press <Esc><Esc> to fix the current command.`)
+  After running 'eval "$(typo init zsh)"', press <Esc><Esc> to fix the current command.
+
+Bash Integration:
+  After running 'eval "$(typo init bash)"', press <Esc><Esc> to fix the current command.`)
 }
 
 func cmdFix(args []string) int {
@@ -387,13 +391,16 @@ func cmdHistory(args []string) int {
 
 func cmdInit(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: shell required (zsh)")
+		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash)")
 		return 1
 	}
 
 	switch args[0] {
 	case "zsh":
-		printZshIntegration()
+		printIntegrationScript("zsh")
+		return 0
+	case "bash":
+		printIntegrationScript("bash")
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", args[0])
@@ -464,6 +471,7 @@ func cmdDoctor() int {
 
 	hasError := false
 	cfg := config.Load()
+	shellName, shellRC := detectShellIntegrationTarget()
 
 	// Check if typo is in PATH
 	fmt.Print("[1/5] typo command: ")
@@ -477,7 +485,7 @@ func cmdDoctor() int {
 		if goBinPath != "" {
 			fmt.Println()
 			fmt.Println("  Found typo in Go bin directory but not in PATH.")
-			fmt.Println("  Add the following to your ~/.zshrc:")
+			fmt.Printf("  Add the following to your %s:\n", shellRC)
 			fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinPath)
 			fmt.Println()
 		}
@@ -514,10 +522,20 @@ func cmdDoctor() int {
 	} else {
 		fmt.Printf("✗ not loaded (shell: %s)\n", currentShell)
 		fmt.Println()
-		fmt.Println("To enable shell integration, add to your ~/.zshrc:")
-		fmt.Println("  eval \"$(typo init zsh)\"")
-		fmt.Println()
-		fmt.Println("Then restart your shell or run: source ~/.zshrc")
+		if shellName != "" {
+			fmt.Printf("To enable shell integration, add to your %s:\n", shellRC)
+			fmt.Printf("  eval \"$(typo init %s)\"\n", shellName)
+			fmt.Println()
+			fmt.Printf("Then restart your shell or run: source %s\n", shellRC)
+		} else {
+			fmt.Println("To enable shell integration, add one of the following:")
+			fmt.Println("  # Zsh (~/.zshrc)")
+			fmt.Println("  eval \"$(typo init zsh)\"")
+			fmt.Println("  # Bash (~/.bashrc)")
+			fmt.Println("  eval \"$(typo init bash)\"")
+			fmt.Println()
+			fmt.Println("Then restart your shell or source the matching rc file.")
+		}
 		hasError = true
 	}
 
@@ -557,24 +575,16 @@ func cmdDoctor() int {
 	return 0
 }
 
-func currentShellName() string {
-	shellPath := strings.TrimSpace(os.Getenv("SHELL"))
-	if shellPath == "" {
-		return "unknown"
-	}
-
-	shellName := filepath.Base(shellPath)
-	if shellName == "" || shellName == "." || shellName == string(filepath.Separator) {
-		return "unknown"
-	}
-
-	return shellName
-}
-
-func printEffectiveConfig(cfg *config.Config) {
-	fmt.Println("  effective config:")
-	for _, setting := range cfg.ListSettings() {
-		fmt.Printf("    %s=%s\n", setting.Key, setting.Value)
+func detectShellIntegrationTarget() (string, string) {
+	shellPath := os.Getenv("SHELL")
+	shellBase := strings.ToLower(filepath.Base(shellPath))
+	switch shellBase {
+	case "bash":
+		return "bash", "~/.bashrc"
+	case "zsh":
+		return "zsh", "~/.zshrc"
+	default:
+		return "", "~/.zshrc or ~/.bashrc"
 	}
 }
 
@@ -629,20 +639,31 @@ func cmdUninstall() int {
 	}
 
 	// Show manual cleanup instructions for shell configuration leftovers.
-	fmt.Print("[2/3] Zsh integration: ")
+	fmt.Print("[2/3] Shell integration: ")
 	homeDir, err := userHomeDir()
 	if err != nil {
 		fmt.Println("✗ cannot determine home directory")
 		hasError = true
 	} else {
-		zshrc := homeDir + "/.zshrc"
-		if _, statErr := statPath(zshrc); statErr == nil {
-			fmt.Printf("manual cleanup required in ~/.zshrc:\n")
-			fmt.Println()
-			fmt.Println("    eval \"$(typo init zsh)\"")
-			fmt.Println()
-		} else {
-			fmt.Println("✓ no .zshrc found")
+		foundShellConfig := false
+		for _, target := range []struct {
+			shell string
+			rc    string
+		}{
+			{shell: "zsh", rc: ".zshrc"},
+			{shell: "bash", rc: ".bashrc"},
+		} {
+			rcPath := filepath.Join(homeDir, target.rc)
+			if _, statErr := statPath(rcPath); statErr == nil {
+				foundShellConfig = true
+				fmt.Printf("manual cleanup required in ~/%s:\n", target.rc)
+				fmt.Println()
+				fmt.Printf("    eval \"$(typo init %s)\"\n", target.shell)
+				fmt.Println()
+			}
+		}
+		if !foundShellConfig {
+			fmt.Println("✓ no .zshrc or .bashrc found")
 		}
 	}
 
@@ -666,9 +687,20 @@ func cmdUninstall() int {
 	return 0
 }
 
-func printZshIntegration() {
-	fmt.Print(install.ZshScript)
-	if !strings.HasSuffix(install.ZshScript, "\n") {
+func printIntegrationScript(shell string) {
+	var script string
+	switch shell {
+	case "zsh":
+		script = install.ZshScript
+	case "bash":
+		script = install.BashScript
+	default:
+		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", shell)
+		os.Exit(1)
+	}
+
+	fmt.Print(script)
+	if !strings.HasSuffix(script, "\n") {
 		fmt.Println()
 	}
 }
