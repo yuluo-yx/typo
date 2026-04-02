@@ -511,6 +511,21 @@ func TestEngine_LoadCommandsRefreshesAvailableCommandsCache(t *testing.T) {
 	}
 }
 
+func TestEngine_AvailableCommandsRefreshesAfterDirectAppend(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+
+	eng.commands = append(eng.commands, "echo")
+
+	available := eng.availableCommands()
+	if len(available) != 2 || available[0] != "git" || available[1] != "echo" {
+		t.Fatalf("availableCommands() after append = %v, want [git echo]", available)
+	}
+
+	if got := eng.findClosestCommand("echp"); got != "echo" {
+		t.Fatalf("findClosestCommand() after append = %q, want echo", got)
+	}
+}
+
 func misspelledLongVersionOption() string {
 	return "--ver" + "soin"
 }

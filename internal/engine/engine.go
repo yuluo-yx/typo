@@ -32,6 +32,7 @@ type Engine struct {
 	parser              *parser.Registry
 	commands            []string // Loaded command set, seeded first and expanded on demand.
 	availableCmds       []string // Cached command set after disabled-command filtering.
+	availableCmdsLen    int      // `availableCmds` 对应的原始 commands 长度，用于检测直接追加后的缓存失效。
 	commandLoader       func() []string
 	commandsLoadOnce    sync.Once
 	commandsFullyLoad   bool
@@ -923,6 +924,9 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 }
 
 func (e *Engine) availableCommands() []string {
+	if len(e.commands) != e.availableCmdsLen {
+		e.refreshAvailableCommands()
+	}
 	return e.availableCmds
 }
 
@@ -942,6 +946,7 @@ func (e *Engine) loadCommands() {
 
 func (e *Engine) refreshAvailableCommands() {
 	e.availableCmds = e.filterDisabledCommands(e.commands)
+	e.availableCmdsLen = len(e.commands)
 }
 
 func (e *Engine) distanceMatchConfig() distanceMatchConfig {

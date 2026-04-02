@@ -512,56 +512,9 @@ func cmdDoctor() int {
 		fmt.Println("⊘ unavailable")
 	}
 
-	// Check shell integration
-	fmt.Print("[4/5] shell integration: ")
-	shellIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
-	if shellIntegration == "1" {
-		fmt.Println("✓ loaded")
-	} else {
-		fmt.Println("✗ not loaded")
-		fmt.Println()
-		if shellName != "" {
-			fmt.Printf("To enable shell integration, add to your %s:\n", shellRC)
-			fmt.Printf("  eval \"$(typo init %s)\"\n", shellName)
-			fmt.Println()
-			fmt.Printf("Then restart your shell or run: source %s\n", shellRC)
-		} else {
-			fmt.Println("To enable shell integration, add one of the following:")
-			fmt.Println("  # Zsh (~/.zshrc)")
-			fmt.Println("  eval \"$(typo init zsh)\"")
-			fmt.Println("  # Bash (~/.bashrc)")
-			fmt.Println("  eval \"$(typo init bash)\"")
-			fmt.Println()
-			fmt.Println("Then restart your shell or source the matching rc file.")
-		}
-		hasError = true
-	}
-
-	// Check Go bin in PATH
-	fmt.Print("[5/5] Go bin PATH: ")
-	goBinDir := getGoBinDir()
-
-	// Check if typo was installed via go install (in Go bin directory)
-	typoInGoBin := false
-	if typoPath != "" {
-		typoInGoBin = sameDir(filepath.Dir(typoPath), goBinDir)
-	}
-
-	if !typoInGoBin {
-		fmt.Println("⊘ skipped (installed from release)")
-	} else if goBinDir == "" {
-		fmt.Println("⊘ Go not installed or GOPATH not set")
-	} else {
-		if pathContainsDir(os.Getenv("PATH"), goBinDir) {
-			fmt.Println("✓ configured")
-		} else {
-			fmt.Printf("✗ %s not in PATH\n", goBinDir)
-			fmt.Println()
-			fmt.Println("  If you installed typo with 'go install', add to your shell config:")
-			fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinDir)
-			hasError = true
-		}
-	}
+	printDoctorEffectiveConfig(cfg, shellName)
+	hasError = checkDoctorShellIntegration(shellName, shellRC) || hasError
+	hasError = checkDoctorGoBinPath(typoPath) || hasError
 
 	fmt.Println()
 	if hasError {
@@ -573,10 +526,87 @@ func cmdDoctor() int {
 	return 0
 }
 
-func detectShellIntegrationTarget() (string, string) {
-	shellPath := os.Getenv("SHELL")
+func printDoctorEffectiveConfig(cfg *config.Config, shellName string) {
+	fmt.Println()
+	fmt.Println("effective config:")
+	fmt.Printf("  shell: %s\n", shellName)
+	for _, setting := range cfg.ListSettings() {
+		fmt.Printf("  %s=%s\n", setting.Key, setting.Value)
+	}
+	fmt.Println()
+}
+
+func checkDoctorShellIntegration(shellName, shellRC string) bool {
+	fmt.Print("[4/5] shell integration: ")
+	if os.Getenv("TYPO_SHELL_INTEGRATION") == "1" {
+		fmt.Println("✓ loaded")
+		return false
+	}
+
+	fmt.Println("✗ not loaded")
+	fmt.Println()
+	if shellName != "" {
+		fmt.Printf("To enable shell integration, add to your %s:\n", shellRC)
+		fmt.Printf("  eval \"$(typo init %s)\"\n", shellName)
+		fmt.Println()
+		fmt.Printf("Then restart your shell or run: source %s\n", shellRC)
+		return true
+	}
+
+	fmt.Println("To enable shell integration, add one of the following:")
+	fmt.Println("  # Zsh (~/.zshrc)")
+	fmt.Println("  eval \"$(typo init zsh)\"")
+	fmt.Println("  # Bash (~/.bashrc)")
+	fmt.Println("  eval \"$(typo init bash)\"")
+	fmt.Println()
+	fmt.Println("Then restart your shell or source the matching rc file.")
+	return true
+}
+
+func checkDoctorGoBinPath(typoPath string) bool {
+	fmt.Print("[5/5] Go bin PATH: ")
+	goBinDir := getGoBinDir()
+	typoInGoBin := false
+	if typoPath != "" {
+		typoInGoBin = sameDir(filepath.Dir(typoPath), goBinDir)
+	}
+
+	if !typoInGoBin {
+		fmt.Println("⊘ skipped (installed from release)")
+		return false
+	}
+	if goBinDir == "" {
+		fmt.Println("⊘ Go not installed or GOPATH not set")
+		return false
+	}
+	if pathContainsDir(os.Getenv("PATH"), goBinDir) {
+		fmt.Println("✓ configured")
+		return false
+	}
+
+	fmt.Printf("✗ %s not in PATH\n", goBinDir)
+	fmt.Println()
+	fmt.Println("  If you installed typo with 'go install', add to your shell config:")
+	fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinDir)
+	return true
+}
+
+func currentShellName() string {
+	shellPath := strings.TrimSpace(os.Getenv("SHELL"))
+	if shellPath == "" {
+		return "unknown"
+	}
+
 	shellBase := strings.ToLower(filepath.Base(shellPath))
-	switch shellBase {
+	if shellBase == "" || shellBase == "." {
+		return "unknown"
+	}
+
+	return shellBase
+}
+
+func detectShellIntegrationTarget() (string, string) {
+	switch currentShellName() {
 	case "bash":
 		return "bash", "~/.bashrc"
 	case "zsh":
