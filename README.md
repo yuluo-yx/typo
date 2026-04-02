@@ -4,7 +4,7 @@
 
 <p align="center">Command Auto-Correction Tool</p>
 
-[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
+[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
 
 English | **[简体中文](README_CN.md)**
 
@@ -58,6 +58,9 @@ Note: The install script currently supports macOS and Linux.
 ```bash
 # Add to ~/.zshrc
 eval "$(typo init zsh)"
+
+# Or add to ~/.bashrc
+eval "$(typo init bash)"
 ```
 
 Restart your terminal, then press `Esc` `Esc` after a typo. (No Enter can!)
@@ -82,6 +85,17 @@ typo learn "gst" "git status"         # Recommended for recurring personal fixes
 
 Use `learn` for normal day-to-day teaching. `typo learn` and `typo rules add` both add the same user rule and clear conflicting history; `learn` is the simpler user-facing command, while `rules add` fits explicit rule management alongside `rules list` and `rules remove`.
 
+### `typo config` - Manage global settings
+
+```bash
+typo config list                         # List all effective config values
+typo config get keyboard                 # Show one config value
+typo config set keyboard dvorak          # Persist a config override
+typo config reset                        # Reset config.json to defaults
+typo config gen                          # Generate the default config file
+typo config gen --force                  # Overwrite an existing config file
+```
+
 ### `typo rules` - Manage rules
 
 ```bash
@@ -100,13 +114,14 @@ typo history clear     # Clear history
 ### `typo doctor` - Diagnose issues
 
 ```bash
-typo doctor            # Check configuration status
+typo doctor            # Check environment status and print effective config
 ```
 
 ### Other commands
 
 ```bash
 typo init zsh          # Print shell integration script
+typo init bash         # Print shell integration script
 typo version           # Show version
 typo uninstall         # Remove local config and print remaining cleanup steps
 ```
@@ -128,7 +143,7 @@ Typo corrects commands in this priority:
 - **docker**: Unknown command suggestions
 - **npm**: Command not found suggestions
 
-`-s <file>` tells `typo fix` to read stderr from a file. This is mainly for parser-based fixes and is usually passed automatically by the zsh integration after a command fails.
+`-s <file>` tells `typo fix` to read stderr from a file. This is mainly for parser-based fixes and is usually passed automatically by the shell integration after a command fails.
 
 Examples:
 
@@ -156,10 +171,13 @@ Files stored in `~/.typo/`:
 
 ```
 ~/.typo/
+├── config.json                 # Global runtime settings managed by `typo config`
 ├── rules.json                  # Learned and user-defined rules
 ├── usage_history.json          # Correction history persisted from accepted/direct fixes
 └── subcommands.json            # Subcommand cache
 ```
+
+`config.json` controls thresholds, keyboard layout, history recording, and rule-set toggles. Use `typo config gen` to create a full editable file with defaults.
 
 ## Build
 

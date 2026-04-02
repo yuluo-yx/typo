@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,31 @@ func runZshIntegrationScript(t *testing.T, script string, extraEnv ...string) []
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("zsh integration regression failed: %v\noutput:\n%s", err, output)
+	}
+
+	return output
+}
+
+func runBashIntegrationScript(t *testing.T, script string, extraEnv ...string) []byte {
+	t.Helper()
+
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not available")
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "typo.bash")
+	if err := os.WriteFile(scriptPath, []byte(installscript.BashScript), 0600); err != nil {
+		t.Fatalf("Failed to write bash script: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", script, "bash", scriptPath)
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir, "HOME="+tmpDir)
+	cmd.Env = append(cmd.Env, extraEnv...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash integration regression failed: %v\noutput:\n%s", err, output)
 	}
 
 	return output
@@ -115,10 +141,10 @@ func TestRun(t *testing.T) {
 			wantOutput: "bindkey",
 		},
 		{
-			name:       "init unsupported",
+			name:       "init bash",
 			args:       []string{"typo", "init", "bash"},
-			wantCode:   1,
-			wantOutput: "Unsupported",
+			wantCode:   0,
+			wantOutput: "bind -x",
 		},
 		{
 			name:       "learn without args",
@@ -1197,7 +1223,7 @@ func TestPrintZshIntegration(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printZshIntegration()
+	printIntegrationScript("zsh")
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -1225,7 +1251,53 @@ func TestPrintZshIntegrationAddsTrailingNewline(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printZshIntegration()
+	printIntegrationScript("zsh")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	if buf.String() != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+	}
+}
+
+func TestPrintBashIntegration(t *testing.T) {
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printIntegrationScript("bash")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if output != installscript.BashScript {
+		t.Error("Expected bash integration output to match embedded install script")
+	}
+	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
+		t.Error("Expected bash integration to include stale cache cleanup")
+	}
+}
+
+func TestPrintBashIntegrationAddsTrailingNewline(t *testing.T) {
+	original := installscript.BashScript
+	installscript.BashScript = "echo test"
+	t.Cleanup(func() {
+		installscript.BashScript = original
+	})
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printIntegrationScript("bash")
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -1362,6 +1434,9 @@ func TestDoctor(t *testing.T) {
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
 	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
 	os.Unsetenv("TYPO_SHELL_INTEGRATION")
+	oldShell := os.Getenv("SHELL")
+	defer os.Setenv("SHELL", oldShell)
+	os.Setenv("SHELL", "/bin/zsh")
 
 	os.Args = []string{"typo", "doctor"}
 
@@ -1390,6 +1465,63 @@ func TestDoctor(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("shell integration")) {
 		t.Error("Expected doctor output to contain 'shell integration'")
 	}
+	if !bytes.Contains([]byte(output), []byte("config file")) {
+		t.Error("Expected doctor output to contain 'config file'")
+	}
+	if !bytes.Contains([]byte(output), []byte("effective config")) {
+		t.Error("Expected doctor output to contain 'effective config'")
+	}
+	if !bytes.Contains([]byte(output), []byte("keyboard=qwerty")) {
+		t.Error("Expected doctor output to contain default keyboard setting")
+	}
+	if !bytes.Contains([]byte(output), []byte("shell: zsh")) {
+		t.Error("Expected doctor output to contain current shell")
+	}
+}
+
+func TestDoctorShowsBashHintsWhenShellIsBash(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
+
+	oldShell := os.Getenv("SHELL")
+	defer os.Setenv("SHELL", oldShell)
+	if err := os.Setenv("SHELL", "/bin/bash"); err != nil {
+		t.Fatalf("Setenv SHELL failed: %v", err)
+	}
+
+	oldIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldIntegration)
+	os.Unsetenv("TYPO_SHELL_INTEGRATION")
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 1 {
+		t.Fatalf("Expected exit code 1, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("~/.bashrc")) {
+		t.Fatalf("Expected bashrc hint in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte(`eval "$(typo init bash)"`)) {
+		t.Fatalf("Expected init bash hint in doctor output, got: %s", output)
+	}
 }
 
 func TestDoctorWithShellIntegration(t *testing.T) {
@@ -1404,6 +1536,9 @@ func TestDoctorWithShellIntegration(t *testing.T) {
 	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
 	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
 	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	oldShell := os.Getenv("SHELL")
+	defer os.Setenv("SHELL", oldShell)
+	os.Setenv("SHELL", "/bin/zsh")
 
 	os.Args = []string{"typo", "doctor"}
 
@@ -1431,6 +1566,15 @@ func TestDoctorWithShellIntegration(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("Go bin PATH")) {
 		t.Error("Expected doctor output to contain 'Go bin PATH'")
+	}
+	if !bytes.Contains([]byte(output), []byte("config file")) {
+		t.Error("Expected doctor output to contain 'config file'")
+	}
+	if !bytes.Contains([]byte(output), []byte("history.enabled=true")) {
+		t.Error("Expected doctor output to contain effective config values")
+	}
+	if !bytes.Contains([]byte(output), []byte("shell: zsh")) {
+		t.Error("Expected doctor output to contain current shell")
 	}
 }
 
@@ -1518,6 +1662,66 @@ func TestDoctorTypoMissingFromPath(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("not found in PATH")) {
 		t.Errorf("Expected missing PATH message, got: %s", output)
+	}
+}
+
+func TestDoctorPrintsCustomConfig(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
+
+	oldEnv := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer os.Setenv("TYPO_SHELL_INTEGRATION", oldEnv)
+	os.Setenv("TYPO_SHELL_INTEGRATION", "1")
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	cfg := config.Load()
+	cfg.User.Keyboard = "dvorak"
+	cfg.User.History.Enabled = false
+	cfg.User.Rules["docker"] = config.RuleSetConfig{Enabled: false}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d, output=%s", code, output)
+	}
+	if !bytes.Contains([]byte(output), []byte("config file: ✓")) {
+		t.Fatalf("Expected doctor to report config file, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("keyboard=dvorak")) {
+		t.Fatalf("Expected doctor to print keyboard=dvorak, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("history.enabled=false")) {
+		t.Fatalf("Expected doctor to print history.enabled=false, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("rules.docker.enabled=false")) {
+		t.Fatalf("Expected doctor to print rules.docker.enabled=false, got: %s", output)
 	}
 }
 
@@ -1892,6 +2096,58 @@ _typo_zshexit
 `)
 }
 
+func TestBashIntegrationCleansAndRotatesStderrCache(t *testing.T) {
+	runBashIntegrationScript(t, `
+source "$1"
+trap - DEBUG
+
+stale="${TMPDIR:-/tmp}/typo-stderr-stale-test"
+printf "old" > "$stale"
+touch -t 202401010101 "$stale"
+_typo_cleanup_stale_caches
+[[ -e "$stale" ]] && exit 51
+
+_typo_preexec
+printf "first\n" >&2
+_typo_precmd
+sleep 0.1
+
+_typo_preexec
+printf "second\n" >&2
+_typo_precmd
+sleep 0.1
+
+grep -q "second" "$TYPO_STDERR_CACHE" || exit 52
+grep -q "first" "$TYPO_STDERR_CACHE" && exit 53
+
+cache="$TYPO_STDERR_CACHE"
+_typo_bashexit
+[[ ! -e "$cache" ]] || exit 54
+`)
+}
+
+func TestBashIntegrationFallsBackWhenMktempFails(t *testing.T) {
+	runBashIntegrationScript(t, `
+mktemp() { return 1; }
+source "$1"
+trap - DEBUG
+
+expected="${TMPDIR:-/tmp}/typo-stderr-$$"
+[[ "$TYPO_STDERR_CACHE" == "$expected" ]] || exit 61
+[[ "$TYPO_STDERR_CACHE_OWNER" == "$$" ]] || exit 62
+[[ -f "$expected" ]] || exit 63
+
+_typo_preexec
+printf "fallback-stderr\n" >&2
+_typo_precmd
+sleep 0.1
+grep -q "fallback-stderr" "$expected" || exit 64
+
+_typo_bashexit
+[[ ! -e "$expected" ]] || exit 65
+`)
+}
+
 func TestUninstall(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -2027,6 +2283,47 @@ func TestUninstallWithZshrcHint(t *testing.T) {
 	}
 }
 
+func TestUninstallWithBashrcHint(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpDir, err := os.MkdirTemp("", "typo-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tmpDir)
+
+	if err := os.WriteFile(filepath.Join(tmpDir, ".bashrc"), []byte("eval \"$(typo init bash)\"\n"), 0600); err != nil {
+		t.Fatalf("Failed to create .bashrc: %v", err)
+	}
+
+	os.Args = []string{"typo", "uninstall"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected uninstall to succeed, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("manual cleanup required in ~/.bashrc")) {
+		t.Fatalf("Expected .bashrc cleanup hint, got %q", output)
+	}
+}
+
 func TestUninstallConfigRemoveFailure(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -2110,5 +2407,311 @@ func TestUninstallInjectedErrors(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("failed:")) {
 		t.Fatalf("Expected removeAll failure, got %q", output)
+	}
+}
+
+func runCLI(t *testing.T, args []string) (int, string, string) {
+	t.Helper()
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = args
+
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	rOut, wOut, _ := os.Pipe()
+	rErr, wErr, _ := os.Pipe()
+	os.Stdout = wOut
+	os.Stderr = wErr
+
+	code := run()
+
+	wOut.Close()
+	wErr.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	var outBuf, errBuf bytes.Buffer
+	_, _ = outBuf.ReadFrom(rOut)
+	_, _ = errBuf.ReadFrom(rErr)
+
+	return code, outBuf.String(), errBuf.String()
+}
+
+func TestConfigCommandLifecycle(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "config", "gen"})
+	if code != 0 {
+		t.Fatalf("config gen failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	configPath := filepath.Join(tmpHome, ".typo", "config.json")
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("expected config file to exist, got %v", err)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "keyboard"})
+	if code != 0 || strings.TrimSpace(stdout) != "qwerty" {
+		t.Fatalf("config get keyboard failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "set", "keyboard", "dvorak"})
+	if code != 0 {
+		t.Fatalf("config set keyboard failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "list"})
+	if code != 0 {
+		t.Fatalf("config list failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "keyboard=dvorak") {
+		t.Fatalf("config list should contain keyboard=dvorak, got %q", stdout)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "reset"})
+	if code != 0 {
+		t.Fatalf("config reset failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "keyboard"})
+	if code != 0 || strings.TrimSpace(stdout) != "qwerty" {
+		t.Fatalf("config get keyboard after reset failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
+func TestConfigGenRequiresForce(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	if code, _, stderr := runCLI(t, []string{"typo", "config", "gen"}); code != 0 {
+		t.Fatalf("initial config gen failed: %q", stderr)
+	}
+
+	code, _, stderr := runCLI(t, []string{"typo", "config", "gen"})
+	if code == 0 {
+		t.Fatal("config gen should fail when config already exists")
+	}
+	if !strings.Contains(stderr, "--force") {
+		t.Fatalf("expected stderr to mention --force, got %q", stderr)
+	}
+
+	code, _, stderr = runCLI(t, []string{"typo", "config", "gen", "--force"})
+	if code != 0 {
+		t.Fatalf("config gen --force failed: %q", stderr)
+	}
+}
+
+func TestConfigCommandErrors(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		args   []string
+		wantIn string
+	}{
+		{name: "missing subcommand", args: []string{"typo", "config"}, wantIn: "subcommand required"},
+		{name: "missing get key", args: []string{"typo", "config", "get"}, wantIn: "<key> required"},
+		{name: "unknown get key", args: []string{"typo", "config", "get", "unknown"}, wantIn: "unknown config key"},
+		{name: "missing set value", args: []string{"typo", "config", "set", "keyboard"}, wantIn: "<key> and <value> required"},
+		{name: "invalid set value", args: []string{"typo", "config", "set", "history.enabled", "maybe"}, wantIn: "invalid bool value"},
+		{name: "gen positional args", args: []string{"typo", "config", "gen", "extra"}, wantIn: "does not accept positional arguments"},
+		{name: "gen invalid flag", args: []string{"typo", "config", "gen", "--wat"}, wantIn: "flag provided but not defined"},
+		{name: "unknown subcommand", args: []string{"typo", "config", "wat"}, wantIn: "Unknown subcommand"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code == 0 {
+				t.Fatalf("expected failure, got code=0 stdout=%q stderr=%q", stdout, stderr)
+			}
+			if !strings.Contains(stdout+stderr, tt.wantIn) {
+				t.Fatalf("expected output to contain %q, stdout=%q stderr=%q", tt.wantIn, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestConfigCommandWriteFailures(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpFile, err := os.CreateTemp("", "typo-home-file-*")
+	if err != nil {
+		t.Fatalf("CreateTemp failed: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	_ = tmpFile.Close()
+
+	if err := os.Setenv("HOME", tmpFile.Name()); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "set fails", args: []string{"typo", "config", "set", "keyboard", "dvorak"}},
+		{name: "reset fails", args: []string{"typo", "config", "reset"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code == 0 {
+				t.Fatalf("expected failure, got code=0 stdout=%q stderr=%q", stdout, stderr)
+			}
+			if !strings.Contains(stderr, "Error:") {
+				t.Fatalf("expected write failure stderr, got stdout=%q stderr=%q", stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestFixUsesGlobalHistoryDisabledConfig(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	cfg := config.Load()
+	cfg.User.History.Enabled = false
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "gut", "status"})
+	if code != 0 {
+		t.Fatalf("fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "git status") {
+		t.Fatalf("expected fixed command in stdout, got %q", stdout)
+	}
+
+	historyFile := filepath.Join(cfg.ConfigDir, "usage_history.json")
+	if _, err := os.Stat(historyFile); !os.IsNotExist(err) {
+		t.Fatalf("expected history file to stay absent, got %v", err)
+	}
+}
+
+func TestCreateEngineAppliesDisabledRuleScopes(t *testing.T) {
+	cfg := &config.Config{
+		ConfigDir: t.TempDir(),
+		User:      config.DefaultUserConfig(),
+	}
+	cfg.User.Rules["git"] = config.RuleSetConfig{Enabled: false}
+
+	eng := createEngine(cfg)
+	if got := eng.Fix("grt status", ""); got.Command == "git status" {
+		t.Fatalf("expected disabled git scope to prevent fixing to git, got %+v", got)
+	}
+}
+
+func TestDisabledCommandsFromConfig(t *testing.T) {
+	if got := disabledCommandsFromConfig(nil); got != nil {
+		t.Fatalf("disabledCommandsFromConfig(nil) = %v, want nil", got)
+	}
+
+	cfg := &config.Config{User: config.DefaultUserConfig()}
+	cfg.User.Rules["python"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["git"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["system"] = config.RuleSetConfig{Enabled: false}
+
+	got := disabledCommandsFromConfig(cfg)
+	wantSet := map[string]bool{
+		"python":  true,
+		"python3": true,
+		"git":     true,
+	}
+	for _, name := range got {
+		delete(wantSet, name)
+	}
+	if len(wantSet) != 0 {
+		t.Fatalf("disabledCommandsFromConfig() missing commands: %v, got %v", wantSet, got)
+	}
+	for _, name := range got {
+		if name == "system" {
+			t.Fatalf("disabledCommandsFromConfig() should not disable system, got %v", got)
+		}
+	}
+}
+
+func TestDisabledCommandsFromConfigIgnoresUnknownScopesWithWarning(t *testing.T) {
+	cfg := &config.Config{User: config.DefaultUserConfig()}
+	cfg.User.Rules["git"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["rust"] = config.RuleSetConfig{Enabled: false}
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	got := disabledCommandsFromConfig(cfg)
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !strings.Contains(output, "unknown disabled rule scopes") || !strings.Contains(output, "rust") {
+		t.Fatalf("expected unknown disabled scope warning, got %q", output)
+	}
+	for _, name := range got {
+		if name == "rust" {
+			t.Fatalf("disabledCommandsFromConfig() should ignore unknown scope names, got %v", got)
+		}
+	}
+	foundGit := false
+	for _, name := range got {
+		if name == "git" {
+			foundGit = true
+			break
+		}
+	}
+	if !foundGit {
+		t.Fatalf("disabledCommandsFromConfig() should keep known disabled commands, got %v", got)
+	}
+}
+
+func TestRuleScopeDisabledCommandsCoversDefaultScopes(t *testing.T) {
+	for scope := range config.DefaultUserConfig().Rules {
+		if _, ok := ruleScopeDisabledCommands[scope]; !ok {
+			t.Fatalf("ruleScopeDisabledCommands missing scope %q", scope)
+		}
+	}
+}
+
+func TestCreateEngineFallsBackToDefaultKeyboard(t *testing.T) {
+	cfg := &config.Config{
+		ConfigDir: t.TempDir(),
+		User:      config.DefaultUserConfig(),
+	}
+	cfg.User.Keyboard = "invalid"
+
+	eng := createEngine(cfg)
+	if got := eng.Fix("gut status", ""); !got.Fixed || got.Command != "git status" {
+		t.Fatalf("expected engine to fall back to default keyboard and still fix command, got %+v", got)
 	}
 }

@@ -65,3 +65,48 @@ print -r -- "$BUFFER"
 		})
 	}
 }
+
+func TestE2EBashInventoryFlows(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initBashScript(t)
+
+	tests := []struct {
+		name   string
+		buffer string
+		want   string
+	}{
+		{
+			name:   "builtins and system commands",
+			buffer: `echp ok | gerp ok && taill -n 1 app.log`,
+			want:   "echo ok | grep ok && tail -n 1 app.log",
+		},
+		{
+			name:   "source and docker commands",
+			buffer: `sourc ~/.bashrc && dcoker ps`,
+			want:   "source ~/.bashrc && docker ps",
+		},
+		{
+			name:   "mixed supported tools",
+			buffer: `kubctl get pods && bre update && helmm list`,
+			want:   "kubectl get pods && brew update && helm list",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script := `
+source "$1"
+trap - DEBUG
+READLINE_LINE='` + tt.buffer + `'
+_typo_fix_command
+[[ "$READLINE_LINE" == "` + tt.want + `" ]] || { printf "%s\n" "$READLINE_LINE"; exit 41; }
+printf "%s\n" "$READLINE_LINE"
+`
+
+			result := env.runBash(t, initScript, script)
+			if result.code != 0 || !strings.Contains(result.stdout, tt.want) {
+				t.Fatalf("bash inventory fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+			}
+		})
+	}
+}

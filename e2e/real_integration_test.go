@@ -89,6 +89,24 @@ print -r -- "$BUFFER"
 	}
 }
 
+func TestE2EBashPreviewFixDoesNotWriteUsageHistory(t *testing.T) {
+	env := newE2EEnv(t)
+
+	initScript := env.initBashScript(t)
+	result := env.runBash(t, initScript, `
+source "$1"
+trap - DEBUG
+READLINE_LINE="gut status"
+_typo_fix_command
+[[ "$READLINE_LINE" == "git status" ]] || exit 46
+[[ ! -e "$HOME/.typo/usage_history.json" ]] || exit 47
+printf "%s\n" "$READLINE_LINE"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, "git status") {
+		t.Fatalf("bash preview fix should not write usage history: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
 func TestE2EZshIntegrationCapturesLiveStderr(t *testing.T) {
 	env := newE2EEnv(t)
 	env.writeBinScript(t, "git", `#!/bin/sh

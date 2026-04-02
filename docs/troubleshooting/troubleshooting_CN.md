@@ -52,14 +52,16 @@ See: https://ghostty.org/docs/help/terminfo#ssh
 
 ## 3. Jetbraines 通过 Gateway 启动的 Remote IDE 终端里绑定 esc 键无效？
 
-确认是 Jetbrains IDE 的问题，在 `typo init zsh` 中将绑定键改为其他键，即可生效。
+确认是 Jetbrains IDE 的问题。将 shell 集成脚本（`typo init zsh` 或 `typo init bash`）中的按键改为其他键即可生效。
 
 ```shell
+# zsh
 bindkey '\e\e' _typo_fix_command
-
-->
-
 bindkey '^T' _typo_fix_command
+
+# bash
+bind -x '"\e\e":_typo_fix_command'
+bind -x '"\C-t":_typo_fix_command'
 ```
 
 ## 4. 为什么 `/tmp` 或 `$TMPDIR` 里会出现 `typo-stderr-*` 文件？为什么有时退出后还会残留？

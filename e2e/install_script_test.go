@@ -272,13 +272,25 @@ func writeTarGz(t *testing.T, archivePath string, files map[string]string) {
 	if err != nil {
 		t.Fatalf("failed to create tar.gz: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			t.Fatalf("failed to close tar.gz file: %v", closeErr)
+		}
+	}()
 
 	gzipWriter := gzip.NewWriter(file)
-	defer gzipWriter.Close()
+	defer func() {
+		if closeErr := gzipWriter.Close(); closeErr != nil {
+			t.Fatalf("failed to close gzip writer: %v", closeErr)
+		}
+	}()
 
 	tarWriter := tar.NewWriter(gzipWriter)
-	defer tarWriter.Close()
+	defer func() {
+		if closeErr := tarWriter.Close(); closeErr != nil {
+			t.Fatalf("failed to close tar writer: %v", closeErr)
+		}
+	}()
 
 	createdDirs := make(map[string]bool)
 	names := make([]string, 0, len(files))
