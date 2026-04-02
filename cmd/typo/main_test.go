@@ -848,6 +848,155 @@ func TestRulesUnknownSubcommand(t *testing.T) {
 	}
 }
 
+func TestRulesEnableDisableLifecycle(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	steps := []struct {
+		name string
+		run  func(t *testing.T)
+	}{
+		{
+			name: "disable git",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "rules", "disable", "git"}, "Disabled rule scope: git", "rules disable git")
+				assertConfigValue(t, "rules.git.enabled", "false", "after disable")
+			},
+		},
+		{
+			name: "list disabled rule",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "rules", "list"}, "gut -> git [git] (disabled)", "rules list")
+			},
+		},
+		{
+			name: "fix skips disabled rule",
+			run: func(t *testing.T) {
+				assertCLIDoesNotCorrect(t, []string{"typo", "fix", "--no-history", "gut", "status"}, "git status", "fix should not correct to git when git scope is disabled")
+			},
+		},
+		{
+			name: "enable git",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "rules", "enable", "git"}, "Enabled rule scope: git", "rules enable git")
+				assertConfigValue(t, "rules.git.enabled", "true", "after enable")
+			},
+		},
+		{
+			name: "fix recovers after re-enable",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "fix", "gut", "status"}, "git status", "fix should recover after re-enabling git")
+			},
+		},
+	}
+
+	for _, step := range steps {
+		t.Run(step.name, step.run)
+	}
+}
+
+func TestRulesEnableDisableErrors(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		args   []string
+		wantIn string
+	}{
+		{
+			name:   "disable missing scope",
+			args:   []string{"typo", "rules", "disable"},
+			wantIn: "requires exactly one <scope>",
+		},
+		{
+			name:   "enable extra args",
+			args:   []string{"typo", "rules", "enable", "git", "extra"},
+			wantIn: "requires exactly one <scope>",
+		},
+		{
+			name:   "unknown scope",
+			args:   []string{"typo", "rules", "disable", "rust"},
+			wantIn: "valid options:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code == 0 {
+				t.Fatalf("expected failure, got code=0 stdout=%q stderr=%q", stdout, stderr)
+			}
+			if !strings.Contains(stdout+stderr, tt.wantIn) {
+				t.Fatalf("expected output to contain %q, stdout=%q stderr=%q", tt.wantIn, stdout, stderr)
+			}
+		})
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "rules", "disable", "rust"})
+	if code == 0 {
+		t.Fatalf("expected unknown scope failure, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "unknown rule scope: rust") {
+		t.Fatalf("expected unknown scope error, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "docker") || !strings.Contains(stderr, "git") || !strings.Contains(stderr, "system") {
+		t.Fatalf("expected valid scope list in error, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestRulesEnableDisableSupportsUnknownPresentScope(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	cfg := config.Load()
+	cfg.User.Rules["rust"] = config.RuleSetConfig{Enabled: false}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "rules", "enable", "rust"})
+	if code != 0 {
+		t.Fatalf("rules enable rust failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Enabled rule scope: rust") {
+		t.Fatalf("expected enable rust output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "rules.rust.enabled"})
+	if code != 0 || strings.TrimSpace(stdout) != "true" {
+		t.Fatalf("config get rules.rust.enabled failed after enable: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "rules", "disable", "rust"})
+	if code != 0 {
+		t.Fatalf("rules disable rust failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Disabled rule scope: rust") {
+		t.Fatalf("expected disable rust output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "rules.rust.enabled"})
+	if code != 0 || strings.TrimSpace(stdout) != "false" {
+		t.Fatalf("config get rules.rust.enabled failed after disable: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
 func TestHistoryList(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -2436,6 +2585,36 @@ func runCLI(t *testing.T, args []string) (int, string, string) {
 	_, _ = errBuf.ReadFrom(rErr)
 
 	return code, outBuf.String(), errBuf.String()
+}
+
+func assertCLISucceedsWithOutput(t *testing.T, args []string, wantIn string, action string) {
+	t.Helper()
+
+	code, stdout, stderr := runCLI(t, args)
+	if code != 0 {
+		t.Fatalf("%s failed: code=%d stdout=%q stderr=%q", action, code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, wantIn) {
+		t.Fatalf("%s missing output %q: stdout=%q stderr=%q", action, wantIn, stdout, stderr)
+	}
+}
+
+func assertConfigValue(t *testing.T, key string, want string, context string) {
+	t.Helper()
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "config", "get", key})
+	if code != 0 || strings.TrimSpace(stdout) != want {
+		t.Fatalf("config get %s failed %s: code=%d stdout=%q stderr=%q", key, context, code, stdout, stderr)
+	}
+}
+
+func assertCLIDoesNotCorrect(t *testing.T, args []string, unexpected string, context string) {
+	t.Helper()
+
+	code, stdout, stderr := runCLI(t, args)
+	if code == 0 && strings.Contains(stdout, unexpected) {
+		t.Fatalf("%s: stdout=%q stderr=%q", context, stdout, stderr)
+	}
 }
 
 func TestConfigCommandLifecycle(t *testing.T) {

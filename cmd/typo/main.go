@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,6 +109,8 @@ Usage:
   typo rules list                         List all rules
   typo rules add <from> <to>              Add a user rule
   typo rules remove <from>                Remove a user rule
+  typo rules enable <scope>               Enable a builtin rule scope
+  typo rules disable <scope>              Disable a builtin rule scope
   typo history list                       List correction history
   typo history clear                      Clear correction history
   typo init zsh                           Print zsh integration script
@@ -121,6 +124,7 @@ Examples:
   typo learn "gut" "git"
   typo config set keyboard dvorak
   typo rules add "mytypo" "mycommand"
+  typo rules disable git
   eval "$(typo init zsh)"
 
 Zsh Integration:
@@ -308,7 +312,7 @@ func cmdConfigGen(cfg *config.Config, args []string) int {
 
 func cmdRules(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: subcommand required (list, add, remove)")
+		fmt.Fprintln(os.Stderr, "Error: subcommand required (list, add, remove, enable, disable)")
 		return 1
 	}
 
@@ -354,10 +358,65 @@ func cmdRules(args []string) int {
 		}
 		fmt.Printf("Removed rule: %s\n", args[1])
 		return 0
+	case "enable":
+		return cmdRulesSetScopeEnabled(cfg, args, true)
+	case "disable":
+		return cmdRulesSetScopeEnabled(cfg, args, false)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown subcommand: %s\n", args[0])
 		return 1
 	}
+}
+
+func cmdRulesSetScopeEnabled(cfg *config.Config, args []string, enabled bool) int {
+	action := args[0]
+	if len(args) != 2 {
+		fmt.Fprintf(os.Stderr, "Error: %s requires exactly one <scope>\n", action)
+		return 1
+	}
+
+	scope := strings.TrimSpace(args[1])
+	if scope == "" {
+		fmt.Fprintf(os.Stderr, "Error: %s requires exactly one <scope>\n", action)
+		return 1
+	}
+
+	if _, exists := cfg.User.Rules[scope]; !exists {
+		fmt.Fprintf(
+			os.Stderr,
+			"Error: unknown rule scope: %s (valid options: %s)\n",
+			scope,
+			strings.Join(sortedConfigRuleScopes(cfg), ", "),
+		)
+		return 1
+	}
+
+	key := fmt.Sprintf("rules.%s.enabled", scope)
+	if err := cfg.Set(key, strconv.FormatBool(enabled)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	if enabled {
+		fmt.Printf("Enabled rule scope: %s\n", scope)
+		return 0
+	}
+
+	fmt.Printf("Disabled rule scope: %s\n", scope)
+	return 0
+}
+
+func sortedConfigRuleScopes(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	scopes := make([]string, 0, len(cfg.User.Rules))
+	for scope := range cfg.User.Rules {
+		scopes = append(scopes, scope)
+	}
+	sort.Strings(scopes)
+	return scopes
 }
 
 func cmdHistory(args []string) int {

@@ -536,6 +536,45 @@ func TestE2ERulesWorkflow(t *testing.T) {
 	}
 }
 
+func TestE2ERuleScopeEnableDisableWorkflow(t *testing.T) {
+	env := newE2EEnv(t)
+
+	disableGit := env.run(t, "rules", "disable", "git")
+	if disableGit.code != 0 || !strings.Contains(disableGit.stdout, "Disabled rule scope: git") {
+		t.Fatalf("rules disable git failed: stdout=%q stderr=%q code=%d", disableGit.stdout, disableGit.stderr, disableGit.code)
+	}
+
+	rulesListDisabled := env.run(t, "rules", "list")
+	if rulesListDisabled.code != 0 || !strings.Contains(rulesListDisabled.stdout, "gut -> git [git] (disabled)") {
+		t.Fatalf("rules list should show disabled git rules: stdout=%q stderr=%q code=%d", rulesListDisabled.stdout, rulesListDisabled.stderr, rulesListDisabled.code)
+	}
+
+	fixWhileDisabled := env.run(t, "fix", "--no-history", "gut status")
+	if fixWhileDisabled.code == 0 && fixWhileDisabled.stdout == "git status\n" {
+		t.Fatalf("git scope disable should block git correction: stdout=%q stderr=%q code=%d", fixWhileDisabled.stdout, fixWhileDisabled.stderr, fixWhileDisabled.code)
+	}
+
+	checkPersistedDisable := env.run(t, "config", "get", "rules.git.enabled")
+	if checkPersistedDisable.code != 0 || strings.TrimSpace(checkPersistedDisable.stdout) != "false" {
+		t.Fatalf("rules.git.enabled should persist as false: stdout=%q stderr=%q code=%d", checkPersistedDisable.stdout, checkPersistedDisable.stderr, checkPersistedDisable.code)
+	}
+
+	enableGit := env.run(t, "rules", "enable", "git")
+	if enableGit.code != 0 || !strings.Contains(enableGit.stdout, "Enabled rule scope: git") {
+		t.Fatalf("rules enable git failed: stdout=%q stderr=%q code=%d", enableGit.stdout, enableGit.stderr, enableGit.code)
+	}
+
+	checkPersistedEnable := env.run(t, "config", "get", "rules.git.enabled")
+	if checkPersistedEnable.code != 0 || strings.TrimSpace(checkPersistedEnable.stdout) != "true" {
+		t.Fatalf("rules.git.enabled should persist as true: stdout=%q stderr=%q code=%d", checkPersistedEnable.stdout, checkPersistedEnable.stderr, checkPersistedEnable.code)
+	}
+
+	fixAfterEnable := env.run(t, "fix", "gut status")
+	if fixAfterEnable.code != 0 || fixAfterEnable.stdout != "git status\n" {
+		t.Fatalf("git correction should recover after enable: stdout=%q stderr=%q code=%d", fixAfterEnable.stdout, fixAfterEnable.stderr, fixAfterEnable.code)
+	}
+}
+
 func TestE2EUninstallWorkflow(t *testing.T) {
 	env := newE2EEnv(t)
 

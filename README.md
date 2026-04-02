@@ -102,6 +102,8 @@ typo config gen --force                  # Overwrite an existing config file
 typo rules list                    # List all rules
 typo rules add "gst" "git status"  # Same effect as `learn`, but in rule-management flow
 typo rules remove "gst"            # Remove rule
+typo rules disable git             # Disable builtin git rule scope
+typo rules enable docker           # Re-enable builtin docker rule scope
 ```
 
 ### `typo history` - View correction history
