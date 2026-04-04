@@ -55,6 +55,15 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 
 说明：安装脚本当前支持 macOS 和 Linux。
 
+### Shell 集成
+
+| Shell 终端 | 支持状态  |
+|-----------|----------|
+| zsh       | ✅ 已支持 |
+| bash      | ✅ 已支持 |
+| fish      | 🚧 计划中 |
+| Powershell| 🚧 计划中 | 
+
 ### 运行
 
 ```bash
