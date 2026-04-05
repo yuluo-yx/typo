@@ -12,7 +12,6 @@ jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
-    if: github.repository == 'yuluo-yx/typo'
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
