@@ -52,7 +52,7 @@ See: https://ghostty.org/docs/help/terminfo#ssh
 
 ## 3. Jetbraines 通过 Gateway 启动的 Remote IDE 终端里绑定 esc 键无效？
 
-确认是 Jetbrains IDE 的问题。将 shell 集成脚本（`typo init zsh` 或 `typo init bash`）中的按键改为其他键即可生效。
+确认是 Jetbrains IDE 的问题。将 shell 集成脚本（`typo init zsh`、`typo init bash` 或 `typo init powershell`）中的按键改为其他键即可生效。
 
 ```shell
 # zsh
@@ -62,11 +62,59 @@ bindkey '^T' _typo_fix_command
 # bash
 bind -x '"\e\e":_typo_fix_command'
 bind -x '"\C-t":_typo_fix_command'
+
+# PowerShell
+Set-PSReadLineKeyHandler -Chord Escape,Escape -ScriptBlock { __typo_FixCommand }
+Set-PSReadLineKeyHandler -Chord Ctrl+t -ScriptBlock { __typo_FixCommand }
 ```
 
-## 4. 为什么 `/tmp` 或 `$TMPDIR` 里会出现 `typo-stderr-*` 文件？为什么有时退出后还会残留？
+## 4. 为什么 `Invoke-Expression (& typo init powershell)` 在 PowerShell 里会失败？
 
-这是 zsh 集成脚本的正常工作机制。
+常见原因：
+
+- 你当前运行的是 Windows PowerShell 5.1，而不是 PowerShell 7+
+- `PSReadLine` 不可用或加载失败
+- 当前 host 对应的 profile 文件还不存在
+- 执行策略阻止了 profile 脚本加载
+
+推荐处理方式：
+
+1. 先确认当前 PowerShell 版本：
+
+   ```powershell
+   $PSVersionTable.PSVersion
+   ```
+
+2. 确保 `PSReadLine` 可用：
+
+   ```powershell
+   Install-Module PSReadLine -Scope CurrentUser
+   Import-Module PSReadLine
+   ```
+
+3. 如有需要，先创建当前 host 的 profile，再写入 typo 集成：
+
+   ```powershell
+   if (!(Test-Path -Path $PROFILE.CurrentUserCurrentHost)) {
+     New-Item -ItemType File -Path $PROFILE.CurrentUserCurrentHost -Force
+   }
+   Add-Content -Path $PROFILE.CurrentUserCurrentHost -Value 'Invoke-Expression (& typo init powershell)'
+   ```
+
+4. 如果是执行策略阻止 profile 加载，可为当前用户放开本地脚本：
+
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   ```
+
+补充说明：
+
+- 当前首版主要聚焦 native command 的 stderr 缓存链路。
+- cmdlet 的 error stream 捕获会受宿主环境影响，暂时不保证都能写入 typo 的 stderr 缓存。
+
+## 5. 为什么 `/tmp` 或 `$TMPDIR` 里会出现 `typo-stderr-*` 文件？为什么有时退出后还会残留？
+
+这是 zsh、bash 和 PowerShell 集成的正常工作机制。
 
 根因说明：
 
@@ -87,6 +135,6 @@ bind -x '"\C-t":_typo_fix_command'
 
 补充说明：
 
-- 正常退出时，typo 会在 `zshexit` 钩子里删除当前 shell 自己的缓存文件。
+- 正常退出时，zsh 会在 `zshexit` 钩子里删除缓存，bash 会在 `EXIT` trap 中删除缓存，PowerShell 会在 `PowerShell.Exiting` 事件里删除缓存。
 - 如果终端崩溃、shell 被强制杀死，或者系统异常中断，退出钩子可能来不及执行，这种场景下残留旧文件是可以接受的。
 - typo 会在后续 shell 启动时清理一天前遗留的旧缓存，避免 `/tmp` 长期堆积。

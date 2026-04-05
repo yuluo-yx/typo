@@ -60,7 +60,7 @@ Note: The install script currently supports macOS and Linux.
 | zsh       | ✅ Supported |
 | bash      | ✅ Supported |
 | fish      | 🚧 Planned   |
-| Powershell| 🚧 Planned   |
+| PowerShell| ✅ Supported |
 
 ### Run
 
@@ -70,9 +70,18 @@ eval "$(typo init zsh)"
 
 # Or add to ~/.bashrc
 eval "$(typo init bash)"
+
+# Or add to $PROFILE.CurrentUserCurrentHost
+Invoke-Expression (& typo init powershell)
 ```
 
 Restart your terminal, then press `Esc` `Esc` after a typo. (No Enter can!)
+
+PowerShell notes:
+
+- Shell integration requires PowerShell 7+ and `PSReadLine`.
+- `typo init pwsh` is supported as an alias, but `typo init powershell` is the primary command.
+- The first PowerShell release guarantees stderr-assisted correction for native commands. Cmdlet error-stream capture can vary by host.
 
 ## Commands
 
@@ -125,7 +134,7 @@ typo history clear     # Clear history
 ### `typo doctor` - Diagnose issues
 
 ```bash
-typo doctor            # Check environment status and print effective config
+typo doctor            # Check environment status, effective config, and shell-specific setup hints
 ```
 
 ### Other commands
@@ -133,6 +142,7 @@ typo doctor            # Check environment status and print effective config
 ```bash
 typo init zsh          # Print shell integration script
 typo init bash         # Print shell integration script
+typo init powershell   # Print PowerShell integration script
 typo version           # Show version
 typo uninstall         # Remove local config and print remaining cleanup steps
 ```
@@ -154,7 +164,7 @@ Typo corrects commands in this priority:
 - **docker**: Unknown command suggestions
 - **npm**: Command not found suggestions
 
-`-s <file>` tells `typo fix` to read stderr from a file. This is mainly for parser-based fixes and is usually passed automatically by the shell integration after a command fails.
+`-s <file>` tells `typo fix` to read stderr from a file. This is mainly for parser-based fixes and is usually passed automatically by the shell integration after a command fails. In PowerShell, the shell integration currently guarantees this stderr cache for native commands.
 
 Examples:
 
