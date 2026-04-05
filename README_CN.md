@@ -62,7 +62,7 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 | zsh       | ✅ 已支持 |
 | bash      | ✅ 已支持 |
 | fish      | 🚧 计划中 |
-| Powershell| 🚧 计划中 | 
+| PowerShell| ✅ 已支持 |
 
 ### 运行
 
@@ -72,9 +72,18 @@ eval "$(typo init zsh)"
 
 # 或添加到 ~/.bashrc
 eval "$(typo init bash)"
+
+# 或添加到 $PROFILE.CurrentUserCurrentHost
+Invoke-Expression (& typo init powershell)
 ```
 
 重启终端后，输错命令按 `Esc` `Esc` 即可修正。（不用回车也可！）
+
+PowerShell 说明：
+
+- shell 集成依赖 PowerShell 7+ 和 `PSReadLine`。
+- `typo init pwsh` 也可用，但主命令仍是 `typo init powershell`。
+- 当前首版只保证 native command 的 stderr 缓存辅助纠错；cmdlet 的 error stream 捕获会受宿主环境影响。
 
 ## 命令
 
@@ -127,7 +136,7 @@ typo history clear     # 清除历史
 ### `typo doctor` - 诊断问题
 
 ```bash
-typo doctor            # 诊断环境状态并输出当前生效配置
+typo doctor            # 诊断环境状态、当前生效配置和对应 shell 的接入提示
 ```
 
 ### 其他命令
@@ -135,6 +144,7 @@ typo doctor            # 诊断环境状态并输出当前生效配置
 ```bash
 typo init zsh          # 打印 shell 集成脚本
 typo init bash         # 打印 shell 集成脚本
+typo init powershell   # 打印 PowerShell 集成脚本
 typo version           # 显示版本
 typo uninstall         # 清理本地配置并提示剩余手动清理步骤
 ```
@@ -156,7 +166,7 @@ Typo 按以下优先级修正命令：
 - **docker**: 未知命令建议
 - **npm**: 命令未找到建议
 
-`-s <file>` 表示让 `typo fix` 从文件里读取 stderr。它主要用于这类基于真实报错提示的修正场景，平时通常由 shell 集成在命令失败后自动传入。
+`-s <file>` 表示让 `typo fix` 从文件里读取 stderr。它主要用于这类基于真实报错提示的修正场景，平时通常由 shell 集成在命令失败后自动传入。PowerShell 集成当前只对 native command 稳定提供这份 stderr 缓存。
 
 示例：
 

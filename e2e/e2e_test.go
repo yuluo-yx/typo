@@ -215,9 +215,15 @@ func (e *e2eEnv) commandEnv(extra ...string) []string {
 	for _, item := range os.Environ() {
 		if strings.HasPrefix(item, "HOME=") ||
 			strings.HasPrefix(item, "PATH=") ||
+			strings.HasPrefix(item, "SHELL=") ||
 			strings.HasPrefix(item, "TMPDIR=") ||
 			strings.HasPrefix(item, "ZDOTDIR=") ||
-			strings.HasPrefix(item, "TYPO_SHELL_INTEGRATION=") {
+			strings.HasPrefix(item, "TYPO_SHELL_INTEGRATION=") ||
+			strings.HasPrefix(item, "TYPO_ACTIVE_SHELL=") ||
+			strings.HasPrefix(item, "TYPO_LAST_EXIT_CODE=") ||
+			strings.HasPrefix(item, "POWERSHELL_DISTRIBUTION_CHANNEL=") ||
+			strings.HasPrefix(item, "PSModulePath=") ||
+			strings.HasPrefix(item, "PSExecutionPolicyPreference=") {
 			continue
 		}
 		filtered = append(filtered, item)
@@ -327,6 +333,22 @@ func (e *e2eEnv) initBashScript(t *testing.T) string {
 	return scriptPath
 }
 
+func (e *e2eEnv) initPowerShellScript(t *testing.T) string {
+	t.Helper()
+
+	result := e.run(t, "init", "powershell")
+	if result.code != 0 {
+		t.Fatalf("failed to generate PowerShell init script: %s", result.stderr)
+	}
+
+	scriptPath := filepath.Join(e.tmpDir, "typo-init.ps1")
+	if err := os.WriteFile(scriptPath, []byte(result.stdout), 0600); err != nil {
+		t.Fatalf("failed to write PowerShell init script: %v", err)
+	}
+
+	return scriptPath
+}
+
 func (e *e2eEnv) runZsh(t *testing.T, initScriptPath, script string) e2eResult {
 	t.Helper()
 
@@ -393,6 +415,45 @@ func (e *e2eEnv) runBash(t *testing.T, initScriptPath, script string) e2eResult 
 	}
 }
 
+func (e *e2eEnv) runPwsh(t *testing.T, initScriptPath, script string) e2eResult {
+	t.Helper()
+
+	if _, err := exec.LookPath("pwsh"); err != nil {
+		t.Skip("pwsh is not available; skipping PowerShell e2e test")
+	}
+
+	harnessPath := filepath.Join(e.tmpDir, "pwsh-harness.ps1")
+	harness := "param([string]$InitScriptPath)\n" + script
+	if err := os.WriteFile(harnessPath, []byte(harness), 0600); err != nil {
+		t.Fatalf("failed to write PowerShell harness: %v", err)
+	}
+
+	cmd := exec.Command("pwsh", "-NoLogo", "-NoProfile", "-File", harnessPath, "-InitScriptPath", initScriptPath)
+	cmd.Dir = e.root
+	cmd.Env = e.commandEnv()
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to execute PowerShell e2e script: %v", err)
+		}
+	}
+
+	return e2eResult{
+		stdout: stdout.String(),
+		stderr: stderr.String(),
+		code:   code,
+	}
+}
+
 func assertE2EStdoutContains(t *testing.T, result e2eResult, want, message string) {
 	t.Helper()
 
@@ -442,6 +503,9 @@ func TestE2EReadmeExamples(t *testing.T) {
 
 	initBash := env.run(t, "init", "bash")
 	assertE2EStdoutContains(t, initBash, "bind -x", "unexpected init bash output")
+
+	initPowerShell := env.run(t, "init", "powershell")
+	assertE2EStdoutContains(t, initPowerShell, "Set-PSReadLineKeyHandler", "unexpected init powershell output")
 
 	fixCases := []struct {
 		name    string
@@ -627,6 +691,44 @@ func TestE2EUninstallWorkflow(t *testing.T) {
 	}
 }
 
+func TestE2EDoctorDetectsPowerShellHints(t *testing.T) {
+	env := newE2EEnv(t)
+
+	doctor := env.runWithEnv(t, []string{
+		"POWERSHELL_DISTRIBUTION_CHANNEL=PowerShell 7.5",
+		"PSModulePath=" + filepath.Join(env.tmpDir, "psmodules"),
+	}, "doctor")
+
+	if doctor.code != 1 {
+		t.Fatalf("expected doctor to fail when shell integration is not loaded: stdout=%q stderr=%q code=%d", doctor.stdout, doctor.stderr, doctor.code)
+	}
+	if !strings.Contains(doctor.stdout, "$PROFILE.CurrentUserCurrentHost") {
+		t.Fatalf("expected PowerShell profile hint, got: %q", doctor.stdout)
+	}
+	if !strings.Contains(doctor.stdout, "Invoke-Expression (& typo init powershell)") {
+		t.Fatalf("expected PowerShell init hint, got: %q", doctor.stdout)
+	}
+}
+
+func TestE2EUninstallShowsPowerShellHint(t *testing.T) {
+	env := newE2EEnv(t)
+
+	uninstall := env.runWithEnv(t, []string{
+		"POWERSHELL_DISTRIBUTION_CHANNEL=PowerShell 7.5",
+		"PSModulePath=" + filepath.Join(env.tmpDir, "psmodules"),
+	}, "uninstall")
+
+	if uninstall.code != 0 {
+		t.Fatalf("uninstall failed: stdout=%q stderr=%q code=%d", uninstall.stdout, uninstall.stderr, uninstall.code)
+	}
+	if !strings.Contains(uninstall.stdout, "$PROFILE.CurrentUserCurrentHost") {
+		t.Fatalf("expected PowerShell cleanup hint, got: %q", uninstall.stdout)
+	}
+	if !strings.Contains(uninstall.stdout, "Invoke-Expression (& typo init powershell)") {
+		t.Fatalf("expected PowerShell init cleanup command, got: %q", uninstall.stdout)
+	}
+}
+
 func TestE2EZshIntegrationDailyFlow(t *testing.T) {
 	env := newE2EEnv(t)
 	initScript := env.initZshScript(t)
@@ -789,6 +891,33 @@ func TestE2EComplexFixFlows(t *testing.T) {
 				t.Fatalf("unexpected stderr: got=%q want substring=%q code=%d", result.stderr, tt.wantStderrContains, result.code)
 			}
 		})
+	}
+}
+
+func TestE2EPowerShellIntegrationSmoke(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initPowerShellScript(t)
+
+	result := env.runPwsh(t, initScript, `
+. $InitScriptPath
+$handler = Get-PSReadLineKeyHandler -Bound | Where-Object { $_.BriefDescription -eq "typo-fix-command" } | Select-Object -First 1
+if ($null -eq $handler) {
+    throw "missing typo fix handler"
+}
+if ($env:TYPO_ACTIVE_SHELL -ne "powershell") {
+    throw "missing TYPO_ACTIVE_SHELL"
+}
+if ($env:TYPO_SHELL_INTEGRATION -ne "1") {
+    throw "missing TYPO_SHELL_INTEGRATION"
+}
+if (-not (Test-Path -LiteralPath $env:TYPO_STDERR_CACHE)) {
+    throw "missing TYPO_STDERR_CACHE"
+}
+Write-Output "ok"
+`)
+
+	if result.code != 0 || !strings.Contains(result.stdout, "ok") {
+		t.Fatalf("PowerShell integration smoke test failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }
 
