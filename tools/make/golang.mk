@@ -1,7 +1,7 @@
 ##@ typo build
 
 # Supported platforms
-PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none") -X main.date=$(shell date -u +%Y-%m-%d 2>/dev/null || echo "unknown")
 
@@ -18,7 +18,7 @@ install: ## Install the binary to GOPATH/bin
 
 .PHONY: build-all
 build-all: ## Build for all supported platforms
-build-all: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64
+build-all: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 build-windows-arm64
 
 .PHONY: build-linux-amd64
 build-linux-amd64: ## build typo for linux/amd64
@@ -43,6 +43,18 @@ build-darwin-arm64: ## build typo for darwin/arm64
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/darwin-arm64
 	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/darwin-arm64/$(BINARY_NAME) ./cmd/typo
+
+.PHONY: build-windows-amd64
+build-windows-amd64: ## build typo for windows/amd64
+	@$(LOG_TARGET)
+	@mkdir -p $(BUILD_DIR)/windows-amd64
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-amd64/$(BINARY_NAME).exe ./cmd/typo
+
+.PHONY: build-windows-arm64
+build-windows-arm64: ## build typo for windows/arm64
+	@$(LOG_TARGET)
+	@mkdir -p $(BUILD_DIR)/windows-arm64
+	GOOS=windows GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-arm64/$(BINARY_NAME).exe ./cmd/typo
 
 ##@ linter and test
 

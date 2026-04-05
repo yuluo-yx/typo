@@ -47,7 +47,14 @@ jobs:
           cd bin
           for dir in */; do
             dir=${dir%/}
-            mv "$dir/typo" "typo-$dir"
+            case "$dir" in
+              windows-*)
+                mv "$dir/typo.exe" "typo-$dir.exe"
+                ;;
+              *)
+                mv "$dir/typo" "typo-$dir"
+                ;;
+            esac
           done
 
       - name: Upload release artifacts
