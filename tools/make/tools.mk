@@ -1,6 +1,6 @@
 ##@ Tools
 
-# check and install tools, include ci and style etc.
+# check and install tools, include GHA and local env.
 
 .PHONY: install-golanglint
 install-golanglint: ## Install golangci-lint
