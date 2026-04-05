@@ -12,6 +12,7 @@ concurrency:
 jobs:
   update-contributors:
     runs-on: ubuntu-latest
+    if: github.repository == 'yuluo-yx/typo'
     permissions:
       contents: write
     steps:
@@ -49,6 +50,7 @@ jobs:
 
       - name: Commit & Push
         uses: stefanzweifel/git-auto-commit-action@v7
+        if: github.repository == 'yuluo-yx/typo'
         with:
           commit_message: "chore: update contributors [skip ci]"
           file_pattern: .github/CONTRIBUTORS.svg

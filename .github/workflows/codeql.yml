@@ -27,6 +27,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
+    if: github.repository == 'yuluo-yx/typo'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -40,23 +41,25 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Set up Go
-        if: matrix.language == 'go'
+        if: matrix.language == 'go' && github.repository == 'yuluo-yx/typo'
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with:
           go-version-file: go.mod
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
+        if: github.repository == 'yuluo-yx/typo'
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended
 
       - name: Build for CodeQL
-        if: matrix.build-mode == 'manual'
+        if: matrix.build-mode == 'manual' && github.repository == 'yuluo-yx/typo'
         run: make build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
+        if: github.repository == 'yuluo-yx/typo'
         with:
           category: "/language:${{ matrix.language }}"
