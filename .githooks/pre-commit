@@ -2,9 +2,9 @@
 set -eu
 
 if ! command -v golangci-lint >/dev/null 2>&1; then
-  echo "golangci-lint not found. Install it before committing."
+  echo "golangci-lint not found. Install it before committing. You can run 'make tools' to install it."
   exit 1
 fi
 
 echo "Running golangci-lint before commit..."
-golangci-lint run ./... --config ./tools/linter/.golangci.yml
+make lint
