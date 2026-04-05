@@ -53,6 +53,15 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 
 Note: The install script currently supports macOS and Linux.
 
+### Shell Integration
+
+| Shell     | Status    |
+|-----------|-----------|
+| zsh       | ✅ Supported |
+| bash      | ✅ Supported |
+| fish      | 🚧 Planned   |
+| Powershell| 🚧 Planned   |
+
 ### Run
 
 ```bash
