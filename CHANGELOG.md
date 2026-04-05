@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/yuluo-yx/typo/compare/v0.1.1...v0.2.0) (2026-04-05)
+
+
+### Features
+
+* **command:** add cloud provider CLIs to common commands list, for aws gcloud az ([#23](https://github.com/yuluo-yx/typo/issues/23)) ([e5b6987](https://github.com/yuluo-yx/typo/commit/e5b698720bbacb72ad290cfe8f4bba9d968d07d3))
+* **config:** add typo config file ([#24](https://github.com/yuluo-yx/typo/issues/24)) ([e77167d](https://github.com/yuluo-yx/typo/commit/e77167d4e2b95543b102e9f1a75b64c03cc248ca))
+* **config:** support rule enable and disable config ([#33](https://github.com/yuluo-yx/typo/issues/33)) ([21797e6](https://github.com/yuluo-yx/typo/commit/21797e657a87ade8b1ee6a270f7dbcbe4c12f206))
+* **install:** add bash shell integration ([#26](https://github.com/yuluo-yx/typo/issues/26)) ([6363eaa](https://github.com/yuluo-yx/typo/commit/6363eaa4f6f586c8e2bdf70de189985bcc4dda1e))
+* **release:** add windows platform binary ([#40](https://github.com/yuluo-yx/typo/issues/40)) ([57109d4](https://github.com/yuluo-yx/typo/commit/57109d4934639db53a9d0130c96b8ac178d31271))
+
+
+### Bug Fixes
+
+* **ci:** gate release upload on release tag output ([73270f8](https://github.com/yuluo-yx/typo/commit/73270f885700543c5a258be3bdeda134fcb69814))
+* **ci:** remove check in release-please action ([e5af183](https://github.com/yuluo-yx/typo/commit/e5af1831d67c0d035c5d40a747f8424b5a41655c))
+
 ## [0.1.1](https://github.com/yuluo-yx/typo/compare/v0.1.0...v0.1.1) (2026-03-31)
 
 
