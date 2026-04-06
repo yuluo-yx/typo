@@ -30,6 +30,10 @@ var (
 	executable    = os.Executable
 	removeAll     = os.RemoveAll
 	statPath      = os.Stat
+
+	zshIntegrationScript        = install.ZshScript
+	bashIntegrationScript       = install.BashScript
+	powerShellIntegrationScript = install.PowerShellScript
 )
 
 const commandDiscoveryTimeout = 150 * time.Millisecond
@@ -114,7 +118,8 @@ Usage:
   typo history list                       List correction history
   typo history clear                      Clear correction history
   typo init zsh                           Print zsh integration script
-	typo init bash                          Print bash integration script
+  typo init bash                          Print bash integration script
+  typo init powershell                    Print PowerShell integration script
   typo doctor                             Check configuration status
   typo uninstall                          Remove local config and show remaining cleanup steps
   typo version                            Print version
@@ -131,7 +136,10 @@ Zsh Integration:
   After running 'eval "$(typo init zsh)"', press <Esc><Esc> to fix the current command.
 
 Bash Integration:
-  After running 'eval "$(typo init bash)"', press <Esc><Esc> to fix the current command.`)
+  After running 'eval "$(typo init bash)"', press <Esc><Esc> to fix the current command.
+
+PowerShell Integration:
+  Add 'Invoke-Expression (& typo init powershell)' to $PROFILE.CurrentUserCurrentHost, then press <Esc><Esc> to fix the current command.`)
 }
 
 func cmdFix(args []string) int {
@@ -450,16 +458,19 @@ func cmdHistory(args []string) int {
 
 func cmdInit(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash)")
+		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash, powershell)")
 		return 1
 	}
 
-	switch args[0] {
+	switch normalizeShellName(args[0]) {
 	case "zsh":
 		printIntegrationScript("zsh")
 		return 0
 	case "bash":
 		printIntegrationScript("bash")
+		return 0
+	case "powershell":
+		printIntegrationScript("powershell")
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", args[0])
@@ -573,7 +584,7 @@ func cmdDoctor() int {
 
 	printDoctorEffectiveConfig(cfg, shellName)
 	hasError = checkDoctorShellIntegration(shellName, shellRC) || hasError
-	hasError = checkDoctorGoBinPath(typoPath) || hasError
+	hasError = checkDoctorGoBinPath(shellName, shellRC, typoPath) || hasError
 
 	fmt.Println()
 	if hasError {
@@ -606,9 +617,9 @@ func checkDoctorShellIntegration(shellName, shellRC string) bool {
 	fmt.Println()
 	if shellName != "" {
 		fmt.Printf("To enable shell integration, add to your %s:\n", shellRC)
-		fmt.Printf("  eval \"$(typo init %s)\"\n", shellName)
+		fmt.Printf("  %s\n", shellInitCommand(shellName))
 		fmt.Println()
-		fmt.Printf("Then restart your shell or run: source %s\n", shellRC)
+		fmt.Printf("Then restart your shell or run: %s\n", shellReloadCommand(shellName, shellRC))
 		return true
 	}
 
@@ -617,12 +628,14 @@ func checkDoctorShellIntegration(shellName, shellRC string) bool {
 	fmt.Println("  eval \"$(typo init zsh)\"")
 	fmt.Println("  # Bash (~/.bashrc)")
 	fmt.Println("  eval \"$(typo init bash)\"")
+	fmt.Println("  # PowerShell ($PROFILE.CurrentUserCurrentHost)")
+	fmt.Println("  Invoke-Expression (& typo init powershell)")
 	fmt.Println()
-	fmt.Println("Then restart your shell or source the matching rc file.")
+	fmt.Println("Then restart your shell or source the matching profile file.")
 	return true
 }
 
-func checkDoctorGoBinPath(typoPath string) bool {
+func checkDoctorGoBinPath(shellName, shellRC, typoPath string) bool {
 	fmt.Print("[5/5] Go bin PATH: ")
 	goBinDir := getGoBinDir()
 	typoInGoBin := false
@@ -645,23 +658,30 @@ func checkDoctorGoBinPath(typoPath string) bool {
 
 	fmt.Printf("✗ %s not in PATH\n", goBinDir)
 	fmt.Println()
-	fmt.Println("  If you installed typo with 'go install', add to your shell config:")
-	fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinDir)
+	if shellName != "" {
+		fmt.Printf("  If you installed typo with 'go install', add to your %s:\n", shellRC)
+	} else {
+		fmt.Println("  If you installed typo with 'go install', add to your shell config:")
+	}
+	fmt.Printf("    %s\n", shellPathExportCommand(shellName, goBinDir))
 	return true
 }
 
 func currentShellName() string {
+	if shell := normalizeShellName(os.Getenv("TYPO_ACTIVE_SHELL")); shell != "" {
+		return shell
+	}
+
 	shellPath := strings.TrimSpace(os.Getenv("SHELL"))
-	if shellPath == "" {
-		return "unknown"
+	if shell := normalizeShellName(filepath.Base(shellPath)); shell != "" {
+		return shell
 	}
 
-	shellBase := strings.ToLower(filepath.Base(shellPath))
-	if shellBase == "" || shellBase == "." {
-		return "unknown"
+	if detectPowerShellEnvironment() {
+		return "powershell"
 	}
 
-	return shellBase
+	return "unknown"
 }
 
 func detectShellIntegrationTarget() (string, string) {
@@ -670,8 +690,61 @@ func detectShellIntegrationTarget() (string, string) {
 		return "bash", "~/.bashrc"
 	case "zsh":
 		return "zsh", "~/.zshrc"
+	case "powershell":
+		return "powershell", "$PROFILE.CurrentUserCurrentHost"
 	default:
-		return "", "~/.zshrc or ~/.bashrc"
+		return "", "~/.zshrc or ~/.bashrc or $PROFILE.CurrentUserCurrentHost"
+	}
+}
+
+func normalizeShellName(shell string) string {
+	shell = strings.TrimSpace(strings.ToLower(shell))
+	shell = strings.TrimSuffix(shell, ".exe")
+
+	switch shell {
+	case "bash", "zsh":
+		return shell
+	case "pwsh", "powershell":
+		return "powershell"
+	default:
+		return ""
+	}
+}
+
+func detectPowerShellEnvironment() bool {
+	return strings.TrimSpace(os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL")) != "" ||
+		strings.TrimSpace(os.Getenv("PSModulePath")) != "" ||
+		strings.TrimSpace(os.Getenv("PSExecutionPolicyPreference")) != ""
+}
+
+func shellInitCommand(shellName string) string {
+	switch shellName {
+	case "powershell":
+		return "Invoke-Expression (& typo init powershell)"
+	case "bash", "zsh":
+		return fmt.Sprintf("eval \"$(typo init %s)\"", shellName)
+	default:
+		return ""
+	}
+}
+
+func shellReloadCommand(shellName, shellRC string) string {
+	switch shellName {
+	case "powershell":
+		return fmt.Sprintf(". %s", shellRC)
+	case "bash", "zsh":
+		return fmt.Sprintf("source %s", shellRC)
+	default:
+		return ""
+	}
+}
+
+func shellPathExportCommand(shellName, dir string) string {
+	switch shellName {
+	case "powershell":
+		return fmt.Sprintf("$env:PATH = \"$env:PATH%c%s\"", os.PathListSeparator, dir)
+	default:
+		return fmt.Sprintf("export PATH=\"$PATH:%s\"", dir)
 	}
 }
 
@@ -711,6 +784,7 @@ func cmdUninstall() int {
 
 	cfg := config.Load()
 	hasError := false
+	shellName, _ := detectShellIntegrationTarget()
 
 	// Remove ~/.typo directory
 	fmt.Print("[1/3] Removing config directory: ")
@@ -733,6 +807,13 @@ func cmdUninstall() int {
 		hasError = true
 	} else {
 		foundShellConfig := false
+		if shellName == "powershell" {
+			foundShellConfig = true
+			fmt.Println("manual cleanup required in $PROFILE.CurrentUserCurrentHost:")
+			fmt.Println()
+			fmt.Println("    Invoke-Expression (& typo init powershell)")
+			fmt.Println()
+		}
 		for _, target := range []struct {
 			shell string
 			rc    string
@@ -778,14 +859,20 @@ func printIntegrationScript(shell string) {
 	var script string
 	switch shell {
 	case "zsh":
-		script = install.ZshScript
+		script = zshIntegrationScript
 	case "bash":
-		script = install.BashScript
+		script = bashIntegrationScript
+	case "powershell":
+		script = powerShellIntegrationScript
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", shell)
 		os.Exit(1)
 	}
 
+	printScript(script)
+}
+
+func printScript(script string) {
 	fmt.Print(script)
 	if !strings.HasSuffix(script, "\n") {
 		fmt.Println()
