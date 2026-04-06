@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	installscript "github.com/yuluo-yx/typo/install"
 	"github.com/yuluo-yx/typo/internal/config"
 	"github.com/yuluo-yx/typo/internal/engine"
 )
@@ -32,6 +31,33 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Create pipe failed: %v", err)
+	}
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
+
+	return buf.String()
+}
+
 func runZshIntegrationScript(t *testing.T, script string, extraEnv ...string) []byte {
 	t.Helper()
 
@@ -41,7 +67,7 @@ func runZshIntegrationScript(t *testing.T, script string, extraEnv ...string) []
 
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "typo.zsh")
-	if err := os.WriteFile(scriptPath, []byte(installscript.ZshScript), 0600); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(zshIntegrationScript), 0600); err != nil {
 		t.Fatalf("Failed to write zsh script: %v", err)
 	}
 
@@ -66,7 +92,7 @@ func runBashIntegrationScript(t *testing.T, script string, extraEnv ...string) [
 
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "typo.bash")
-	if err := os.WriteFile(scriptPath, []byte(installscript.BashScript), 0600); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(bashIntegrationScript), 0600); err != nil {
 		t.Fatalf("Failed to write bash script: %v", err)
 	}
 
@@ -91,7 +117,7 @@ func runPowerShellIntegrationScript(t *testing.T, script string, extraEnv ...str
 
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "typo.ps1")
-	if err := os.WriteFile(scriptPath, []byte(installscript.PowerShellScript), 0600); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(powerShellIntegrationScript), 0600); err != nil {
 		t.Fatalf("Failed to write PowerShell script: %v", err)
 	}
 
@@ -1601,24 +1627,11 @@ func TestFormatBuildDate(t *testing.T) {
 }
 
 func TestPrintZshIntegration(t *testing.T) {
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output := captureStdout(t, func() {
+		printIntegrationScript("zsh")
+	})
 
-	printIntegrationScript("zsh")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-	output := buf.String()
-
-	if output != installscript.ZshScript {
+	if output != zshIntegrationScript {
 		t.Error("Expected zsh integration output to match embedded install script")
 	}
 	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
@@ -1627,52 +1640,21 @@ func TestPrintZshIntegration(t *testing.T) {
 }
 
 func TestPrintZshIntegrationAddsTrailingNewline(t *testing.T) {
-	original := installscript.ZshScript
-	installscript.ZshScript = "echo test"
-	t.Cleanup(func() {
-		installscript.ZshScript = original
+	output := captureStdout(t, func() {
+		printScript("echo test")
 	})
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printIntegrationScript("zsh")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-
-	if buf.String() != "echo test\n" {
-		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+	if output != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", output)
 	}
 }
 
 func TestPrintBashIntegration(t *testing.T) {
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output := captureStdout(t, func() {
+		printIntegrationScript("bash")
+	})
 
-	printIntegrationScript("bash")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-	output := buf.String()
-
-	if output != installscript.BashScript {
+	if output != bashIntegrationScript {
 		t.Error("Expected bash integration output to match embedded install script")
 	}
 	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
@@ -1681,52 +1663,21 @@ func TestPrintBashIntegration(t *testing.T) {
 }
 
 func TestPrintBashIntegrationAddsTrailingNewline(t *testing.T) {
-	original := installscript.BashScript
-	installscript.BashScript = "echo test"
-	t.Cleanup(func() {
-		installscript.BashScript = original
+	output := captureStdout(t, func() {
+		printScript("echo test")
 	})
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printIntegrationScript("bash")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-
-	if buf.String() != "echo test\n" {
-		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+	if output != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", output)
 	}
 }
 
 func TestPrintPowerShellIntegration(t *testing.T) {
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output := captureStdout(t, func() {
+		printIntegrationScript("powershell")
+	})
 
-	printIntegrationScript("powershell")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-	output := buf.String()
-
-	if output != installscript.PowerShellScript {
+	if output != powerShellIntegrationScript {
 		t.Error("Expected PowerShell integration output to match embedded install script")
 	}
 	if !bytes.Contains([]byte(output), []byte("Set-PSReadLineKeyHandler -Chord Escape,Escape")) {
@@ -1735,30 +1686,12 @@ func TestPrintPowerShellIntegration(t *testing.T) {
 }
 
 func TestPrintPowerShellIntegrationAddsTrailingNewline(t *testing.T) {
-	original := installscript.PowerShellScript
-	installscript.PowerShellScript = "Write-Host test"
-	t.Cleanup(func() {
-		installscript.PowerShellScript = original
+	output := captureStdout(t, func() {
+		printScript("Write-Host test")
 	})
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printIntegrationScript("powershell")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-
-	if buf.String() != "Write-Host test\n" {
-		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+	if output != "Write-Host test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", output)
 	}
 }
 

@@ -30,6 +30,10 @@ var (
 	executable    = os.Executable
 	removeAll     = os.RemoveAll
 	statPath      = os.Stat
+
+	zshIntegrationScript        = install.ZshScript
+	bashIntegrationScript       = install.BashScript
+	powerShellIntegrationScript = install.PowerShellScript
 )
 
 const commandDiscoveryTimeout = 150 * time.Millisecond
@@ -855,16 +859,20 @@ func printIntegrationScript(shell string) {
 	var script string
 	switch shell {
 	case "zsh":
-		script = install.ZshScript
+		script = zshIntegrationScript
 	case "bash":
-		script = install.BashScript
+		script = bashIntegrationScript
 	case "powershell":
-		script = install.PowerShellScript
+		script = powerShellIntegrationScript
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", shell)
 		os.Exit(1)
 	}
 
+	printScript(script)
+}
+
+func printScript(script string) {
 	fmt.Print(script)
 	if !strings.HasSuffix(script, "\n") {
 		fmt.Println()
