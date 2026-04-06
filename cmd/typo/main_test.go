@@ -2877,7 +2877,16 @@ _typo_bashexit
 func TestPowerShellIntegrationRegistersHandlersAndState(t *testing.T) {
 	output := runPowerShellIntegrationScript(t, `
 . $InitScriptPath
-$handler = Get-PSReadLineKeyHandler -Bound | Where-Object { $_.BriefDescription -eq "typo-fix-command" } | Select-Object -First 1
+$handlers = @(
+    @(Get-PSReadLineKeyHandler -Bound -ErrorAction SilentlyContinue)
+    @(Get-PSReadLineKeyHandler -ErrorAction SilentlyContinue)
+)
+$handler = $handlers | Where-Object {
+    $props = $_.PSObject.Properties.Name
+    (($props -contains "BriefDescription") -and $_.BriefDescription -eq "typo-fix-command") -or
+    (($props -contains "Description") -and $_.Description -eq "typo-fix-command") -or
+    (($props -contains "Key") -and (([string]$_.Key) -replace "\s+", "") -eq "Escape,Escape")
+} | Select-Object -First 1
 if ($null -eq $handler) {
     throw "missing typo fix handler"
 }
