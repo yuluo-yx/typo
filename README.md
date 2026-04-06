@@ -72,7 +72,8 @@ eval "$(typo init zsh)"
 eval "$(typo init bash)"
 
 # Or add to $PROFILE.CurrentUserCurrentHost
-Invoke-Expression (& typo init powershell)
+# Tips: The Powershell version must >= 7.x. you can check by `$PSVersionTable.PSVersion`.
+Invoke-Expression (& typo init powershell | Out-String)
 ```
 
 Restart your terminal, then press `Esc` `Esc` after a typo. (No Enter can!)
