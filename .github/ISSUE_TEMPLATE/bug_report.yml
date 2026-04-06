@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible bug or regression in Typo
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+
+        Before submitting, please search existing issues to avoid duplicates and include a minimal reproduction when possible.
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: What happened?
+      description: Describe the bug and its impact.
+      placeholder: Tell us what went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide a deterministic, minimal reproduction.
+      placeholder: |
+        1. Run ...
+        2. Type ...
+        3. Press ...
+        4. See error ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: Describe the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: What actually happened instead?
+      placeholder: Describe the actual result.
+    validations:
+      required: true
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      description: Include the OS name and version.
+      placeholder: e.g. macOS 15.4, Ubuntu 24.04, Windows 11
+    validations:
+      required: true
+  - type: input
+    id: shell
+    attributes:
+      label: Shell
+      description: Include the shell and version if known.
+      placeholder: e.g. zsh 5.9, bash 5.2, PowerShell 7.5
+    validations:
+      required: true
+  - type: input
+    id: typo-version
+    attributes:
+      label: Typo version
+      description: Include the release version or commit SHA if you built from source.
+      placeholder: e.g. typo 0.2.0, main@abcdef1
+    validations:
+      required: true
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: Include the output of `go version` when relevant.
+      placeholder: e.g. go version go1.25.1 darwin/arm64
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error output
+      description: Paste any useful logs, stderr, stack traces, or screenshots converted to text.
+      render: shell
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any extra context that may help reproduce or diagnose the problem.
