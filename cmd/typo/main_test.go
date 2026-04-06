@@ -1680,8 +1680,9 @@ func TestPrintPowerShellIntegration(t *testing.T) {
 	if output != powerShellIntegrationScript {
 		t.Error("Expected PowerShell integration output to match embedded install script")
 	}
-	if !bytes.Contains([]byte(output), []byte("Set-PSReadLineKeyHandler -Chord Escape,Escape")) {
-		t.Error("Expected PowerShell integration to bind Escape,Escape")
+	if !bytes.Contains([]byte(output), []byte(`Set-PSReadLineKeyHandler -Chord "Escape,Escape"`)) &&
+		!bytes.Contains([]byte(output), []byte("Set-PSReadLineKeyHandler -Chord Escape,Escape")) {
+		t.Error("Expected PowerShell integration to bind Escape,Escape with or without quotes")
 	}
 }
 
