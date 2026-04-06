@@ -44,11 +44,11 @@ function global:__typo_NewStderrCache {
 }
 
 function global:__typo_EnsureStderrCache {
-    $shellId = [string]$PID
+    $currentShellPid = [string]$PID
     $cachePath = [string]$env:TYPO_STDERR_CACHE
     $cacheOwner = [string]$env:TYPO_STDERR_CACHE_OWNER
 
-    if (-not [string]::IsNullOrWhiteSpace($cacheOwner) -and $cacheOwner -ne $shellId) {
+    if (-not [string]::IsNullOrWhiteSpace($cacheOwner) -and $cacheOwner -ne $currentShellPid) {
         $env:TYPO_STDERR_CACHE = ""
         $env:TYPO_STDERR_CACHE_OWNER = ""
         $cachePath = ""
@@ -60,7 +60,7 @@ function global:__typo_EnsureStderrCache {
 
     $cachePath = __typo_NewStderrCache
     $env:TYPO_STDERR_CACHE = $cachePath
-    $env:TYPO_STDERR_CACHE_OWNER = $shellId
+    $env:TYPO_STDERR_CACHE_OWNER = $currentShellPid
 
     return $cachePath
 }
@@ -101,7 +101,13 @@ function global:__typo_RemoveCurrentCache {
 function global:__typo_GetBufferState {
     $line = ""
     $cursor = 0
-    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+    try {
+        [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+    } catch {
+        $line = ""
+        $cursor = 0
+    }
+    if ($null -eq $line) { $line = "" }
     return @{
         Line   = [string]$line
         Cursor = [int]$cursor
@@ -110,6 +116,7 @@ function global:__typo_GetBufferState {
 
 function global:__typo_SetBufferState([string]$line) {
     $buffer = __typo_GetBufferState
+    if ($null -eq $buffer -or $null -eq $buffer.Line) { return }
     [Microsoft.PowerShell.PSConsoleReadLine]::Replace(0, $buffer.Line.Length, $line)
     [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($line.Length)
 }
@@ -136,11 +143,15 @@ function global:__typo_ShouldWrapAcceptedLine([string]$line) {
         return $false
     }
 
+    # Check if it's a PowerShell built-in (cmdlet, function, alias to cmdlet)
+    # If so, don't wrap - let PowerShell handle it natively
     $commandInfo = Get-Command -Name $commandName -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $commandInfo) {
-        return $false
+        # Command not found - likely a typo, wrap it to capture the error
+        return $true
     }
 
+    # Only skip wrapping for PowerShell-native command types
     return $commandInfo.CommandType -in @("Application", "ExternalScript")
 }
 
@@ -149,7 +160,7 @@ function global:__typo_InvokeFix([string]$command, [bool]$useLastCommand) {
         return ""
     }
 
-    $fixed = ""
+    $fixed = $null
     $lastExitCode = 0
     if ($global:TYPO_PS_STATE.ContainsKey("LastExitCode")) {
         $lastExitCode = [int]$global:TYPO_PS_STATE.LastExitCode
@@ -163,15 +174,28 @@ function global:__typo_InvokeFix([string]$command, [bool]$useLastCommand) {
         } else {
             $fixed = & typo fix --exit-code $lastExitCode $command 2>$null
         }
-    } else {
+     } else {
         $fixed = & typo fix --no-history $command 2>$null
+    }
+
+    if ($null -eq $fixed) {
+        return ""
+    }
+
+    # If typo returns multiple lines, join.
+    if ($fixed -is [array]) {
+        $fixed = $fixed -join "`n"
     }
 
     return [string]$fixed
 }
 
+
 function global:__typo_FixCommand {
     $buffer = __typo_GetBufferState
+
+    # add null check
+    if ($null -eq $buffer) { return }
     $command = [string]$buffer.Line
     $useLastCommand = $false
 
@@ -185,6 +209,12 @@ function global:__typo_FixCommand {
     }
 
     $fixed = __typo_InvokeFix -command $command -useLastCommand:$useLastCommand
+
+    if ($null -eq $fixed) {
+        return
+    }
+
+    $fixed = [string]$fixed
     $fixed = $fixed.TrimEnd("`r", "`n")
 
     if (-not [string]::IsNullOrWhiteSpace($fixed) -and $fixed -ne $command) {
@@ -204,13 +234,56 @@ function global:__typo_InvokeAcceptedLine {
     $commandSucceeded = $true
     $commandExitCode = 0
 
-    & { Invoke-Expression $line } 2> $cachePath
-    $commandSucceeded = $?
-    $commandExitCode = $LASTEXITCODE
+    # Use a child PowerShell to fully isolate error display
+    $psCommand = [powershell]::Create([System.Management.Automation.RunspaceMode]::CurrentRunspace)
+    try {
+        $null = $psCommand.AddScript($line)
+        $output = $psCommand.Invoke()
 
-    if (Test-Path -LiteralPath $cachePath) {
-        Get-Content -LiteralPath $cachePath -ErrorAction SilentlyContinue | ForEach-Object {
-            [Console]::Error.WriteLine($_)
+        # Pass stdout through
+        if ($null -ne $output) {
+            foreach ($item in $output) {
+                $item
+            }
+        }
+
+        $stderrLines = [System.Collections.Generic.List[string]]::new()
+
+        # Collect errors without displaying them
+        if ($psCommand.HadErrors -and $psCommand.Streams.Error.Count -gt 0) {
+            $commandSucceeded = $false
+            foreach ($err in $psCommand.Streams.Error) {
+                $stderrLines.Add($err.ToString())
+            }
+        }
+
+        $commandExitCode = $LASTEXITCODE
+
+        if ($stderrLines.Count -gt 0) {
+            [System.IO.File]::WriteAllLines($cachePath, $stderrLines)
+            foreach ($errLine in $stderrLines) {
+                [Console]::Error.WriteLine($errLine)
+            }
+            if ($null -eq $commandExitCode -or $commandExitCode -eq 0) {
+                $commandExitCode = 1
+            }
+        }
+
+        if (-not $commandSucceeded -and ($null -eq $commandExitCode -or $commandExitCode -eq 0)) {
+            $commandExitCode = 1
+        }
+    } catch {
+        $commandSucceeded = $false
+        $commandExitCode = if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { $LASTEXITCODE } else { 1 }
+        $errMsg = $_.Exception.Message
+        if ([string]::IsNullOrWhiteSpace($errMsg)) {
+            $errMsg = $_.ToString()
+        }
+        [Console]::Error.WriteLine($errMsg)
+        [System.IO.File]::WriteAllText($cachePath, $errMsg)
+    } finally {
+        if ($null -ne $psCommand) {
+            $psCommand.Dispose()
         }
     }
 
@@ -231,25 +304,22 @@ function global:__typo_InvokeAcceptedLine {
 }
 
 function global:__typo_AcceptLine {
+
     $buffer = __typo_GetBufferState
+    
+    # add null check.
+    if ($null -eq $buffer) {
+        [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
+        return
+    }
     $line = [string]$buffer.Line
 
     if (-not [string]::IsNullOrWhiteSpace($line)) {
         $global:TYPO_PS_STATE.LastAcceptedLine = $line
     }
 
-    if (__typo_ShouldWrapAcceptedLine -line $line) {
-        [Microsoft.PowerShell.PSConsoleReadLine]::AddToHistory($line)
-        $global:TYPO_PS_STATE.PendingOriginalLine = $line
-        __typo_ClearStderrCache | Out-Null
-
-        $wrapper = "__typo_InvokeAcceptedLine"
-        [Microsoft.PowerShell.PSConsoleReadLine]::Replace(0, $line.Length, $wrapper)
-        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($wrapper.Length)
-    } else {
-        $global:TYPO_PS_STATE.PendingOriginalLine = ""
-    }
-
+    __typo_ClearStderrCache | Out-Null
+    $global:TYPO_PS_STATE.PendingOriginalLine = ""
     [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
 }
 
@@ -271,6 +341,13 @@ function global:prompt {
         $commandSucceeded = $?
         $commandExitCode = $LASTEXITCODE
 
+        if (-not $commandSucceeded) {
+            $cachePath = __typo_EnsureStderrCache
+            if ($null -ne $global:error -and $global:error.Count -gt 0) {
+                [System.IO.File]::WriteAllText($cachePath, $global:error[0].ToString())
+            }
+        }
+
         $global:TYPO_PS_STATE.LastSucceeded = $commandSucceeded
         if ($null -ne $commandExitCode -and $commandExitCode -ne 0) {
             $global:TYPO_PS_STATE.LastExitCode = [int]$commandExitCode
@@ -290,10 +367,6 @@ function global:prompt {
 $historyHandler = {
     param([string]$line)
 
-    if ($line -eq "__typo_InvokeAcceptedLine") {
-        return "SkipAdding"
-    }
-
     $originalHandler = $global:TYPO_PS_STATE.OriginalAddToHistoryHandler
     if ($originalHandler -is [scriptblock]) {
         return & $originalHandler $line
@@ -307,7 +380,9 @@ if (-not $global:TYPO_PS_STATE.ContainsKey("OriginalAddToHistoryHandler")) {
 }
 
 Set-PSReadLineOption -AddToHistoryHandler $historyHandler
-Set-PSReadLineKeyHandler -Chord Escape,Escape -BriefDescription "typo-fix-command" -ScriptBlock {
+
+# two esc.
+Set-PSReadLineKeyHandler -Chord "Escape,Escape" -BriefDescription "typo-fix-command" -ScriptBlock {
     param($key, $arg)
     __typo_FixCommand
 }
