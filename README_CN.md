@@ -74,7 +74,8 @@ eval "$(typo init zsh)"
 eval "$(typo init bash)"
 
 # 或添加到 $PROFILE.CurrentUserCurrentHost
-Invoke-Expression (& typo init powershell)
+# 注意: Powershell 版本需要大于等于 7.x. 你可以通过 `$PSVersionTable.PSVersion` 检查版本.
+Invoke-Expression (& typo init powershell | Out-String)
 ```
 
 重启终端后，输错命令按 `Esc` `Esc` 即可修正。（不用回车也可！）
