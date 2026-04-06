@@ -65,7 +65,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v7
         if: env.DELIVERY_MODE == 'push'
         with:
-          commit_message: "chore: update contributors [skip ci]"
+          commit_message: "chore(community): update contributors [skip ci]"
           file_pattern: .github/CONTRIBUTORS.svg
           commit_user_name: github-actions[bot]
           commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
@@ -79,8 +79,8 @@ jobs:
           delete-branch: true
           add-paths: |
             .github/CONTRIBUTORS.svg
-          commit-message: "chore: update contributors [skip ci]"
-          title: "chore: update contributors"
+          commit-message: "chore(community): update contributors [skip ci]"
+          title: "chore(community): update contributors"
           body: |
             Automatically update `.github/CONTRIBUTORS.svg`.
 
