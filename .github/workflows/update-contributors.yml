@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       delivery_mode:
-        description: 贡献者 SVG 的提交方式
+        description: Delivery mode for contributor SVG updates
         required: false
         default: pr
         type: choice
@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate contributors SVG
-        uses: deigmata-paideias/contributors-list@master
+        uses: deigmata-paideias/contributors-list@39f94c2cddee224aaa98e25e2f9f4af8e4a3840c
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           svgPath: .github/CONTRIBUTORS.svg
@@ -82,9 +82,9 @@ jobs:
           commit-message: "chore: update contributors [skip ci]"
           title: "chore: update contributors"
           body: |
-            自动更新 `.github/CONTRIBUTORS.svg`。
+            Automatically update `.github/CONTRIBUTORS.svg`.
 
-            - 触发事件：`${{ github.event_name }}`
-            - 提交方式：`pr`
+            - Trigger event: `${{ github.event_name }}`
+            - Delivery mode: `pr`
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
