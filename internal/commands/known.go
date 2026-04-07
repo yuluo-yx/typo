@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -48,22 +49,24 @@ func discoverInDir(dir string, commands map[string]bool) {
 			continue
 		}
 
-		// Check if executable
-		mode := info.Mode()
-		if mode&0111 == 0 {
-			continue
-		}
-
 		name := entry.Name()
 		// Skip hidden files
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
 
-		// Remove common extensions on Windows
-		name = strings.TrimSuffix(name, ".exe")
-		name = strings.TrimSuffix(name, ".bat")
-		name = strings.TrimSuffix(name, ".cmd")
+		if runtime.GOOS == "windows" {
+			if !isWindowsExecutablePath(name) {
+				continue
+			}
+		} else {
+			mode := info.Mode()
+			if mode&0111 == 0 {
+				continue
+			}
+		}
+
+		name = trimExecutableSuffix(name)
 
 		commands[name] = true
 	}
@@ -140,6 +143,13 @@ func IsExecutable(path string) bool {
 	if err != nil {
 		return false
 	}
+	if info.IsDir() {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		ext := strings.ToLower(filepath.Ext(cleanPath))
+		return ext == "" || isWindowsExecutablePath(cleanPath)
+	}
 	return info.Mode()&0111 != 0
 }
 
@@ -152,9 +162,11 @@ func GetPath(name string) string {
 
 	paths := strings.Split(path, string(os.PathListSeparator))
 	for _, p := range paths {
-		fullPath := filepath.Join(p, name)
-		if IsExecutable(fullPath) {
-			return fullPath
+		for _, candidate := range executableCandidates(name) {
+			fullPath := filepath.Join(p, candidate)
+			if IsExecutable(fullPath) {
+				return fullPath
+			}
 		}
 	}
 
@@ -177,4 +189,61 @@ func buildCommandSet(items []string) map[string]bool {
 		set[item] = true
 	}
 	return set
+}
+
+func executableCandidates(name string) []string {
+	if runtime.GOOS != "windows" {
+		return []string{name}
+	}
+	if filepath.Ext(name) != "" {
+		return []string{name}
+	}
+
+	exts := windowsExecutableExtensions()
+	candidates := make([]string, 0, len(exts)+1)
+	for _, ext := range exts {
+		candidates = append(candidates, name+ext)
+	}
+	return append(candidates, name)
+}
+
+func windowsExecutableExtensions() []string {
+	value := os.Getenv("PATHEXT")
+	if value == "" {
+		value = ".com;.exe;.bat;.cmd"
+	}
+
+	parts := strings.Split(strings.ToLower(value), ";")
+	exts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		exts = append(exts, part)
+	}
+	return exts
+}
+
+func isWindowsExecutablePath(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext == "" {
+		return false
+	}
+	for _, candidate := range windowsExecutableExtensions() {
+		if ext == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func trimExecutableSuffix(name string) string {
+	lowerName := strings.ToLower(name)
+	for _, ext := range windowsExecutableExtensions() {
+		if strings.HasSuffix(lowerName, ext) {
+			return name[:len(name)-len(ext)]
+		}
+	}
+	return name
 }

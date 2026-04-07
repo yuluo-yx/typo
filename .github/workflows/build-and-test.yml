@@ -63,3 +63,20 @@ jobs:
       - uses: ./tools/github-setup-deps
       - run: make build-e2e-image
       - run: make test-e2e-docker
+
+  e2e-host:
+    name: E2E ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    if: github.repository == 'yuluo-yx/typo'
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./tools/github-setup-deps
+      - name: Run e2e tests
+        shell: bash
+        run: go test ./e2e -v

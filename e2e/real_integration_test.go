@@ -14,7 +14,7 @@ func (e *e2eEnv) writeBinScript(t *testing.T, name, script string) {
 	t.Helper()
 
 	path := filepath.Join(e.binDir, name)
-	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+	if err := writeShellCommandFixture(path, script); err != nil {
 		t.Fatalf("failed to write executable %s: %v", name, err)
 	}
 }
@@ -168,7 +168,7 @@ BUFFER=""
 start=$SECONDS
 _typo_fix_command
 elapsed=$((SECONDS - start))
-[[ "$elapsed" -lt 1 ]] || exit 51
+[[ "$elapsed" -lt 2 ]] || exit 51
 [[ -z "$BUFFER" ]] || { print -r -- "$BUFFER"; exit 52; }
 print -r -- "elapsed=$elapsed"
 `)

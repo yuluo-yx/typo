@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -116,6 +117,10 @@ func (e *installScriptEnv) runWithEnv(t *testing.T, extraEnv []string, args ...s
 }
 
 func TestInstallScriptInstallsLatestRelease(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh e2e is only supported on Unix hosts")
+	}
+
 	env := newInstallScriptEnv(t)
 
 	releaseBinary := filepath.Join(env.tmpDir, "release-typo")
@@ -193,6 +198,10 @@ esac
 }
 
 func TestInstallScriptBuildsFromSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh e2e is only supported on Unix hosts")
+	}
+
 	env := newInstallScriptEnv(t)
 
 	sourceArchive := filepath.Join(env.tmpDir, "typo-main.tar.gz")
