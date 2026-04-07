@@ -1,0 +1,23 @@
+name: Markdown Linter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.md'
+permissions:
+  contents: read
+
+jobs:
+  linter:
+    if: (github.repository == 'yuluo-yx/typo')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4.2.2
+      - uses: ./tools/github-setup-deps
+      - run: make install-markdownlint
+      - run: make markdown-lint

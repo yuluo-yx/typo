@@ -44,3 +44,6 @@ bin/
 
 # local caches
 .cache/
+
+# codespell python venv
+.venv/

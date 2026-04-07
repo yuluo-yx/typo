@@ -2,7 +2,6 @@
 
 ## [0.2.0](https://github.com/yuluo-yx/typo/compare/v0.1.1...v0.2.0) (2026-04-06)
 
-
 ### Features
 
 * **command:** adapt windows powershell ([#42](https://github.com/yuluo-yx/typo/issues/42)) ([d742c4f](https://github.com/yuluo-yx/typo/commit/d742c4fa3055a1b52db5c64774e706970fe9d7ae))
@@ -12,7 +11,6 @@
 * **install:** add bash shell integration ([#26](https://github.com/yuluo-yx/typo/issues/26)) ([6363eaa](https://github.com/yuluo-yx/typo/commit/6363eaa4f6f586c8e2bdf70de189985bcc4dda1e))
 * **release:** add windows platform binary ([#40](https://github.com/yuluo-yx/typo/issues/40)) ([57109d4](https://github.com/yuluo-yx/typo/commit/57109d4934639db53a9d0130c96b8ac178d31271))
 
-
 ### Bug Fixes
 
 * **ci:** fix golanglint not run bug ([#45](https://github.com/yuluo-yx/typo/issues/45)) ([5070c0c](https://github.com/yuluo-yx/typo/commit/5070c0c132f9f9cc6a05082588bef8c318a96504))
@@ -21,7 +19,6 @@
 
 ## [0.1.1](https://github.com/yuluo-yx/typo/compare/v0.1.0...v0.1.1) (2026-03-31)
 
-
 ### Bug Fixes
 
 * **release:** update release-please to include build phase ([39ca46a](https://github.com/yuluo-yx/typo/commit/39ca46aa5b6b79fe4e80698c205acf093d060ca9))
@@ -29,11 +26,9 @@
 
 ## [0.1.0](https://github.com/yuluo-yx/typo/compare/v0.0.1...v0.1.0) (2026-03-31)
 
-
 ### Features
 
 * **release:** integrate semver release automation ([c7ee665](https://github.com/yuluo-yx/typo/commit/c7ee66528d6e99ada6e2975c300d21af2d779ebe))
-
 
 ### Bug Fixes
 

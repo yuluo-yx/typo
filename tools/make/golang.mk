@@ -56,7 +56,7 @@ build-windows-arm64: ## build typo for windows/arm64
 	@mkdir -p $(BUILD_DIR)/windows-arm64
 	GOOS=windows GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-arm64/$(BINARY_NAME).exe ./cmd/typo
 
-##@ linter and test
+##@ test
 
 .PHONY: download
 download: ## Download dependencies
@@ -74,11 +74,11 @@ test: ## Run project test
 	@$(LOG_TARGET)
 	$(GO) test ./... -v -race
 
-.PHONY: lint
-lint: ## Run golangci-lint
+.PHONY: lint-go
+lint-go: ## Run golangci-lint
 	@$(LOG_TARGET)
 	@golangci-lint version | grep -Eq "version (v)?2\\." || (echo "golangci-lint v2 is required"; exit 1)
-	golangci-lint run ./... --config tools/linter/.golangci.yml
+	golangci-lint run ./... --config tools/linter/go/.golangci.yml
 
 .PHONY: clean
 clean: ## Clean build artifacts
