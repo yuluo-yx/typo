@@ -61,24 +61,20 @@ func (e *installScriptEnv) writeBinScript(t *testing.T, name, script string) {
 }
 
 func (e *installScriptEnv) commandEnv(extra ...string) []string {
-	filtered := make([]string, 0, len(os.Environ())+len(extra)+5)
-	for _, item := range os.Environ() {
-		if strings.HasPrefix(item, "HOME=") ||
-			strings.HasPrefix(item, "USERPROFILE=") ||
-			strings.HasPrefix(item, "HOMEDRIVE=") ||
-			strings.HasPrefix(item, "HOMEPATH=") ||
-			strings.HasPrefix(item, "PATH=") ||
-			strings.HasPrefix(item, "TMP=") ||
-			strings.HasPrefix(item, "TEMP=") ||
-			strings.HasPrefix(item, "TMPDIR=") ||
-			strings.HasPrefix(item, "TYPO_INSTALL_DIR=") ||
-			strings.HasPrefix(item, "TYPO_TEST_CURL_LOG=") ||
-			strings.HasPrefix(item, "TYPO_TEST_RELEASE_BINARY=") ||
-			strings.HasPrefix(item, "TYPO_TEST_SOURCE_ARCHIVE=") {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
+	filtered := filteredCommandEnv([]string{
+		"HOME=",
+		"USERPROFILE=",
+		"HOMEDRIVE=",
+		"HOMEPATH=",
+		"PATH=",
+		"TMP=",
+		"TEMP=",
+		"TMPDIR=",
+		"TYPO_INSTALL_DIR=",
+		"TYPO_TEST_CURL_LOG=",
+		"TYPO_TEST_RELEASE_BINARY=",
+		"TYPO_TEST_SOURCE_ARCHIVE=",
+	}, len(extra)+10)
 
 	filtered = append(filtered,
 		"HOME="+e.home,
@@ -90,16 +86,7 @@ func (e *installScriptEnv) commandEnv(extra ...string) []string {
 		"TYPO_INSTALL_DIR="+e.installDir,
 		"TYPO_TEST_CURL_LOG="+e.logFile,
 	)
-	if volume := filepath.VolumeName(e.home); volume != "" {
-		homePath := strings.TrimPrefix(e.home, volume)
-		if homePath == "" {
-			homePath = string(os.PathSeparator)
-		}
-		filtered = append(filtered,
-			"HOMEDRIVE="+volume,
-			"HOMEPATH="+homePath,
-		)
-	}
+	filtered = appendWindowsHomeEnv(filtered, e.home)
 	filtered = append(filtered, extra...)
 	return filtered
 }

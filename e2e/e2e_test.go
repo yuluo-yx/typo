@@ -237,28 +237,24 @@ func (e *e2eEnv) writeTempFile(t *testing.T, name, content string) string {
 }
 
 func (e *e2eEnv) commandEnv(extra ...string) []string {
-	filtered := make([]string, 0, len(os.Environ())+len(extra)+4)
-	for _, item := range os.Environ() {
-		if strings.HasPrefix(item, "HOME=") ||
-			strings.HasPrefix(item, "USERPROFILE=") ||
-			strings.HasPrefix(item, "HOMEDRIVE=") ||
-			strings.HasPrefix(item, "HOMEPATH=") ||
-			strings.HasPrefix(item, "PATH=") ||
-			strings.HasPrefix(item, "TMP=") ||
-			strings.HasPrefix(item, "TEMP=") ||
-			strings.HasPrefix(item, "SHELL=") ||
-			strings.HasPrefix(item, "TMPDIR=") ||
-			strings.HasPrefix(item, "ZDOTDIR=") ||
-			strings.HasPrefix(item, "TYPO_SHELL_INTEGRATION=") ||
-			strings.HasPrefix(item, "TYPO_ACTIVE_SHELL=") ||
-			strings.HasPrefix(item, "TYPO_LAST_EXIT_CODE=") ||
-			strings.HasPrefix(item, "POWERSHELL_DISTRIBUTION_CHANNEL=") ||
-			strings.HasPrefix(item, "PSModulePath=") ||
-			strings.HasPrefix(item, "PSExecutionPolicyPreference=") {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
+	filtered := filteredCommandEnv([]string{
+		"HOME=",
+		"USERPROFILE=",
+		"HOMEDRIVE=",
+		"HOMEPATH=",
+		"PATH=",
+		"TMP=",
+		"TEMP=",
+		"SHELL=",
+		"TMPDIR=",
+		"ZDOTDIR=",
+		"TYPO_SHELL_INTEGRATION=",
+		"TYPO_ACTIVE_SHELL=",
+		"TYPO_LAST_EXIT_CODE=",
+		"POWERSHELL_DISTRIBUTION_CHANNEL=",
+		"PSModulePath=",
+		"PSExecutionPolicyPreference=",
+	}, len(extra)+9)
 
 	filtered = append(filtered,
 		"HOME="+e.home,
@@ -269,16 +265,7 @@ func (e *e2eEnv) commandEnv(extra ...string) []string {
 		"TMPDIR="+e.tmpDir,
 		"ZDOTDIR="+e.home,
 	)
-	if volume := filepath.VolumeName(e.home); volume != "" {
-		homePath := strings.TrimPrefix(e.home, volume)
-		if homePath == "" {
-			homePath = string(os.PathSeparator)
-		}
-		filtered = append(filtered,
-			"HOMEDRIVE="+volume,
-			"HOMEPATH="+homePath,
-		)
-	}
+	filtered = appendWindowsHomeEnv(filtered, e.home)
 	filtered = append(filtered, extra...)
 
 	return filtered
