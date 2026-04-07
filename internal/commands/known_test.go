@@ -34,7 +34,11 @@ func TestDiscoverCommon(t *testing.T) {
 		t.Error("Expected some common commands")
 	}
 
-	for _, expected := range []string{"git", "xargs", "aws", "gcloud", "az"} {
+	for _, expected := range []string{
+		"git", "xargs", "aws", "gcloud", "az",
+		"terragrunt", "terramate", "opentofu", "tofu", "pulumi", "cdktf",
+		"crossplane", "packer", "vault", "consul", "nomad",
+	} {
 		found := false
 		for _, cmd := range cmds {
 			if cmd == expected {
@@ -122,7 +126,11 @@ func TestIsCommonCommand(t *testing.T) {
 	if !IsCommonCommand("docker") {
 		t.Fatal("Expected docker to be a common command")
 	}
-	for _, cmd := range []string{"aws", "gcloud", "az"} {
+	for _, cmd := range []string{
+		"aws", "gcloud", "az", "terraform",
+		"terragrunt", "terramate", "opentofu", "tofu", "pulumi", "cdktf",
+		"crossplane", "packer", "vault", "consul", "nomad",
+	} {
 		if !IsCommonCommand(cmd) {
 			t.Fatalf("Expected %s to be a common command", cmd)
 		}

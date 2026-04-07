@@ -492,6 +492,36 @@ func runReadmeParserCase(t *testing.T, env *e2eEnv, name, command, stderrFile, w
 	assertE2EStdoutEquals(t, result, want, "unexpected stderr parser result")
 }
 
+// TestE2EIaCCommandTypoFix smoke-tests that IaC tools added to DiscoverCommon()
+// participate in edit-distance correction without relying on PATH discovery.
+func TestE2EIaCCommandTypoFix(t *testing.T) {
+	env := newE2EEnv(t)
+
+	cases := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "pulumi", command: "pulimi version", want: "pulumi version\n"},
+		{name: "tofu", command: "tofuu apply", want: "tofu apply\n"},
+		{name: "terragrunt", command: "terragurnt plan", want: "terragrunt plan\n"},
+		{name: "terramate", command: "terramte list", want: "terramate list\n"},
+		{name: "opentofu", command: "opentfu version", want: "opentofu version\n"},
+		{name: "cdktf", command: "cdkf get", want: "cdktf get\n"},
+		{name: "packer", command: "packr build", want: "packer build\n"},
+		{name: "vault", command: "vaut status", want: "vault status\n"},
+		{name: "consul", command: "consl members", want: "consul members\n"},
+		{name: "nomad", command: "nomaad status", want: "nomad status\n"},
+		{name: "crossplane", command: "crossplne version", want: "crossplane version\n"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			runReadmeFixCase(t, env, tt.command, tt.want)
+		})
+	}
+}
+
 func TestE2EReadmeExamples(t *testing.T) {
 	env := newE2EEnv(t)
 
