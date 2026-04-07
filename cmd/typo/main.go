@@ -676,22 +676,20 @@ func currentShellName() string {
 	}
 
 	shellPath := strings.TrimSpace(os.Getenv("SHELL"))
-	if shellPath == "" {
-		return unknownValue
-	}
-
-	shellBase := strings.ToLower(filepath.Base(shellPath))
-	if shellBase == "" || shellBase == "." {
-		return unknownValue
-	if shell := normalizeShellName(filepath.Base(shellPath)); shell != "" {
-		return shell
+	if shellPath != "" {
+		shellBase := strings.ToLower(filepath.Base(shellPath))
+		if shellBase != "" && shellBase != "." {
+			if shell := normalizeShellName(shellBase); shell != "" {
+				return shell
+			}
+		}
 	}
 
 	if detectPowerShellEnvironment() {
 		return "powershell"
 	}
 
-	return "unknown"
+	return unknownValue
 }
 
 func detectShellIntegrationTarget() (string, string) {

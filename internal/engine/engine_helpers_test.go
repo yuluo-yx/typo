@@ -195,6 +195,32 @@ func TestEngine_CommandTreeFixesTypoCLI(t *testing.T) {
 	}
 }
 
+func TestEngine_CommandTreeGuardrails(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"typo", "type"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithCommandTrees(commands.NewCommandTreeRegistry()),
+	)
+
+	tests := []struct {
+		name string
+		cmd  string
+	}{
+		{name: "typo doctor stays unchanged", cmd: "typo doctor"},
+		{name: "typo alone stays unchanged", cmd: "typo"},
+		{name: "type file stays unchanged", cmd: "type file"},
+		{name: "valid builtin root is not rewritten into typo namespace", cmd: "type doctor"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := eng.Fix(tt.cmd, ""); got.Fixed {
+				t.Fatalf("Expected valid command to stay unchanged, got %+v", got)
+			}
+		})
+	}
+}
+
 func TestEngine_SystemAndBuiltinCommands_CanBeFixed(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(

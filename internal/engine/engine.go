@@ -1071,6 +1071,18 @@ func (e *Engine) availableCommands() []string {
 	return e.availableCmds
 }
 
+func (e *Engine) hasKnownCommand(cmd string) bool {
+	if containsString(e.availableCommands(), cmd) {
+		return true
+	}
+	if e.commandLoader == nil || e.commandsFullyLoad {
+		return false
+	}
+
+	e.loadCommands()
+	return containsString(e.availableCommands(), cmd)
+}
+
 func (e *Engine) loadCommands() {
 	e.commandsLoadOnce.Do(func() {
 		if e.commandLoader == nil {
@@ -1608,7 +1620,7 @@ func (e *Engine) commandPriority(cmd string) int {
 	}
 
 	if e.commandTrees != nil && e.commandTrees.HasRoot(cmd) {
-		score += 25
+		score += 50
 	}
 
 	return score

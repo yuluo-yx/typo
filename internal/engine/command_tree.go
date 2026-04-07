@@ -141,6 +141,11 @@ func (e *Engine) matchCommandTreeRoot(token string) (*commands.CommandTree, stri
 		}
 	}
 
+	// 已经是可执行的首命令时，不再重写到 typo 命令树。
+	if e.hasKnownCommand(token) {
+		return nil, "", false
+	}
+
 	best := commandTreeTokenCandidate{distance: 999, similarity: -1}
 	var bestTree *commands.CommandTree
 	matchCfg := e.distanceMatchConfig()
