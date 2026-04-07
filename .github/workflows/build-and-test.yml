@@ -41,6 +41,8 @@ jobs:
       - uses: ./tools/github-setup-deps
       - run: |
           make install-golangcilint
+          make install-codespell
+          make codespell-check
           make lint-go
 
   build:

@@ -28,5 +28,5 @@ install-codespell: ## Install codespell tools
 	@if command -v codespell >/dev/null 2>&1; then \
 		echo "codespell is already installed, skipping..."; \
 	else \
-		pip install codespell; \
+		pip3 install codespell; \
 	fi

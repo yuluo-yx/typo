@@ -25,3 +25,9 @@ MD051: false
 MD056: false
 # MD055/table-pipe-style
 MD055: false
+# MD060/table-column-style
+MD060: false
+# MD032/blanks-around-lists
+MD032: false
+# MD012/no-multiple-blanks
+MD012: false

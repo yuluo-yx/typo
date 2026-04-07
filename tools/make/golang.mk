@@ -56,7 +56,7 @@ build-windows-arm64: ## build typo for windows/arm64
 	@mkdir -p $(BUILD_DIR)/windows-arm64
 	GOOS=windows GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-arm64/$(BINARY_NAME).exe ./cmd/typo
 
-##@ linter and test
+##@ test
 
 .PHONY: download
 download: ## Download dependencies
