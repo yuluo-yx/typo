@@ -52,7 +52,7 @@ See: https://ghostty.org/docs/help/terminfo#ssh
 
 ## 3. Why doesn't the `Esc` binding work in a JetBrains Remote IDE terminal launched via Gateway?
 
-This appears to be a JetBrains IDE limitation. Change the binding in your shell integration script (`typo init zsh` or `typo init bash`) to another key, and it should work again.
+This appears to be a JetBrains IDE limitation. Change the binding in your shell integration script (`typo init zsh`, `typo init bash`, or `typo init powershell`) to another key, and it should work again.
 
 ```shell
 # zsh
@@ -62,4 +62,78 @@ bindkey '^T' _typo_fix_command
 # bash
 bind -x '"\e\e":_typo_fix_command'
 bind -x '"\C-t":_typo_fix_command'
+
+# PowerShell
+Set-PSReadLineKeyHandler -Chord Escape,Escape -ScriptBlock { __typo_FixCommand }
+Set-PSReadLineKeyHandler -Chord Ctrl+t -ScriptBlock { __typo_FixCommand }
 ```
+
+## 4. Why does `Invoke-Expression (& typo init powershell)` fail in PowerShell?
+
+Common causes:
+
+- You are running Windows PowerShell 5.1 instead of PowerShell 7+
+- `PSReadLine` is unavailable or failed to load
+- Your profile doesn't exist yet
+- Your execution policy blocks loading profile scripts
+
+Recommended fixes:
+
+1. Verify that you are using PowerShell 7+:
+
+   ```powershell
+   $PSVersionTable.PSVersion
+   ```
+
+2. Ensure `PSReadLine` is available:
+
+   ```powershell
+   Install-Module PSReadLine -Scope CurrentUser
+   Import-Module PSReadLine
+   ```
+
+3. Create the current-host profile if needed and add typo to it:
+
+   ```powershell
+   if (!(Test-Path -Path $PROFILE.CurrentUserCurrentHost)) {
+     New-Item -ItemType File -Path $PROFILE.CurrentUserCurrentHost -Force
+   }
+   Add-Content -Path $PROFILE.CurrentUserCurrentHost -Value 'Invoke-Expression (& typo init powershell)'
+   ```
+
+4. If your profile is blocked by execution policy, allow local profile scripts for the current user:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   ```
+
+Additional notes:
+
+- The first PowerShell release focuses on native-command stderr capture.
+- Cmdlet error-stream capture can vary by host and may not populate typo's stderr cache yet.
+
+## 5. Why are there `typo-stderr-*` files in `/tmp` or `$TMPDIR`, and why do some remain after exit?
+
+This is normal for zsh, bash, and PowerShell integration.
+
+Root cause:
+
+- typo caches the previous command's `stderr` in a `typo-stderr-*` file.
+- When you press `<Esc><Esc>`, `typo fix -s <file>` can use the real error output to improve the correction.
+
+When this is normal:
+
+- The current shell is still running and the cache file is still present.
+- The file name looks random, such as `typo-stderr-AbCdEf`, because the shell created it from a temp-file API.
+
+When this is actually a problem:
+
+- The shell exited normally but the matching cache file remains indefinitely.
+- Different nested shells overwrite or delete each other's cache files.
+
+Additional notes:
+
+- zsh removes its cache in the `zshexit` hook.
+- bash removes its cache in the `EXIT` trap.
+- PowerShell removes its cache through the `PowerShell.Exiting` engine event.
+- If the terminal crashes or the shell is killed forcibly, stale files can remain temporarily. typo cleans up caches older than one day on the next shell start.

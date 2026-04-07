@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	installscript "github.com/yuluo-yx/typo/install"
 	"github.com/yuluo-yx/typo/internal/config"
 	"github.com/yuluo-yx/typo/internal/engine"
 )
@@ -32,6 +31,33 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Create pipe failed: %v", err)
+	}
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
+
+	return buf.String()
+}
+
 func runZshIntegrationScript(t *testing.T, script string, extraEnv ...string) []byte {
 	t.Helper()
 
@@ -41,7 +67,7 @@ func runZshIntegrationScript(t *testing.T, script string, extraEnv ...string) []
 
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "typo.zsh")
-	if err := os.WriteFile(scriptPath, []byte(installscript.ZshScript), 0600); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(zshIntegrationScript), 0600); err != nil {
 		t.Fatalf("Failed to write zsh script: %v", err)
 	}
 
@@ -66,7 +92,7 @@ func runBashIntegrationScript(t *testing.T, script string, extraEnv ...string) [
 
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "typo.bash")
-	if err := os.WriteFile(scriptPath, []byte(installscript.BashScript), 0600); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(bashIntegrationScript), 0600); err != nil {
 		t.Fatalf("Failed to write bash script: %v", err)
 	}
 
@@ -77,6 +103,37 @@ func runBashIntegrationScript(t *testing.T, script string, extraEnv ...string) [
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("bash integration regression failed: %v\noutput:\n%s", err, output)
+	}
+
+	return output
+}
+
+func runPowerShellIntegrationScript(t *testing.T, script string, extraEnv ...string) []byte {
+	t.Helper()
+
+	if _, err := exec.LookPath("pwsh"); err != nil {
+		t.Skip("pwsh is not available")
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "typo.ps1")
+	if err := os.WriteFile(scriptPath, []byte(powerShellIntegrationScript), 0600); err != nil {
+		t.Fatalf("Failed to write PowerShell script: %v", err)
+	}
+
+	harnessPath := filepath.Join(tmpDir, "harness.ps1")
+	harness := "param([string]$InitScriptPath)\n" + script
+	if err := os.WriteFile(harnessPath, []byte(harness), 0600); err != nil {
+		t.Fatalf("Failed to write PowerShell harness: %v", err)
+	}
+
+	cmd := exec.Command("pwsh", "-NoLogo", "-NoProfile", "-File", harnessPath, "-InitScriptPath", scriptPath)
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir, "HOME="+tmpDir)
+	cmd.Env = append(cmd.Env, extraEnv...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("PowerShell integration regression failed: %v\noutput:\n%s", err, output)
 	}
 
 	return output
@@ -145,6 +202,18 @@ func TestRun(t *testing.T) {
 			args:       []string{"typo", "init", "bash"},
 			wantCode:   0,
 			wantOutput: "bind -x",
+		},
+		{
+			name:       "init powershell",
+			args:       []string{"typo", "init", "powershell"},
+			wantCode:   0,
+			wantOutput: "Set-PSReadLineKeyHandler",
+		},
+		{
+			name:       "init pwsh alias",
+			args:       []string{"typo", "init", "pwsh"},
+			wantCode:   0,
+			wantOutput: "Set-PSReadLineKeyHandler",
 		},
 		{
 			name:       "learn without args",
@@ -962,6 +1031,155 @@ func TestRulesUnknownSubcommand(t *testing.T) {
 	}
 }
 
+func TestRulesEnableDisableLifecycle(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	steps := []struct {
+		name string
+		run  func(t *testing.T)
+	}{
+		{
+			name: "disable git",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "rules", "disable", "git"}, "Disabled rule scope: git", "rules disable git")
+				assertConfigValue(t, "rules.git.enabled", "false", "after disable")
+			},
+		},
+		{
+			name: "list disabled rule",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "rules", "list"}, "gut -> git [git] (disabled)", "rules list")
+			},
+		},
+		{
+			name: "fix skips disabled rule",
+			run: func(t *testing.T) {
+				assertCLIDoesNotCorrect(t, []string{"typo", "fix", "--no-history", "gut", "status"}, "git status", "fix should not correct to git when git scope is disabled")
+			},
+		},
+		{
+			name: "enable git",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "rules", "enable", "git"}, "Enabled rule scope: git", "rules enable git")
+				assertConfigValue(t, "rules.git.enabled", "true", "after enable")
+			},
+		},
+		{
+			name: "fix recovers after re-enable",
+			run: func(t *testing.T) {
+				assertCLISucceedsWithOutput(t, []string{"typo", "fix", "gut", "status"}, "git status", "fix should recover after re-enabling git")
+			},
+		},
+	}
+
+	for _, step := range steps {
+		t.Run(step.name, step.run)
+	}
+}
+
+func TestRulesEnableDisableErrors(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		args   []string
+		wantIn string
+	}{
+		{
+			name:   "disable missing scope",
+			args:   []string{"typo", "rules", "disable"},
+			wantIn: "requires exactly one <scope>",
+		},
+		{
+			name:   "enable extra args",
+			args:   []string{"typo", "rules", "enable", "git", "extra"},
+			wantIn: "requires exactly one <scope>",
+		},
+		{
+			name:   "unknown scope",
+			args:   []string{"typo", "rules", "disable", "rust"},
+			wantIn: "valid options:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code == 0 {
+				t.Fatalf("expected failure, got code=0 stdout=%q stderr=%q", stdout, stderr)
+			}
+			if !strings.Contains(stdout+stderr, tt.wantIn) {
+				t.Fatalf("expected output to contain %q, stdout=%q stderr=%q", tt.wantIn, stdout, stderr)
+			}
+		})
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "rules", "disable", "rust"})
+	if code == 0 {
+		t.Fatalf("expected unknown scope failure, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "unknown rule scope: rust") {
+		t.Fatalf("expected unknown scope error, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "docker") || !strings.Contains(stderr, "git") || !strings.Contains(stderr, "system") {
+		t.Fatalf("expected valid scope list in error, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestRulesEnableDisableSupportsUnknownPresentScope(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	cfg := config.Load()
+	cfg.User.Rules["rust"] = config.RuleSetConfig{Enabled: false}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "rules", "enable", "rust"})
+	if code != 0 {
+		t.Fatalf("rules enable rust failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Enabled rule scope: rust") {
+		t.Fatalf("expected enable rust output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "rules.rust.enabled"})
+	if code != 0 || strings.TrimSpace(stdout) != "true" {
+		t.Fatalf("config get rules.rust.enabled failed after enable: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "rules", "disable", "rust"})
+	if code != 0 {
+		t.Fatalf("rules disable rust failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Disabled rule scope: rust") {
+		t.Fatalf("expected disable rust output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "rules.rust.enabled"})
+	if code != 0 || strings.TrimSpace(stdout) != "false" {
+		t.Fatalf("config get rules.rust.enabled failed after disable: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
 func TestHistoryList(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -1409,24 +1627,11 @@ func TestFormatBuildDate(t *testing.T) {
 }
 
 func TestPrintZshIntegration(t *testing.T) {
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output := captureStdout(t, func() {
+		printIntegrationScript("zsh")
+	})
 
-	printIntegrationScript("zsh")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-	output := buf.String()
-
-	if output != installscript.ZshScript {
+	if output != zshIntegrationScript {
 		t.Error("Expected zsh integration output to match embedded install script")
 	}
 	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
@@ -1435,52 +1640,21 @@ func TestPrintZshIntegration(t *testing.T) {
 }
 
 func TestPrintZshIntegrationAddsTrailingNewline(t *testing.T) {
-	original := installscript.ZshScript
-	installscript.ZshScript = "echo test"
-	t.Cleanup(func() {
-		installscript.ZshScript = original
+	output := captureStdout(t, func() {
+		printScript("echo test")
 	})
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printIntegrationScript("zsh")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-
-	if buf.String() != "echo test\n" {
-		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+	if output != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", output)
 	}
 }
 
 func TestPrintBashIntegration(t *testing.T) {
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output := captureStdout(t, func() {
+		printIntegrationScript("bash")
+	})
 
-	printIntegrationScript("bash")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
-	}
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
-	}
-	output := buf.String()
-
-	if output != installscript.BashScript {
+	if output != bashIntegrationScript {
 		t.Error("Expected bash integration output to match embedded install script")
 	}
 	if !bytes.Contains([]byte(output), []byte("_typo_cleanup_stale_caches")) {
@@ -1489,30 +1663,36 @@ func TestPrintBashIntegration(t *testing.T) {
 }
 
 func TestPrintBashIntegrationAddsTrailingNewline(t *testing.T) {
-	original := installscript.BashScript
-	installscript.BashScript = "echo test"
-	t.Cleanup(func() {
-		installscript.BashScript = original
+	output := captureStdout(t, func() {
+		printScript("echo test")
 	})
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printIntegrationScript("bash")
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close pipe failed: %v", err)
+	if output != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", output)
 	}
-	os.Stdout = oldStdout
+}
 
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("Read pipe failed: %v", err)
+func TestPrintPowerShellIntegration(t *testing.T) {
+	output := captureStdout(t, func() {
+		printIntegrationScript("powershell")
+	})
+
+	if output != powerShellIntegrationScript {
+		t.Error("Expected PowerShell integration output to match embedded install script")
 	}
+	if !bytes.Contains([]byte(output), []byte(`Set-PSReadLineKeyHandler -Chord "Escape,Escape"`)) &&
+		!bytes.Contains([]byte(output), []byte("Set-PSReadLineKeyHandler -Chord Escape,Escape")) {
+		t.Error("Expected PowerShell integration to bind Escape,Escape with or without quotes")
+	}
+}
 
-	if buf.String() != "echo test\n" {
-		t.Fatalf("Expected trailing newline to be appended, got %q", buf.String())
+func TestPrintPowerShellIntegrationAddsTrailingNewline(t *testing.T) {
+	output := captureStdout(t, func() {
+		printScript("Write-Host test")
+	})
+
+	if output != "Write-Host test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", output)
 	}
 }
 
@@ -1807,6 +1987,150 @@ func TestDoctorShowsBashHintsWhenShellIsBash(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte(`eval "$(typo init bash)"`)) {
 		t.Fatalf("Expected init bash hint in doctor output, got: %s", output)
+	}
+}
+
+func TestDoctorShowsPowerShellHintsWhenShellIsPowerShell(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
+
+	oldShell := os.Getenv("SHELL")
+	defer func() {
+		if err := os.Setenv("SHELL", oldShell); err != nil {
+			t.Fatalf("Restore SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Unsetenv("SHELL"); err != nil {
+		t.Fatalf("Unsetenv SHELL failed: %v", err)
+	}
+
+	oldChannel := os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL")
+	defer func() {
+		if err := os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", oldChannel); err != nil {
+			t.Fatalf("Restore POWERSHELL_DISTRIBUTION_CHANNEL failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "PowerShell 7.5"); err != nil {
+		t.Fatalf("Setenv POWERSHELL_DISTRIBUTION_CHANNEL failed: %v", err)
+	}
+
+	oldPSModulePath := os.Getenv("PSModulePath")
+	defer func() {
+		if err := os.Setenv("PSModulePath", oldPSModulePath); err != nil {
+			t.Fatalf("Restore PSModulePath failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("PSModulePath", "/tmp/powershell-modules"); err != nil {
+		t.Fatalf("Setenv PSModulePath failed: %v", err)
+	}
+
+	oldIntegration := os.Getenv("TYPO_SHELL_INTEGRATION")
+	defer func() {
+		if err := os.Setenv("TYPO_SHELL_INTEGRATION", oldIntegration); err != nil {
+			t.Fatalf("Restore TYPO_SHELL_INTEGRATION failed: %v", err)
+		}
+	}()
+	if err := os.Unsetenv("TYPO_SHELL_INTEGRATION"); err != nil {
+		t.Fatalf("Unsetenv TYPO_SHELL_INTEGRATION failed: %v", err)
+	}
+
+	os.Args = []string{"typo", "doctor"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
+	output := buf.String()
+
+	if code != 1 {
+		t.Fatalf("Expected exit code 1, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("$PROFILE.CurrentUserCurrentHost")) {
+		t.Fatalf("Expected PowerShell profile hint in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Invoke-Expression (& typo init powershell)")) {
+		t.Fatalf("Expected PowerShell init hint in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("shell: powershell")) {
+		t.Fatalf("Expected detected shell to be powershell, got: %s", output)
+	}
+}
+
+func TestCurrentShellNamePrefersTypoActiveShell(t *testing.T) {
+	oldActiveShell := os.Getenv("TYPO_ACTIVE_SHELL")
+	defer func() {
+		if err := os.Setenv("TYPO_ACTIVE_SHELL", oldActiveShell); err != nil {
+			t.Fatalf("Restore TYPO_ACTIVE_SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("TYPO_ACTIVE_SHELL", "pwsh"); err != nil {
+		t.Fatalf("Setenv TYPO_ACTIVE_SHELL failed: %v", err)
+	}
+
+	oldShell := os.Getenv("SHELL")
+	defer func() {
+		if err := os.Setenv("SHELL", oldShell); err != nil {
+			t.Fatalf("Restore SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("SHELL", "/bin/zsh"); err != nil {
+		t.Fatalf("Setenv SHELL failed: %v", err)
+	}
+
+	if got := currentShellName(); got != "powershell" {
+		t.Fatalf("currentShellName() = %q, want %q", got, "powershell")
+	}
+}
+
+func TestCurrentShellNameFallsBackToPowerShellEnvironment(t *testing.T) {
+	oldActiveShell := os.Getenv("TYPO_ACTIVE_SHELL")
+	defer func() {
+		if err := os.Setenv("TYPO_ACTIVE_SHELL", oldActiveShell); err != nil {
+			t.Fatalf("Restore TYPO_ACTIVE_SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Unsetenv("TYPO_ACTIVE_SHELL"); err != nil {
+		t.Fatalf("Unsetenv TYPO_ACTIVE_SHELL failed: %v", err)
+	}
+
+	oldShell := os.Getenv("SHELL")
+	defer func() {
+		if err := os.Setenv("SHELL", oldShell); err != nil {
+			t.Fatalf("Restore SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Unsetenv("SHELL"); err != nil {
+		t.Fatalf("Unsetenv SHELL failed: %v", err)
+	}
+
+	oldChannel := os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL")
+	defer func() {
+		if err := os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", oldChannel); err != nil {
+			t.Fatalf("Restore POWERSHELL_DISTRIBUTION_CHANNEL failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "PowerShell 7.5"); err != nil {
+		t.Fatalf("Setenv POWERSHELL_DISTRIBUTION_CHANNEL failed: %v", err)
+	}
+
+	if got := currentShellName(); got != "powershell" {
+		t.Fatalf("currentShellName() = %q, want %q", got, "powershell")
 	}
 }
 
@@ -2550,6 +2874,39 @@ _typo_bashexit
 `)
 }
 
+func TestPowerShellIntegrationRegistersHandlersAndState(t *testing.T) {
+	output := runPowerShellIntegrationScript(t, `
+. $InitScriptPath
+$handlers = @(
+    @(Get-PSReadLineKeyHandler -Bound -ErrorAction SilentlyContinue)
+    @(Get-PSReadLineKeyHandler -ErrorAction SilentlyContinue)
+)
+$handler = $handlers | Where-Object {
+    $props = $_.PSObject.Properties.Name
+    (($props -contains "BriefDescription") -and $_.BriefDescription -eq "typo-fix-command") -or
+    (($props -contains "Description") -and $_.Description -eq "typo-fix-command") -or
+    (($props -contains "Key") -and (([string]$_.Key) -replace "\s+", "") -eq "Escape,Escape")
+} | Select-Object -First 1
+if ($null -eq $handler) {
+    throw "missing typo fix handler"
+}
+if ($env:TYPO_ACTIVE_SHELL -ne "powershell") {
+    throw "missing TYPO_ACTIVE_SHELL"
+}
+if ($env:TYPO_SHELL_INTEGRATION -ne "1") {
+    throw "missing TYPO_SHELL_INTEGRATION"
+}
+if (-not (Test-Path -LiteralPath $env:TYPO_STDERR_CACHE)) {
+    throw "missing stderr cache"
+}
+Write-Output "ok"
+`)
+
+	if !bytes.Contains(output, []byte("ok")) {
+		t.Fatalf("Expected PowerShell integration smoke test output, got %q", output)
+	}
+}
+
 func TestUninstall(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -2782,6 +3139,80 @@ func TestUninstallWithBashrcHint(t *testing.T) {
 	}
 }
 
+func TestUninstallWithPowerShellHint(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpDir, err := os.MkdirTemp("", "typo-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+	}()
+
+	oldHome := os.Getenv("HOME")
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
+
+	oldShell := os.Getenv("SHELL")
+	defer func() {
+		if err := os.Setenv("SHELL", oldShell); err != nil {
+			t.Fatalf("Restore SHELL failed: %v", err)
+		}
+	}()
+	if err := os.Unsetenv("SHELL"); err != nil {
+		t.Fatalf("Unsetenv SHELL failed: %v", err)
+	}
+
+	oldChannel := os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL")
+	defer func() {
+		if err := os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", oldChannel); err != nil {
+			t.Fatalf("Restore POWERSHELL_DISTRIBUTION_CHANNEL failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "PowerShell 7.5"); err != nil {
+		t.Fatalf("Setenv POWERSHELL_DISTRIBUTION_CHANNEL failed: %v", err)
+	}
+
+	os.Args = []string{"typo", "uninstall"}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := run()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close pipe failed: %v", err)
+	}
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("Read pipe failed: %v", err)
+	}
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("Expected uninstall to succeed, got %d", code)
+	}
+	if !bytes.Contains([]byte(output), []byte("manual cleanup required in $PROFILE.CurrentUserCurrentHost")) {
+		t.Fatalf("Expected PowerShell cleanup hint, got %q", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Invoke-Expression (& typo init powershell)")) {
+		t.Fatalf("Expected PowerShell init cleanup command, got %q", output)
+	}
+}
+
 func TestUninstallConfigRemoveFailure(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -2918,6 +3349,36 @@ func runCLI(t *testing.T, args []string) (int, string, string) {
 	_, _ = errBuf.ReadFrom(rErr)
 
 	return code, outBuf.String(), errBuf.String()
+}
+
+func assertCLISucceedsWithOutput(t *testing.T, args []string, wantIn string, action string) {
+	t.Helper()
+
+	code, stdout, stderr := runCLI(t, args)
+	if code != 0 {
+		t.Fatalf("%s failed: code=%d stdout=%q stderr=%q", action, code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, wantIn) {
+		t.Fatalf("%s missing output %q: stdout=%q stderr=%q", action, wantIn, stdout, stderr)
+	}
+}
+
+func assertConfigValue(t *testing.T, key string, want string, context string) {
+	t.Helper()
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "config", "get", key})
+	if code != 0 || strings.TrimSpace(stdout) != want {
+		t.Fatalf("config get %s failed %s: code=%d stdout=%q stderr=%q", key, context, code, stdout, stderr)
+	}
+}
+
+func assertCLIDoesNotCorrect(t *testing.T, args []string, unexpected string, context string) {
+	t.Helper()
+
+	code, stdout, stderr := runCLI(t, args)
+	if code == 0 && strings.Contains(stdout, unexpected) {
+		t.Fatalf("%s: stdout=%q stderr=%q", context, stdout, stderr)
+	}
 }
 
 func TestConfigCommandLifecycle(t *testing.T) {

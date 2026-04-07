@@ -2,6 +2,15 @@ name: Update Contributors
 
 on:
   workflow_dispatch:
+    inputs:
+      delivery_mode:
+        description: Delivery mode for contributor SVG updates
+        required: false
+        default: pr
+        type: choice
+        options:
+          - pr
+          - push
   schedule:
     - cron: "0 0 * * 0"
 
@@ -12,8 +21,12 @@ concurrency:
 jobs:
   update-contributors:
     runs-on: ubuntu-latest
+    if: github.repository == 'yuluo-yx/typo'
+    env:
+      DELIVERY_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delivery_mode || 'pr' }}
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -21,7 +34,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate contributors SVG
-        uses: tw93/contributors-list@3722c5cb0d662c5e6dbffe78448002c461aab3b9
+        uses: deigmata-paideias/contributors-list@39f94c2cddee224aaa98e25e2f9f4af8e4a3840c
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           svgPath: .github/CONTRIBUTORS.svg
@@ -33,6 +46,7 @@ jobs:
           noCommit: true
           truncate: 0
           includeBots: false
+          includeCoAuthors: true
           excludeUsers: "github-actions web-flow dependabot claude"
           itemTemplate: |
             <g transform="translate({{ x }}, {{ y }})">
@@ -49,9 +63,28 @@ jobs:
 
       - name: Commit & Push
         uses: stefanzweifel/git-auto-commit-action@v7
+        if: env.DELIVERY_MODE == 'push'
         with:
-          commit_message: "chore: update contributors [skip ci]"
+          commit_message: "chore(community): update contributors [skip ci]"
           file_pattern: .github/CONTRIBUTORS.svg
           commit_user_name: github-actions[bot]
           commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
           commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        if: env.DELIVERY_MODE == 'pr'
+        with:
+          branch: automation/update-contributors
+          delete-branch: true
+          add-paths: |
+            .github/CONTRIBUTORS.svg
+          commit-message: "chore(community): update contributors [skip ci]"
+          title: "chore(community): update contributors"
+          body: |
+            Automatically update `.github/CONTRIBUTORS.svg`.
+
+            - Trigger event: `${{ github.event_name }}`
+            - Delivery mode: `pr`
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>

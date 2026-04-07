@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,10 @@ var (
 	executable    = os.Executable
 	removeAll     = os.RemoveAll
 	statPath      = os.Stat
+
+	zshIntegrationScript        = install.ZshScript
+	bashIntegrationScript       = install.BashScript
+	powerShellIntegrationScript = install.PowerShellScript
 )
 
 const (
@@ -111,10 +116,13 @@ Usage:
   typo rules list                         List all rules
   typo rules add <from> <to>              Add a user rule
   typo rules remove <from>                Remove a user rule
+  typo rules enable <scope>               Enable a builtin rule scope
+  typo rules disable <scope>              Disable a builtin rule scope
   typo history list                       List correction history
   typo history clear                      Clear correction history
   typo init zsh                           Print zsh integration script
-	typo init bash                          Print bash integration script
+  typo init bash                          Print bash integration script
+  typo init powershell                    Print PowerShell integration script
   typo doctor                             Check configuration status
   typo uninstall                          Remove local config and show remaining cleanup steps
   typo version                            Print version
@@ -124,13 +132,17 @@ Examples:
   typo learn "gut" "git"
   typo config set keyboard dvorak
   typo rules add "mytypo" "mycommand"
+  typo rules disable git
   eval "$(typo init zsh)"
 
 Zsh Integration:
   After running 'eval "$(typo init zsh)"', press <Esc><Esc> to fix the current command.
 
 Bash Integration:
-  After running 'eval "$(typo init bash)"', press <Esc><Esc> to fix the current command.`)
+  After running 'eval "$(typo init bash)"', press <Esc><Esc> to fix the current command.
+
+PowerShell Integration:
+  Add 'Invoke-Expression (& typo init powershell)' to $PROFILE.CurrentUserCurrentHost, then press <Esc><Esc> to fix the current command.`)
 }
 
 func cmdFix(args []string) int {
@@ -311,7 +323,7 @@ func cmdConfigGen(cfg *config.Config, args []string) int {
 
 func cmdRules(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: subcommand required (list, add, remove)")
+		fmt.Fprintln(os.Stderr, "Error: subcommand required (list, add, remove, enable, disable)")
 		return 1
 	}
 
@@ -357,10 +369,65 @@ func cmdRules(args []string) int {
 		}
 		fmt.Printf("Removed rule: %s\n", args[1])
 		return 0
+	case "enable":
+		return cmdRulesSetScopeEnabled(cfg, args, true)
+	case "disable":
+		return cmdRulesSetScopeEnabled(cfg, args, false)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown subcommand: %s\n", args[0])
 		return 1
 	}
+}
+
+func cmdRulesSetScopeEnabled(cfg *config.Config, args []string, enabled bool) int {
+	action := args[0]
+	if len(args) != 2 {
+		fmt.Fprintf(os.Stderr, "Error: %s requires exactly one <scope>\n", action)
+		return 1
+	}
+
+	scope := strings.TrimSpace(args[1])
+	if scope == "" {
+		fmt.Fprintf(os.Stderr, "Error: %s requires exactly one <scope>\n", action)
+		return 1
+	}
+
+	if _, exists := cfg.User.Rules[scope]; !exists {
+		fmt.Fprintf(
+			os.Stderr,
+			"Error: unknown rule scope: %s (valid options: %s)\n",
+			scope,
+			strings.Join(sortedConfigRuleScopes(cfg), ", "),
+		)
+		return 1
+	}
+
+	key := fmt.Sprintf("rules.%s.enabled", scope)
+	if err := cfg.Set(key, strconv.FormatBool(enabled)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	if enabled {
+		fmt.Printf("Enabled rule scope: %s\n", scope)
+		return 0
+	}
+
+	fmt.Printf("Disabled rule scope: %s\n", scope)
+	return 0
+}
+
+func sortedConfigRuleScopes(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	scopes := make([]string, 0, len(cfg.User.Rules))
+	for scope := range cfg.User.Rules {
+		scopes = append(scopes, scope)
+	}
+	sort.Strings(scopes)
+	return scopes
 }
 
 func cmdHistory(args []string) int {
@@ -394,16 +461,19 @@ func cmdHistory(args []string) int {
 
 func cmdInit(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash)")
+		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash, powershell)")
 		return 1
 	}
 
-	switch args[0] {
+	switch normalizeShellName(args[0]) {
 	case "zsh":
 		printIntegrationScript("zsh")
 		return 0
 	case "bash":
 		printIntegrationScript("bash")
+		return 0
+	case "powershell":
+		printIntegrationScript("powershell")
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", args[0])
@@ -517,7 +587,7 @@ func cmdDoctor() int {
 
 	printDoctorEffectiveConfig(cfg, shellName)
 	hasError = checkDoctorShellIntegration(shellName, shellRC) || hasError
-	hasError = checkDoctorGoBinPath(typoPath) || hasError
+	hasError = checkDoctorGoBinPath(shellName, shellRC, typoPath) || hasError
 
 	fmt.Println()
 	if hasError {
@@ -550,9 +620,9 @@ func checkDoctorShellIntegration(shellName, shellRC string) bool {
 	fmt.Println()
 	if shellName != "" {
 		fmt.Printf("To enable shell integration, add to your %s:\n", shellRC)
-		fmt.Printf("  eval \"$(typo init %s)\"\n", shellName)
+		fmt.Printf("  %s\n", shellInitCommand(shellName))
 		fmt.Println()
-		fmt.Printf("Then restart your shell or run: source %s\n", shellRC)
+		fmt.Printf("Then restart your shell or run: %s\n", shellReloadCommand(shellName, shellRC))
 		return true
 	}
 
@@ -561,12 +631,14 @@ func checkDoctorShellIntegration(shellName, shellRC string) bool {
 	fmt.Println("  eval \"$(typo init zsh)\"")
 	fmt.Println("  # Bash (~/.bashrc)")
 	fmt.Println("  eval \"$(typo init bash)\"")
+	fmt.Println("  # PowerShell ($PROFILE.CurrentUserCurrentHost)")
+	fmt.Println("  Invoke-Expression (& typo init powershell)")
 	fmt.Println()
-	fmt.Println("Then restart your shell or source the matching rc file.")
+	fmt.Println("Then restart your shell or source the matching profile file.")
 	return true
 }
 
-func checkDoctorGoBinPath(typoPath string) bool {
+func checkDoctorGoBinPath(shellName, shellRC, typoPath string) bool {
 	fmt.Print("[5/5] Go bin PATH: ")
 	goBinDir := getGoBinDir()
 	typoInGoBin := false
@@ -589,12 +661,20 @@ func checkDoctorGoBinPath(typoPath string) bool {
 
 	fmt.Printf("✗ %s not in PATH\n", goBinDir)
 	fmt.Println()
-	fmt.Println("  If you installed typo with 'go install', add to your shell config:")
-	fmt.Printf("    export PATH=\"$PATH:%s\"\n", goBinDir)
+	if shellName != "" {
+		fmt.Printf("  If you installed typo with 'go install', add to your %s:\n", shellRC)
+	} else {
+		fmt.Println("  If you installed typo with 'go install', add to your shell config:")
+	}
+	fmt.Printf("    %s\n", shellPathExportCommand(shellName, goBinDir))
 	return true
 }
 
 func currentShellName() string {
+	if shell := normalizeShellName(os.Getenv("TYPO_ACTIVE_SHELL")); shell != "" {
+		return shell
+	}
+
 	shellPath := strings.TrimSpace(os.Getenv("SHELL"))
 	if shellPath == "" {
 		return unknownValue
@@ -603,9 +683,15 @@ func currentShellName() string {
 	shellBase := strings.ToLower(filepath.Base(shellPath))
 	if shellBase == "" || shellBase == "." {
 		return unknownValue
+	if shell := normalizeShellName(filepath.Base(shellPath)); shell != "" {
+		return shell
 	}
 
-	return shellBase
+	if detectPowerShellEnvironment() {
+		return "powershell"
+	}
+
+	return "unknown"
 }
 
 func detectShellIntegrationTarget() (string, string) {
@@ -614,8 +700,61 @@ func detectShellIntegrationTarget() (string, string) {
 		return "bash", "~/.bashrc"
 	case "zsh":
 		return "zsh", "~/.zshrc"
+	case "powershell":
+		return "powershell", "$PROFILE.CurrentUserCurrentHost"
 	default:
-		return "", "~/.zshrc or ~/.bashrc"
+		return "", "~/.zshrc or ~/.bashrc or $PROFILE.CurrentUserCurrentHost"
+	}
+}
+
+func normalizeShellName(shell string) string {
+	shell = strings.TrimSpace(strings.ToLower(shell))
+	shell = strings.TrimSuffix(shell, ".exe")
+
+	switch shell {
+	case "bash", "zsh":
+		return shell
+	case "pwsh", "powershell":
+		return "powershell"
+	default:
+		return ""
+	}
+}
+
+func detectPowerShellEnvironment() bool {
+	return strings.TrimSpace(os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL")) != "" ||
+		strings.TrimSpace(os.Getenv("PSModulePath")) != "" ||
+		strings.TrimSpace(os.Getenv("PSExecutionPolicyPreference")) != ""
+}
+
+func shellInitCommand(shellName string) string {
+	switch shellName {
+	case "powershell":
+		return "Invoke-Expression (& typo init powershell)"
+	case "bash", "zsh":
+		return fmt.Sprintf("eval \"$(typo init %s)\"", shellName)
+	default:
+		return ""
+	}
+}
+
+func shellReloadCommand(shellName, shellRC string) string {
+	switch shellName {
+	case "powershell":
+		return fmt.Sprintf(". %s", shellRC)
+	case "bash", "zsh":
+		return fmt.Sprintf("source %s", shellRC)
+	default:
+		return ""
+	}
+}
+
+func shellPathExportCommand(shellName, dir string) string {
+	switch shellName {
+	case "powershell":
+		return fmt.Sprintf("$env:PATH = \"$env:PATH%c%s\"", os.PathListSeparator, dir)
+	default:
+		return fmt.Sprintf("export PATH=\"$PATH:%s\"", dir)
 	}
 }
 
@@ -655,6 +794,7 @@ func cmdUninstall() int {
 
 	cfg := config.Load()
 	hasError := false
+	shellName, _ := detectShellIntegrationTarget()
 
 	// Remove ~/.typo directory
 	fmt.Print("[1/3] Removing config directory: ")
@@ -677,6 +817,13 @@ func cmdUninstall() int {
 		hasError = true
 	} else {
 		foundShellConfig := false
+		if shellName == "powershell" {
+			foundShellConfig = true
+			fmt.Println("manual cleanup required in $PROFILE.CurrentUserCurrentHost:")
+			fmt.Println()
+			fmt.Println("    Invoke-Expression (& typo init powershell)")
+			fmt.Println()
+		}
 		for _, target := range []struct {
 			shell string
 			rc    string
@@ -722,14 +869,20 @@ func printIntegrationScript(shell string) {
 	var script string
 	switch shell {
 	case "zsh":
-		script = install.ZshScript
+		script = zshIntegrationScript
 	case "bash":
-		script = install.BashScript
+		script = bashIntegrationScript
+	case "powershell":
+		script = powerShellIntegrationScript
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", shell)
 		os.Exit(1)
 	}
 
+	printScript(script)
+}
+
+func printScript(script string) {
 	fmt.Print(script)
 	if !strings.HasSuffix(script, "\n") {
 		fmt.Println()

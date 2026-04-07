@@ -820,19 +820,31 @@ func TestFetchSubcommands_Docker(t *testing.T) {
 }
 
 func TestFetchSubcommands_Npm(t *testing.T) {
-	if GetPath("npm") == "" {
-		t.Skip("npm not found in PATH")
+	tmpDir := t.TempDir()
+	oldPath := os.Getenv("PATH")
+	defer os.Setenv("PATH", oldPath)
+
+	npmPath := filepath.Join(tmpDir, "npm")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  printf '%s\\n' \\\n    'npm <command>' \\\n    '' \\\n    'All commands:' \\\n    '' \\\n    '    access, adduser, audit, bugs, cache, ci, completion,' \\\n    '    config, dedupe, deprecate, diff, dist-tag, docs, doctor,' \\\n    '    edit, exec, explain, explore, find-dupes, fund, get, help,' \\\n    '    help-search, hook, init, install, install-ci-test,' \\\n    '    install-test, link, ll, login, logout, ls, org, outdated,' \\\n    '    owner, pack, ping, pkg, prefix, profile, prune, publish,' \\\n    '    query, rebuild, repo, restart, root, run-script, sbom,' \\\n    '    search, set, shrinkwrap, star, stars, start, stop, team,' \\\n    '    test, token, uninstall, unpublish, unstar, update, version,' \\\n    '    view, whoami'\n  exit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(npmPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write npm stub: %v", err)
 	}
+
+	if err := os.Setenv("PATH", tmpDir); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
+
 	r := &SubcommandRegistry{
 		cache:       make(map[string]*SubcommandCache),
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
+		helpTimeout: 10 * time.Second,
 	}
 	result := r.fetchSubcommands("npm")
 	if len(result) == 0 {
 		t.Fatalf("Expected npm subcommands")
 	}
-	// List of core commands that MUST exist in any npm version
+
 	expectedCmds := []string{"install", "config", "test", "publish"}
 	actualCmds := make(map[string]bool)
 	for _, cmd := range result {

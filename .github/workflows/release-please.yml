@@ -26,7 +26,7 @@ jobs:
   build-and-release:
     name: Build and Release
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: github.repository == 'yuluo-yx/typo' && needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.tag_name != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -36,6 +36,7 @@ jobs:
         id: version
         run: |
           TAG="${{ needs.release-please.outputs.tag_name }}"
+          test -n "$TAG"
           echo "VERSION=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Build all platforms
@@ -46,7 +47,14 @@ jobs:
           cd bin
           for dir in */; do
             dir=${dir%/}
-            mv "$dir/typo" "typo-$dir"
+            case "$dir" in
+              windows-*)
+                mv "$dir/typo.exe" "typo-$dir.exe"
+                ;;
+              *)
+                mv "$dir/typo" "typo-$dir"
+                ;;
+            esac
           done
 
       - name: Upload release artifacts
