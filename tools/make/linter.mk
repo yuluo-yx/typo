@@ -15,4 +15,4 @@ codespell-check: ## Lint check the code-spell
 markdown-lint: ## Lint check the markdown files.
 	@$(LOG_TARGET)
 	markdownlint --version
-	markdownlint --config ./tools/linter/markdownlint/markdown_lint_config.yaml .
+	markdownlint --config ./tools/linter/markdownlint/markdown_lint_config.yml .
