@@ -64,7 +64,12 @@ func (e *installScriptEnv) commandEnv(extra ...string) []string {
 	filtered := make([]string, 0, len(os.Environ())+len(extra)+5)
 	for _, item := range os.Environ() {
 		if strings.HasPrefix(item, "HOME=") ||
+			strings.HasPrefix(item, "USERPROFILE=") ||
+			strings.HasPrefix(item, "HOMEDRIVE=") ||
+			strings.HasPrefix(item, "HOMEPATH=") ||
 			strings.HasPrefix(item, "PATH=") ||
+			strings.HasPrefix(item, "TMP=") ||
+			strings.HasPrefix(item, "TEMP=") ||
 			strings.HasPrefix(item, "TMPDIR=") ||
 			strings.HasPrefix(item, "TYPO_INSTALL_DIR=") ||
 			strings.HasPrefix(item, "TYPO_TEST_CURL_LOG=") ||
@@ -77,11 +82,24 @@ func (e *installScriptEnv) commandEnv(extra ...string) []string {
 
 	filtered = append(filtered,
 		"HOME="+e.home,
+		"USERPROFILE="+e.home,
 		"PATH="+e.binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TMP="+e.tmpDir,
+		"TEMP="+e.tmpDir,
 		"TMPDIR="+e.tmpDir,
 		"TYPO_INSTALL_DIR="+e.installDir,
 		"TYPO_TEST_CURL_LOG="+e.logFile,
 	)
+	if volume := filepath.VolumeName(e.home); volume != "" {
+		homePath := strings.TrimPrefix(e.home, volume)
+		if homePath == "" {
+			homePath = string(os.PathSeparator)
+		}
+		filtered = append(filtered,
+			"HOMEDRIVE="+volume,
+			"HOMEPATH="+homePath,
+		)
+	}
 	filtered = append(filtered, extra...)
 	return filtered
 }
