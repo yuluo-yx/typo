@@ -40,6 +40,32 @@ var e2ePassthroughCommands = map[string]bool{
 	"tee": true,
 }
 
+func e2eExecutableName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+func normalizeShellExecPath(path string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.ToSlash(path)
+	}
+	return path
+}
+
+func writeShellCommandFixture(path, script string) error {
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		return err
+	}
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+
+	wrapper := "@echo off\r\nbash \"%~dp0" + filepath.Base(path) + "\" %*\r\n"
+	return os.WriteFile(path+".cmd", []byte(wrapper), 0644)
+}
+
 func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Helper()
 
@@ -58,7 +84,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	if sharedBinary == "" {
 		t.Fatal("shared e2e binary is not initialized")
 	}
-	bin := filepath.Join(binDir, "typo")
+	bin := filepath.Join(binDir, e2eExecutableName("typo"))
 	if err := copyExecutable(sharedBinary, bin); err != nil {
 		t.Fatalf("failed to prepare test binary: %v", err)
 	}
@@ -155,7 +181,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	bin := filepath.Join(buildDir, "typo")
+	bin := filepath.Join(buildDir, e2eExecutableName("typo"))
 	build := exec.Command("go", "build", "-o", bin, "./cmd/typo")
 	build.Dir = root
 	output, err := build.CombinedOutput()
@@ -191,10 +217,10 @@ func (e *e2eEnv) seedCommandStubs(t *testing.T, names ...string) {
 		script := "#!/bin/sh\nexit 0\n"
 		if e2ePassthroughCommands[name] {
 			if realPath, err := exec.LookPath(name); err == nil {
-				script = "#!/bin/sh\nexec \"" + realPath + "\" \"$@\"\n"
+				script = "#!/bin/sh\nexec \"" + normalizeShellExecPath(realPath) + "\" \"$@\"\n"
 			}
 		}
-		if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		if err := writeShellCommandFixture(path, script); err != nil {
 			t.Fatalf("failed to write command stub %s: %v", name, err)
 		}
 	}
@@ -211,30 +237,35 @@ func (e *e2eEnv) writeTempFile(t *testing.T, name, content string) string {
 }
 
 func (e *e2eEnv) commandEnv(extra ...string) []string {
-	filtered := make([]string, 0, len(os.Environ())+len(extra)+4)
-	for _, item := range os.Environ() {
-		if strings.HasPrefix(item, "HOME=") ||
-			strings.HasPrefix(item, "PATH=") ||
-			strings.HasPrefix(item, "SHELL=") ||
-			strings.HasPrefix(item, "TMPDIR=") ||
-			strings.HasPrefix(item, "ZDOTDIR=") ||
-			strings.HasPrefix(item, "TYPO_SHELL_INTEGRATION=") ||
-			strings.HasPrefix(item, "TYPO_ACTIVE_SHELL=") ||
-			strings.HasPrefix(item, "TYPO_LAST_EXIT_CODE=") ||
-			strings.HasPrefix(item, "POWERSHELL_DISTRIBUTION_CHANNEL=") ||
-			strings.HasPrefix(item, "PSModulePath=") ||
-			strings.HasPrefix(item, "PSExecutionPolicyPreference=") {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
+	filtered := filteredCommandEnv([]string{
+		"HOME=",
+		"USERPROFILE=",
+		"HOMEDRIVE=",
+		"HOMEPATH=",
+		"PATH=",
+		"TMP=",
+		"TEMP=",
+		"SHELL=",
+		"TMPDIR=",
+		"ZDOTDIR=",
+		"TYPO_SHELL_INTEGRATION=",
+		"TYPO_ACTIVE_SHELL=",
+		"TYPO_LAST_EXIT_CODE=",
+		"POWERSHELL_DISTRIBUTION_CHANNEL=",
+		"PSModulePath=",
+		"PSExecutionPolicyPreference=",
+	}, len(extra)+9)
 
 	filtered = append(filtered,
 		"HOME="+e.home,
+		"USERPROFILE="+e.home,
 		"PATH="+e.binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TMP="+e.tmpDir,
+		"TEMP="+e.tmpDir,
 		"TMPDIR="+e.tmpDir,
 		"ZDOTDIR="+e.home,
 	)
+	filtered = appendWindowsHomeEnv(filtered, e.home)
 	filtered = append(filtered, extra...)
 
 	return filtered

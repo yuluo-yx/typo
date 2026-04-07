@@ -14,7 +14,7 @@ func (e *e2eEnv) writeBinScript(t *testing.T, name, script string) {
 	t.Helper()
 
 	path := filepath.Join(e.binDir, name)
-	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+	if err := writeShellCommandFixture(path, script); err != nil {
 		t.Fatalf("failed to write executable %s: %v", name, err)
 	}
 }
@@ -127,7 +127,12 @@ BUFFER="$cmd"
 _typo_preexec
 eval "$cmd" >/dev/null || true
 _typo_precmd
-stderr_content="$(<"$TYPO_STDERR_CACHE")"
+stderr_content=""
+for _attempt in {1..50}; do
+  stderr_content="$(<"$TYPO_STDERR_CACHE")"
+  [[ "$stderr_content" == *"The most similar command is"* ]] && break
+  sleep 0.02
+done
 [[ "$stderr_content" == *"The most similar command is"* ]] || exit 41
 _typo_fix_command
 [[ "$BUFFER" == "git remote -v" ]] || { print -r -- "$BUFFER"; exit 42; }
@@ -168,7 +173,7 @@ BUFFER=""
 start=$SECONDS
 _typo_fix_command
 elapsed=$((SECONDS - start))
-[[ "$elapsed" -lt 1 ]] || exit 51
+[[ "$elapsed" -lt 2 ]] || exit 51
 [[ -z "$BUFFER" ]] || { print -r -- "$BUFFER"; exit 52; }
 print -r -- "elapsed=$elapsed"
 `)

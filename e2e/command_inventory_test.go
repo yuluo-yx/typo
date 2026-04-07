@@ -89,7 +89,7 @@ func TestE2EInventory_BuiltinsAndSystemCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := env.run(t, "fix", tt.command)
+			result := env.run(t, "fix", "--no-history", tt.command)
 			if result.code != 0 || result.stdout != tt.want {
 				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 			}
@@ -141,7 +141,7 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := env.run(t, "fix", tt.command)
+			result := env.run(t, "fix", "--no-history", tt.command)
 			if result.code != 0 || result.stdout != tt.want {
 				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 			}
@@ -233,7 +233,7 @@ func TestE2EInventory_CompoundFixFlows(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := env.run(t, "fix", tt.command)
+			result := env.run(t, "fix", "--no-history", tt.command)
 			if result.code != 0 || result.stdout != tt.want {
 				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 			}
