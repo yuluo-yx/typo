@@ -74,11 +74,11 @@ test: ## Run project test
 	@$(LOG_TARGET)
 	$(GO) test ./... -v -race
 
-.PHONY: lint
-lint: ## Run golangci-lint
+.PHONY: lint-go
+lint-go: ## Run golangci-lint
 	@$(LOG_TARGET)
 	@golangci-lint version | grep -Eq "version (v)?2\\." || (echo "golangci-lint v2 is required"; exit 1)
-	golangci-lint run ./... --config tools/linter/.golangci.yml
+	golangci-lint run ./... --config tools/linter/go/.golangci.yml
 
 .PHONY: clean
 clean: ## Clean build artifacts
