@@ -7,4 +7,4 @@ if ! command -v golangci-lint >/dev/null 2>&1; then
 fi
 
 echo "Running golangci-lint before commit..."
-make lint
+make lint-go
