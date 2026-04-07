@@ -127,7 +127,12 @@ BUFFER="$cmd"
 _typo_preexec
 eval "$cmd" >/dev/null || true
 _typo_precmd
-stderr_content="$(<"$TYPO_STDERR_CACHE")"
+stderr_content=""
+for _attempt in {1..50}; do
+  stderr_content="$(<"$TYPO_STDERR_CACHE")"
+  [[ "$stderr_content" == *"The most similar command is"* ]] && break
+  sleep 0.02
+done
 [[ "$stderr_content" == *"The most similar command is"* ]] || exit 41
 _typo_fix_command
 [[ "$BUFFER" == "git remote -v" ]] || { print -r -- "$BUFFER"; exit 42; }
