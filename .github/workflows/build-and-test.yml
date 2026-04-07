@@ -79,4 +79,4 @@ jobs:
       - uses: ./tools/github-setup-deps
       - name: Run e2e tests
         shell: bash
-        run: go test ./e2e -v
+        run: make test-e2e
