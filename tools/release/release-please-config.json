@@ -4,6 +4,17 @@
   "bump-minor-pre-major": false,
   "include-v-in-tag": true,
   "bootstrap-sha": "fff36e052677a84c4cae131b88c78b4ed8b2e6f1",
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance Improvements" },
+    { "type": "chore", "section": "Miscellaneous Chores", "hidden": true },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "style", "section": "Styles", "hidden": true },
+    { "type": "refactor", "section": "Code Refactoring", "hidden": true },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "ci", "section": "Continuous Integration", "hidden": true }
+  ],
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md"
