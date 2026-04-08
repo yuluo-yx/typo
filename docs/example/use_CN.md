@@ -1,74 +1,76 @@
 # Typo 可以修复的场景示例
 
-> Tips：
-> - Typo 在修复时，不用回车在执行之后在修正，在打完之后就能修正了。
-> - Typo 如果出现修正不准确的情况？type learn 一下，将修正规则添加到 rules 集合里面，或者 Issue & PR。
-> - Typo 同时支持 `gti statuus` 修正，支持主命令同时也支持字命令。
+[English](use.md) | 简体中文
+
+> 提示：
+> - Typo 可以在你按下回车前直接修正命令，不需要先执行失败再回头修。
+> - 如果修正不准确，可以用 `typo learn` 添加自己的规则，或者提交 Issue / PR。
+> - Typo 同时支持主命令和子命令修正，例如 `gti statuus`。
 
 ## 普通命令
 
-> 包含 git，docker，brew，apt 等在内的常用 linux & mac 命令
+> 包含 git、docker、brew、apt 等常见 Linux 与 macOS 命令。
 
 ```shell
-gti  <e, e>
+gti <Esc, Esc>
 
-gti
+git
 
-brewd <e, e>
+brewd <Esc, Esc>
 
 brew
 ```
 
 ## 子命令
 
-> git status，git commit，docker images 等在内的 subcommands
+> 覆盖 `git status`、`git commit`、`docker images` 等子命令场景。
 
 ```shell
-gti stauts <e, e>
+gti stauts <Esc, Esc>
 
 git status
 
-docker imagess <e, e>
+docker imagess <Esc, Esc>
 
 docker images
 ```
 
-## && 连字命令
+## `&&` 连接的命令
 
-支持同时修正 && 左右两侧的命令。
+支持同时修正 `&&` 左右两侧的命令。
 
 ```shell
-echo ok && gti status <e, e>
+echo ok && gti status <Esc, Esc>
 
 echo ok && git status
 
-ehco ok && gti status <e, e>
+ehco ok && gti status <Esc, Esc>
 
 echo ok && git status
 ```
 
-## 支持 Shell 自建命令
+## Shell 内建命令
 
-例如 source, echo time 等
+例如 `source`、`echo`、`time` 等。
 
 ```shell
-sourec ~/.zshrc <e, e>
+sourec ~/.zshrc <Esc, Esc>
 
 source ~/.zshrc
 ```
 
-## 支持管道连接命令
+## 管道连接命令
 
 ```shell
-$ cat ~/.zshrc | grpe "zsh"     
-zsh: command not found: grpe <enter, e, e>
+$ cat ~/.zshrc | grpe "zsh"
+zsh: command not found: grpe <Enter, Esc, Esc>
 
 cat ~/.zshrc | grep "zsh"
 ```
 
-## 支持 git pull --set-upstream
+## `git pull --set-upstream`
 
-你是否遇到过下面这类问题，当 git pull 的时候，突然出现：
+你是否遇到过这类 `git pull` 报错？
 
 ```shell
 $ git pull
@@ -83,15 +85,15 @@ If you wish to set tracking information for this branch you can do so with:
     git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check
 ```
 
-不要着急，两次 esc 自动 fix。
+这时按两次 `Esc`，Typo 会自动补全建议的 upstream 设置。
 
-## sudo 没有权限？
+## 没有权限？自动补 `sudo`
 
-> 打完一个命令之后，发现没有权限！！！
+> 命令本身没问题，只是执行时缺少权限。
 
 ```shell
-$ mkcd test    <enter, e, e>
-mkdir: test: Permission denied 
+$ mkdir test <Enter, Esc, Esc>
+mkdir: test: Permission denied
 
 # fix it.
 $ sudo mkdir test
