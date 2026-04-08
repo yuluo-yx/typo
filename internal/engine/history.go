@@ -27,6 +27,7 @@ type History struct {
 	mu        sync.RWMutex
 	entries   map[string]HistoryEntry // from -> entry
 	configDir string
+	targets   map[string]bool // cached set of all entry .To values
 }
 
 // NewHistory creates a new History instance.
@@ -36,6 +37,7 @@ func NewHistory(configDir string) *History {
 		configDir: configDir,
 	}
 	h.load()
+	h.rebuildTargets()
 	return h
 }
 
@@ -46,7 +48,7 @@ func (h *History) Record(from, to string) error {
 
 	if entry, exists := h.entries[from]; exists {
 		entry.Count++
-		entry.To = to // Update in case user changed preference
+		entry.To = to
 		entry.Timestamp = time.Now().Unix()
 		h.entries[from] = entry
 	} else {
@@ -58,6 +60,7 @@ func (h *History) Record(from, to string) error {
 		}
 	}
 
+	h.rebuildTargets()
 	return h.save()
 }
 
@@ -76,6 +79,7 @@ func (h *History) Remove(from string) error {
 	defer h.mu.Unlock()
 
 	delete(h.entries, from)
+	h.rebuildTargets()
 	return h.save()
 }
 
@@ -100,6 +104,7 @@ func (h *History) RemoveEntriesForCommandWord(commandWord string) error {
 		return nil
 	}
 
+	h.rebuildTargets()
 	return h.save()
 }
 
@@ -132,6 +137,7 @@ func (h *History) RemoveConflictsForRule(from string) error {
 		return nil
 	}
 
+	h.rebuildTargets()
 	return h.save()
 }
 
@@ -141,6 +147,7 @@ func (h *History) Clear() error {
 	defer h.mu.Unlock()
 
 	h.entries = make(map[string]HistoryEntry)
+	h.rebuildTargets()
 	return h.save()
 }
 
@@ -163,6 +170,20 @@ func (h *History) List() []HistoryEntry {
 		return entries[i].Timestamp > entries[j].Timestamp
 	})
 	return entries
+}
+
+// IsTarget reports whether cmd is the correction target (.To) of any history entry.
+func (h *History) IsTarget(cmd string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.targets[cmd]
+}
+
+func (h *History) rebuildTargets() {
+	h.targets = make(map[string]bool, len(h.entries))
+	for _, entry := range h.entries {
+		h.targets[entry.To] = true
+	}
 }
 
 // Count returns the number of history entries.

@@ -35,6 +35,7 @@ type Rules struct {
 	user      map[string]Rule    // from -> Rule, loaded from user config
 	ruleSets  map[string]RuleSet // scope -> RuleSet
 	configDir string
+	targets   map[string]bool // cached set of all rule .To values
 }
 
 // NewRules creates a new Rules instance.
@@ -47,6 +48,7 @@ func NewRules(configDir string) *Rules {
 	}
 	r.initBuiltinRules()
 	r.loadUserRules()
+	r.rebuildTargets()
 	return r
 }
 
@@ -102,6 +104,7 @@ func (r *Rules) AddUserRule(rule Rule) error {
 
 	rule.Enable = true
 	r.user[rule.From] = rule
+	r.rebuildTargets()
 	return r.saveUserRules()
 }
 
@@ -114,6 +117,7 @@ func (r *Rules) RemoveUserRule(from string) error {
 		return ErrRuleNotFound
 	}
 	delete(r.user, from)
+	r.rebuildTargets()
 	return r.saveUserRules()
 }
 
@@ -176,6 +180,7 @@ func (r *Rules) EnableRuleSet(scope string, enable bool) error {
 		}
 	}
 
+	r.rebuildTargets()
 	return nil
 }
 
@@ -189,6 +194,27 @@ func (r *Rules) GetRuleSets() []RuleSet {
 		sets = append(sets, rs)
 	}
 	return sets
+}
+
+// IsTarget reports whether cmd is the correction target (.To) of any active rule.
+func (r *Rules) IsTarget(cmd string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.targets[cmd]
+}
+
+func (r *Rules) rebuildTargets() {
+	r.targets = make(map[string]bool, len(r.builtin)+len(r.user))
+	for _, rule := range r.builtin {
+		if rule.Enable {
+			r.targets[rule.To] = true
+		}
+	}
+	for _, rule := range r.user {
+		if rule.Enable {
+			r.targets[rule.To] = true
+		}
+	}
 }
 
 func (r *Rules) initBuiltinRules() {

@@ -257,7 +257,6 @@ func (e *Engine) matchCommandTreeChild(token string, node *commands.CommandTreeN
 
 func newCommandTreeTokenCandidate(original, candidate string, node *commands.CommandTreeNode, cfg distanceMatchConfig, keyboard KeyboardWeights) (commandTreeTokenCandidate, bool) {
 	distance := Distance(original, candidate, keyboard)
-	similarity := Similarity(original, candidate, keyboard)
 	if !isGoodCommandTreeTokenMatch(original, candidate, distance, cfg, keyboard) {
 		return commandTreeTokenCandidate{}, false
 	}
@@ -266,7 +265,7 @@ func newCommandTreeTokenCandidate(original, candidate string, node *commands.Com
 		token:       candidate,
 		node:        node,
 		distance:    distance,
-		similarity:  similarity,
+		similarity:  SimilarityFromDistance(len(original), len(candidate), distance),
 		lengthDelta: abs(len([]rune(original)) - len([]rune(candidate))),
 	}, true
 }
