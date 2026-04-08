@@ -34,7 +34,14 @@ function Parse-Arguments {
         Help       = $false
     }
 
-    $argsList = @($Arguments)
+    $argsList = @()
+    if ($null -ne $Arguments) {
+        foreach ($item in $Arguments) {
+            if ($null -ne $item) {
+                $argsList += $item
+            }
+        }
+    }
     for ($i = 0; $i -lt $argsList.Count; $i++) {
         $current = $argsList[$i]
         switch ($current) {
