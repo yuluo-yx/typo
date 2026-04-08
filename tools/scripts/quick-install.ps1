@@ -305,8 +305,8 @@ function Write-NextSteps {
     Write-Host '  typo doctor'
     Write-Host ''
     Write-Host 'To enable typo on every PowerShell startup, add the following to $PROFILE.CurrentUserCurrentHost:'
-    Write-Host "  if (!(Test-Path -Path `\$PROFILE.CurrentUserCurrentHost)) { New-Item -ItemType File -Path `\$PROFILE.CurrentUserCurrentHost -Force | Out-Null }"
-    Write-Host "  Add-Content -Path `\$PROFILE.CurrentUserCurrentHost -Value 'Invoke-Expression (& typo init powershell | Out-String)'"
+    Write-Host '  if (!(Test-Path -Path $PROFILE.CurrentUserCurrentHost)) { New-Item -ItemType File -Path $PROFILE.CurrentUserCurrentHost -Force | Out-Null }'
+    Write-Host '  Add-Content -Path $PROFILE.CurrentUserCurrentHost -Value ''Invoke-Expression (& typo init powershell | Out-String)'''
     Write-Host ''
     Write-Host 'If you open a new PowerShell window later, typo will already be on PATH.'
 }

@@ -153,14 +153,21 @@ func TestWindowsQuickInstallInstallsLatestRelease(t *testing.T) {
 		t.Fatalf("installed binary content mismatch: got=%q want=%q", data, binaryContent)
 	}
 
-	if !strings.Contains(result.stdout, "Installed typo to "+installedBinary) {
-		t.Fatalf("expected install path in stdout, got: %q", result.stdout)
+	installedLine := firstLineWithPrefix(result.stdout, "Installed typo to ")
+	if installedLine == "" {
+		t.Fatalf("expected install line in stdout, got: %q", result.stdout)
+	}
+	if !equalFoldPath(strings.TrimPrefix(installedLine, "Installed typo to "), installedBinary) {
+		t.Fatalf("unexpected installed path in stdout: got=%q want=%q", installedLine, installedBinary)
 	}
 	if !strings.Contains(result.stdout, "Invoke-Expression (& typo init powershell | Out-String)") {
 		t.Fatalf("expected PowerShell init hint in stdout, got: %q", result.stdout)
 	}
 	if !strings.Contains(result.stdout, "typo doctor") {
 		t.Fatalf("expected doctor hint in stdout, got: %q", result.stdout)
+	}
+	if !strings.Contains(result.stdout, "$PROFILE.CurrentUserCurrentHost") {
+		t.Fatalf("expected profile hint in stdout, got: %q", result.stdout)
 	}
 
 	mu.Lock()
@@ -236,4 +243,19 @@ func containsRequest(requests []string, target string) bool {
 	}
 
 	return false
+}
+
+func firstLineWithPrefix(text, prefix string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+
+	return ""
+}
+
+func equalFoldPath(left, right string) bool {
+	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
 }
