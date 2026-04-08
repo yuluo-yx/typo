@@ -32,7 +32,7 @@
 
 Coming soon.
 
-### 或通过脚本安装
+### macOS / Linux 通过脚本安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
@@ -56,6 +56,14 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 说明：安装脚本当前支持 macOS 和 Linux。
 它会通过 HTTPS 下载所选 Release 二进制，但当前不会自动校验 checksum。
 
+### Windows PowerShell 7+ 快速安装
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/quick-install.ps1 | iex
+```
+
+Windows 快速安装脚本会下载最新 Release 的二进制，使用 `checksums.txt` 做校验，将 `typo.exe` 安装到 `%LOCALAPPDATA%\Programs\typo\bin`，然后输出后续 PowerShell 集成步骤。
+
 ### 校验 Release 二进制
 
 如果你是从 GitHub Release 页面手动下载二进制，请同时下载同一版本里的 `checksums.txt`，并在安装前先校验文件完整性。
@@ -76,6 +84,37 @@ shasum -a 256 -c typo-darwin-arm64.checksums
 ```
 
 请将命令里的文件名替换成你实际下载的产物名。校验成功时会输出 `OK`。
+
+## Windows 支持说明
+
+Typo 同时支持 Windows 原生 PowerShell 和 WSL：
+
+- 原生 Windows：通过 PowerShell 7+ 与 `PSReadLine` 支持。
+- WSL：通过现有 Linux 安装路径与 shell 集成方式支持。
+
+原生 PowerShell 的推荐步骤：
+
+1. 使用上面的 quick-install 命令安装。
+2. 运行 `Invoke-Expression (& typo init powershell | Out-String)`。
+3. 运行 `typo doctor`。
+
+WSL 的推荐步骤：
+
+1. 在 WSL 内使用 Linux 安装脚本安装 typo。
+2. 在 WSL 内运行 `eval "$(typo init zsh)"` 或 `eval "$(typo init bash)"`。
+3. 在 WSL 内运行 `typo doctor`。
+
+`typo doctor` 的预期表现：
+
+- 在原生 PowerShell 中，它应显示 `shell: powershell`，并在 shell integration 提示里显示 `$PROFILE.CurrentUserCurrentHost`。
+- 在 WSL 中，它应显示你的 Linux shell，通常是 `bash` 或 `zsh`，并输出对应的 `~/.bashrc` 或 `~/.zshrc` 提示。
+
+当前 Windows 限制：
+
+- PowerShell 集成依赖 PowerShell 7+ 和 `PSReadLine`。
+- 当前 PowerShell 集成对 native command 的 `stderr` 辅助纠错最稳定。
+- cmdlet 的 error stream 捕获仍可能受 PowerShell host 影响。
+- `tools/scripts/install.sh` 用于 macOS、Linux 和 WSL；原生 Windows 使用 `quick-install.ps1`。
 
 ### Shell 集成
 

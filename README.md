@@ -30,7 +30,7 @@ For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is
 
 Coming soon.
 
-### Or via script
+### macOS / Linux via script
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
@@ -54,6 +54,14 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 Note: The install script currently supports macOS and Linux.
 It downloads the selected release binary over HTTPS, but it does not verify checksums automatically.
 
+### Windows PowerShell 7+ via quick install
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/quick-install.ps1 | iex
+```
+
+The Windows quick-install script downloads the latest Release binary, verifies it against `checksums.txt`, installs `typo.exe` into `%LOCALAPPDATA%\Programs\typo\bin`, and prints the next PowerShell integration steps.
+
 ### Verify a Release Binary
 
 If you download a binary manually from a GitHub Release, download `checksums.txt` from the same release and verify the file before installing it.
@@ -74,6 +82,37 @@ shasum -a 256 -c typo-darwin-arm64.checksums
 ```
 
 Replace the filename in the command with the asset you downloaded. A successful verification prints `OK`.
+
+## Windows Support
+
+Typo supports both native Windows PowerShell and WSL:
+
+- Native Windows: Supported through PowerShell 7+ with `PSReadLine`.
+- WSL: Supported through the existing Linux install path and shell integration flow.
+
+For native PowerShell:
+
+1. Install typo with the quick-install command above.
+2. Run `Invoke-Expression (& typo init powershell | Out-String)`.
+3. Run `typo doctor`.
+
+For WSL:
+
+1. Install typo inside WSL with the Linux script.
+2. Run `eval "$(typo init zsh)"` or `eval "$(typo init bash)"` inside WSL.
+3. Run `typo doctor` inside WSL.
+
+What `typo doctor` should report:
+
+- In native PowerShell, it should report `shell: powershell` and show `$PROFILE.CurrentUserCurrentHost` in its shell integration hint.
+- In WSL, it should report your Linux shell, usually `bash` or `zsh`, and print the matching `~/.bashrc` or `~/.zshrc` hint.
+
+Known Windows limitations:
+
+- PowerShell integration requires PowerShell 7+ and `PSReadLine`.
+- The current PowerShell integration reliably uses `stderr` assistance for native commands.
+- Cmdlet error-stream capture can still vary by PowerShell host.
+- `tools/scripts/install.sh` is for macOS, Linux, and WSL. Native Windows uses `quick-install.ps1`.
 
 ### Shell Integration
 
