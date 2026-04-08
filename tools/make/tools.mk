@@ -2,9 +2,9 @@
 
 # check and install tools, include GHA and local env.
 
-.PHONY: install
-install: ## Install tools
-install: install-golangcilint install-markdownlint install-codespell
+.PHONY: install-tools
+install-tools: ## Install tools
+install-tools: install-golangcilint install-markdownlint install-codespell
 
 .PHONY: install-golangcilint
 install-golangcilint: ## Install golangci-lint
