@@ -54,6 +54,28 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 ```
 
 说明：安装脚本当前支持 macOS 和 Linux。
+它会通过 HTTPS 下载所选 Release 二进制，但当前不会自动校验 checksum。
+
+### 校验 Release 二进制
+
+如果你是从 GitHub Release 页面手动下载二进制，请同时下载同一版本里的 `checksums.txt`，并在安装前先校验文件完整性。
+请在“二进制文件和 `checksums.txt` 位于同一目录”时执行下面的命令。
+
+Linux 示例：
+
+```bash
+grep ' typo-linux-amd64$' checksums.txt > typo-linux-amd64.checksums
+sha256sum -c typo-linux-amd64.checksums
+```
+
+macOS 示例：
+
+```bash
+grep ' typo-darwin-arm64$' checksums.txt > typo-darwin-arm64.checksums
+shasum -a 256 -c typo-darwin-arm64.checksums
+```
+
+请将命令里的文件名替换成你实际下载的产物名。校验成功时会输出 `OK`。
 
 ### Shell 集成
 
@@ -213,6 +235,10 @@ make test       # 运行测试
 make coverage   # 运行覆盖率测试
 make lint       # 运行检查
 ```
+
+## Release 完整性
+
+每个 GitHub Release 都会额外发布一个 `checksums.txt`，其中包含所有平台二进制的 SHA-256 摘要。如果你是直接使用 Release 资产安装，请先对照该文件校验后再放到 `PATH` 中。
 
 ## 社区贡献者
 

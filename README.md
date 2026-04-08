@@ -52,6 +52,28 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 ```
 
 Note: The install script currently supports macOS and Linux.
+It downloads the selected release binary over HTTPS, but it does not verify checksums automatically.
+
+### Verify a Release Binary
+
+If you download a binary manually from a GitHub Release, download `checksums.txt` from the same release and verify the file before installing it.
+Run the following commands from the directory that contains both the downloaded binary and `checksums.txt`.
+
+Linux example:
+
+```bash
+grep ' typo-linux-amd64$' checksums.txt > typo-linux-amd64.checksums
+sha256sum -c typo-linux-amd64.checksums
+```
+
+macOS example:
+
+```bash
+grep ' typo-darwin-arm64$' checksums.txt > typo-darwin-arm64.checksums
+shasum -a 256 -c typo-darwin-arm64.checksums
+```
+
+Replace the filename in the command with the asset you downloaded. A successful verification prints `OK`.
 
 ### Shell Integration
 
@@ -211,6 +233,10 @@ make test       # Run tests
 make coverage   # Run tests with coverage
 make lint       # Run linter
 ```
+
+## Release Integrity
+
+Each GitHub Release publishes a `checksums.txt` file with SHA-256 hashes for all platform binaries. If you install from release assets directly, verify the downloaded binary against that file before placing it on your `PATH`.
 
 ## Community Love
 

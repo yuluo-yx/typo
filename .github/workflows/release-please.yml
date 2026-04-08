@@ -57,10 +57,23 @@ jobs:
             esac
           done
 
+      - name: Generate checksums
+        run: |
+          cd bin
+          sha256sum \
+            typo-darwin-amd64 \
+            typo-darwin-arm64 \
+            typo-linux-amd64 \
+            typo-linux-arm64 \
+            typo-windows-amd64.exe \
+            typo-windows-arm64.exe > checksums.txt
+
       - name: Upload release artifacts
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1 (pin SHA to avoid supply chain attacks)
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
-          files: bin/typo-*
+          files: |
+            bin/typo-*
+            bin/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
