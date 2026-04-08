@@ -24,6 +24,11 @@ type windowsQuickInstallEnv struct {
 	installDir   string
 }
 
+type recordedRequests struct {
+	mu       sync.Mutex
+	requests []string
+}
+
 func newWindowsQuickInstallEnv(t *testing.T) *windowsQuickInstallEnv {
 	t.Helper()
 
@@ -112,27 +117,8 @@ func TestWindowsQuickInstallInstallsLatestRelease(t *testing.T) {
 	expectedHashBytes := sha256.Sum256(binaryContent)
 	expectedHash := hex.EncodeToString(expectedHashBytes[:])
 
-	var (
-		mu       sync.Mutex
-		requests []string
-	)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		requests = append(requests, r.URL.Path+"?"+r.URL.RawQuery)
-		mu.Unlock()
-
-		switch {
-		case r.URL.Path == "/repos/yuluo-yx/typo/releases" && r.URL.RawQuery == "per_page=1":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"tag_name":"v9.9.9"}]`))
-		case r.URL.Path == "/releases/download/v9.9.9/typo-windows-amd64.exe":
-			_, _ = w.Write(binaryContent)
-		case r.URL.Path == "/releases/download/v9.9.9/checksums.txt":
-			_, _ = w.Write([]byte(expectedHash + "  typo-windows-amd64.exe\n"))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+	recorder := &recordedRequests{}
+	server := newLatestReleaseServer(recorder, binaryContent, expectedHash)
 	defer server.Close()
 
 	result := env.run(t, []string{
@@ -145,56 +131,22 @@ func TestWindowsQuickInstallInstallsLatestRelease(t *testing.T) {
 	}
 
 	installedBinary := filepath.Join(env.installDir, "typo.exe")
-	data, err := os.ReadFile(installedBinary)
-	if err != nil {
-		t.Fatalf("failed to read installed binary: %v", err)
-	}
-	if !bytes.Equal(data, binaryContent) {
-		t.Fatalf("installed binary content mismatch: got=%q want=%q", data, binaryContent)
-	}
-
-	installedLine := firstLineWithPrefix(result.stdout, "Installed typo to ")
-	if installedLine == "" {
-		t.Fatalf("expected install line in stdout, got: %q", result.stdout)
-	}
-	if !equalFoldPath(strings.TrimPrefix(installedLine, "Installed typo to "), installedBinary) {
-		t.Fatalf("unexpected installed path in stdout: got=%q want=%q", installedLine, installedBinary)
-	}
-	if !strings.Contains(result.stdout, "Invoke-Expression (& typo init powershell | Out-String)") {
-		t.Fatalf("expected PowerShell init hint in stdout, got: %q", result.stdout)
-	}
-	if !strings.Contains(result.stdout, "typo doctor") {
-		t.Fatalf("expected doctor hint in stdout, got: %q", result.stdout)
-	}
-	if !strings.Contains(result.stdout, "$PROFILE.CurrentUserCurrentHost") {
-		t.Fatalf("expected profile hint in stdout, got: %q", result.stdout)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if !containsRequest(requests, "/repos/yuluo-yx/typo/releases?per_page=1") {
-		t.Fatalf("latest release lookup was not requested: %v", requests)
-	}
-	if !containsRequest(requests, "/releases/download/v9.9.9/typo-windows-amd64.exe?") {
-		t.Fatalf("binary download was not requested: %v", requests)
-	}
-	if !containsRequest(requests, "/releases/download/v9.9.9/checksums.txt?") {
-		t.Fatalf("checksums download was not requested: %v", requests)
-	}
+	assertInstalledBinaryMatches(t, installedBinary, binaryContent)
+	assertQuickInstallOutput(t, result.stdout, installedBinary)
+	assertRequestedPaths(t, recorder.snapshot(),
+		"/repos/yuluo-yx/typo/releases?per_page=1",
+		"/releases/download/v9.9.9/typo-windows-amd64.exe?",
+		"/releases/download/v9.9.9/checksums.txt?",
+	)
 }
 
 func TestWindowsQuickInstallFailsOnChecksumMismatch(t *testing.T) {
 	env := newWindowsQuickInstallEnv(t)
 	customInstallDir := filepath.Join(env.base, "custom-bin")
 
-	var (
-		mu       sync.Mutex
-		requests []string
-	)
+	recorder := &recordedRequests{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		requests = append(requests, r.URL.Path+"?"+r.URL.RawQuery)
-		mu.Unlock()
+		recorder.add(r.URL.Path + "?" + r.URL.RawQuery)
 
 		switch r.URL.Path {
 		case "/releases/download/v1.2.3/typo-windows-amd64.exe":
@@ -222,17 +174,14 @@ func TestWindowsQuickInstallFailsOnChecksumMismatch(t *testing.T) {
 		t.Fatalf("binary should not be installed on checksum mismatch: %v", err)
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
+	requests := recorder.snapshot()
 	if containsRequest(requests, "/repos/yuluo-yx/typo/releases?per_page=1") {
 		t.Fatalf("latest release lookup should not be requested for explicit version: %v", requests)
 	}
-	if !containsRequest(requests, "/releases/download/v1.2.3/typo-windows-amd64.exe?") {
-		t.Fatalf("binary download was not requested: %v", requests)
-	}
-	if !containsRequest(requests, "/releases/download/v1.2.3/checksums.txt?") {
-		t.Fatalf("checksums download was not requested: %v", requests)
-	}
+	assertRequestedPaths(t, requests,
+		"/releases/download/v1.2.3/typo-windows-amd64.exe?",
+		"/releases/download/v1.2.3/checksums.txt?",
+	)
 }
 
 func containsRequest(requests []string, target string) bool {
@@ -258,4 +207,88 @@ func firstLineWithPrefix(text, prefix string) string {
 
 func equalFoldPath(left, right string) bool {
 	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
+}
+
+func sameInstalledFile(left, right string) bool {
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	if leftErr == nil && rightErr == nil {
+		return os.SameFile(leftInfo, rightInfo)
+	}
+
+	return equalFoldPath(left, right)
+}
+
+func (r *recordedRequests) add(request string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.requests = append(r.requests, request)
+}
+
+func (r *recordedRequests) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.requests...)
+}
+
+func newLatestReleaseServer(recorder *recordedRequests, binaryContent []byte, expectedHash string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recorder.add(r.URL.Path + "?" + r.URL.RawQuery)
+
+		switch {
+		case r.URL.Path == "/repos/yuluo-yx/typo/releases" && r.URL.RawQuery == "per_page=1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"tag_name":"v9.9.9"}]`))
+		case r.URL.Path == "/releases/download/v9.9.9/typo-windows-amd64.exe":
+			_, _ = w.Write(binaryContent)
+		case r.URL.Path == "/releases/download/v9.9.9/checksums.txt":
+			_, _ = w.Write([]byte(expectedHash + "  typo-windows-amd64.exe\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+func assertInstalledBinaryMatches(t *testing.T, installedBinary string, want []byte) {
+	t.Helper()
+
+	data, err := os.ReadFile(installedBinary)
+	if err != nil {
+		t.Fatalf("failed to read installed binary: %v", err)
+	}
+	if !bytes.Equal(data, want) {
+		t.Fatalf("installed binary content mismatch: got=%q want=%q", data, want)
+	}
+}
+
+func assertQuickInstallOutput(t *testing.T, stdout, installedBinary string) {
+	t.Helper()
+
+	installedLine := firstLineWithPrefix(stdout, "Installed typo to ")
+	if installedLine == "" {
+		t.Fatalf("expected install line in stdout, got: %q", stdout)
+	}
+	reportedPath := strings.TrimPrefix(installedLine, "Installed typo to ")
+	if !sameInstalledFile(reportedPath, installedBinary) {
+		t.Fatalf("unexpected installed path in stdout: got=%q want=%q", installedLine, installedBinary)
+	}
+	if !strings.Contains(stdout, "Invoke-Expression (& typo init powershell | Out-String)") {
+		t.Fatalf("expected PowerShell init hint in stdout, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "typo doctor") {
+		t.Fatalf("expected doctor hint in stdout, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "$PROFILE.CurrentUserCurrentHost") {
+		t.Fatalf("expected profile hint in stdout, got: %q", stdout)
+	}
+}
+
+func assertRequestedPaths(t *testing.T, requests []string, want ...string) {
+	t.Helper()
+
+	for _, target := range want {
+		if !containsRequest(requests, target) {
+			t.Fatalf("expected request %q, got: %v", target, requests)
+		}
+	}
 }
