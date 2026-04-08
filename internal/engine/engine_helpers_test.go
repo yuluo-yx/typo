@@ -149,6 +149,78 @@ func TestEngine_CommandPriority(t *testing.T) {
 	}
 }
 
+func TestEngine_CommandTreeRootPriority(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"typo", "type"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithCommandTrees(commands.NewCommandTreeRegistry()),
+	)
+
+	if got := eng.FixCommand("typ doctro"); !got.Fixed || got.Command != "typo doctro" || got.Source != "tree" {
+		t.Fatalf("Expected command-tree root to beat shell builtin fallback, got %+v", got)
+	}
+}
+
+func TestEngine_CommandTreeFixesTypoCLI(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"typo", "type"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithCommandTrees(commands.NewCommandTreeRegistry()),
+	)
+
+	tests := []struct {
+		name      string
+		cmd       string
+		wantFixed bool
+		wantCmd   string
+	}{
+		{name: "root and subcommand typo", cmd: "typ doctro", wantFixed: true, wantCmd: "typo doctor"},
+		{name: "root transposition typo", cmd: "tpyo doctro", wantFixed: true, wantCmd: "typo doctor"},
+		{name: "nested subcommand typo", cmd: "typo hsitory lsit", wantFixed: true, wantCmd: "typo history list"},
+		{name: "config subcommand typo", cmd: "typo config gte keyboard", wantFixed: true, wantCmd: "typo config get keyboard"},
+		{name: "free-form fix payload preserved", cmd: "typo fxi gut status", wantFixed: true, wantCmd: "typo fix gut status"},
+		{name: "free-form learn payload preserved", cmd: "typo learn gti git", wantFixed: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if got.Fixed != tt.wantFixed {
+				t.Fatalf("Fix().Fixed = %v, want %v (%+v)", got.Fixed, tt.wantFixed, got)
+			}
+			if tt.wantFixed && got.Command != tt.wantCmd {
+				t.Fatalf("Fix().Command = %q, want %q", got.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_CommandTreeGuardrails(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"typo", "type"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+		WithCommandTrees(commands.NewCommandTreeRegistry()),
+	)
+
+	tests := []struct {
+		name string
+		cmd  string
+	}{
+		{name: "typo doctor stays unchanged", cmd: "typo doctor"},
+		{name: "typo alone stays unchanged", cmd: "typo"},
+		{name: "type file stays unchanged", cmd: "type file"},
+		{name: "valid builtin root is not rewritten into typo namespace", cmd: "type doctor"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := eng.Fix(tt.cmd, ""); got.Fixed {
+				t.Fatalf("Expected valid command to stay unchanged, got %+v", got)
+			}
+		})
+	}
+}
+
 func TestEngine_SystemAndBuiltinCommands_CanBeFixed(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(
@@ -722,6 +794,17 @@ func TestEngine_TryDistance_FixesMainAndSubcommand(t *testing.T) {
 
 	if got := eng.tryDistance("dcoker biuld"); !got.Fixed || got.Command != "docker build" {
 		t.Fatalf("Expected distance fix to cascade into subcommand fix, got %+v", got)
+	}
+}
+
+func TestEngine_TryDistance_PrefersAdjacentTransposition(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"type", "fgrep"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	if got := eng.tryDistance("tyep gti"); !got.Fixed || got.Command != "type gti" {
+		t.Fatalf("Expected adjacent transposition to beat unrelated fuzzy match, got %+v", got)
 	}
 }
 

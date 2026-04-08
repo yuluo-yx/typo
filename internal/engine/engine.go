@@ -37,6 +37,7 @@ type Engine struct {
 	commandsLoadOnce    sync.Once
 	commandsFullyLoad   bool
 	subcommands         *commands.SubcommandRegistry
+	commandTrees        *commands.CommandTreeRegistry
 }
 
 type distanceMatchConfig struct {
@@ -111,6 +112,11 @@ func WithCommandLoader(loader func() []string) Option {
 // WithSubcommands sets the subcommand registry.
 func WithSubcommands(s *commands.SubcommandRegistry) Option {
 	return func(e *Engine) { e.subcommands = s }
+}
+
+// WithCommandTrees sets the command tree registry.
+func WithCommandTrees(trees *commands.CommandTreeRegistry) Option {
+	return func(e *Engine) { e.commandTrees = trees }
 }
 
 // NewEngine creates a new correction engine.
@@ -221,22 +227,27 @@ func (e *Engine) fixOnePass(input parser.Context) FixResult {
 		return result
 	}
 
-	// 4. Try builtin rules
+	// 4. Try command tree fix
+	if result := e.tryCommandTreeFix(cmd); isMeaningfulFix(cmd, result) {
+		return result
+	}
+
+	// 5. Try builtin rules
 	if result := e.tryBuiltinRules(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 5. Try tool global option fix
+	// 6. Try tool global option fix
 	if result := e.tryToolOptionFix(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 6. Try subcommand fix
+	// 7. Try subcommand fix
 	if result := e.trySubcommandFix(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 7. Try edit distance
+	// 8. Try edit distance
 	if result := e.tryDistance(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
@@ -274,6 +285,13 @@ func (e *Engine) FixCommand(cmd string) FixResult {
 
 	if result := e.tryHistory(cmdWord); result.Fixed {
 		rebuilt := e.rebuildCommand(result.Command, args, "history")
+		if isMeaningfulFix(cmd, rebuilt) {
+			return rebuilt
+		}
+	}
+
+	if replacement := e.findCommandTreeRootForArgs(cmdWord, args); replacement != "" {
+		rebuilt := e.rebuildCommand(replacement, args, "tree")
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
@@ -321,6 +339,22 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 				Fixed:   true,
 				Command: line.replaceCommandWord(entry.To),
 				Source:  "history",
+			}
+			if isMeaningfulFix(cmd, result) {
+				return result
+			}
+		}
+
+		args := make([]string, 0, len(line.args)-line.commandIdx-1)
+		for i := line.commandIdx + 1; i < len(line.args); i++ {
+			args = append(args, line.args[i].Lit())
+		}
+
+		if replacement := e.findCommandTreeRootForArgs(cmdWord, args); replacement != "" {
+			result := FixResult{
+				Fixed:   true,
+				Command: line.replaceCommandWord(replacement),
+				Source:  "tree",
 			}
 			if isMeaningfulFix(cmd, result) {
 				return result
@@ -532,27 +566,24 @@ func (e *Engine) tryDistance(cmd string) FixResult {
 
 	// Check if match is good enough
 	// Threshold: distance <= 2 and similarity > 60%
-	if bestMatch != "" && bestMatch != cmdWord && bestDistance <= e.maxEditDistance {
-		similarity := Similarity(cmdWord, bestMatch, e.keyboard)
-		if similarity >= e.similarityThreshold {
-			result := FixResult{
-				Fixed:   true,
-				Command: bestMatch,
-				Source:  "distance",
-			}
-
-			// Add original args
-			if len(parts) > 1 {
-				result.Command = bestMatch + " " + strings.Join(parts[1:], " ")
-			}
-
-			// Also try to fix subcommand
-			if e.subcommands != nil {
-				result = e.fixSubcommandInResult(result)
-			}
-
-			return result
+	if bestMatch != "" && bestMatch != cmdWord && isGoodCommandDistanceMatch(cmdWord, bestMatch, bestDistance, e.distanceMatchConfig()) {
+		result := FixResult{
+			Fixed:   true,
+			Command: bestMatch,
+			Source:  "distance",
 		}
+
+		// Add original args
+		if len(parts) > 1 {
+			result.Command = bestMatch + " " + strings.Join(parts[1:], " ")
+		}
+
+		// Also try to fix subcommand
+		if e.subcommands != nil {
+			result = e.fixSubcommandInResult(result)
+		}
+
+		return result
 	}
 
 	return FixResult{Fixed: false}
@@ -572,7 +603,7 @@ func (e *Engine) tryDistanceWithShell(cmd string) (FixResult, bool) {
 		}
 
 		bestMatch, bestDistance := e.closestKnownCommand(line.commandWord())
-		if !isGoodDistanceMatch(line.commandWord(), bestMatch, bestDistance, matchCfg) {
+		if !isGoodCommandDistanceMatch(line.commandWord(), bestMatch, bestDistance, matchCfg) {
 			continue
 		}
 		if bestMatch == line.commandWord() {
@@ -973,7 +1004,7 @@ func (e *Engine) resolveShellCommandLine(line *shellCommandLine) (string, string
 func (e *Engine) findClosestCommand(cmd string) string {
 	matchCfg := e.distanceMatchConfig()
 	bestMatch, bestDistance := e.closestKnownCommand(cmd)
-	if isGoodDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) {
+	if isGoodCommandDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) {
 		return bestMatch
 	}
 	return ""
@@ -982,7 +1013,7 @@ func (e *Engine) findClosestCommand(cmd string) string {
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
 	matchCfg := e.distanceMatchConfig()
 	bestMatch, bestDistance := e.closestKnownCommandFromSlice(cmd, e.availableCommands())
-	if isGoodDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) || e.commandLoader == nil || e.commandsFullyLoad {
+	if isGoodCommandDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) || e.commandLoader == nil || e.commandsFullyLoad {
 		return bestMatch, bestDistance
 	}
 
@@ -1006,6 +1037,7 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 			distance:   Distance(cmd, known, e.keyboard),
 			similarity: Similarity(cmd, known, e.keyboard),
 			priority:   e.commandPriority(known),
+			transposed: isSingleAdjacentTransposition(cmd, known),
 		})
 	}
 
@@ -1016,6 +1048,9 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].distance != candidates[j].distance {
 			return candidates[i].distance < candidates[j].distance
+		}
+		if candidates[i].transposed != candidates[j].transposed {
+			return candidates[i].transposed
 		}
 		if candidates[i].similarity != candidates[j].similarity {
 			return candidates[i].similarity > candidates[j].similarity
@@ -1034,6 +1069,18 @@ func (e *Engine) availableCommands() []string {
 		e.refreshAvailableCommands()
 	}
 	return e.availableCmds
+}
+
+func (e *Engine) hasKnownCommand(cmd string) bool {
+	if containsString(e.availableCommands(), cmd) {
+		return true
+	}
+	if e.commandLoader == nil || e.commandsFullyLoad {
+		return false
+	}
+
+	e.loadCommands()
+	return containsString(e.availableCommands(), cmd)
 }
 
 func (e *Engine) loadCommands() {
@@ -1139,21 +1186,25 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 	bestDistance := 999
 	bestLengthDelta := 999
 	bestSimilarity := -1.0
+	bestTransposition := false
 
 	for _, known := range knownSubcommands {
 		d := Distance(subcmd, known, cfg.keyboard)
 		lengthDelta := abs(len(subcmd) - len(known))
 		similarity := Similarity(subcmd, known, cfg.keyboard)
+		transposed := isSingleAdjacentTransposition(subcmd, known)
 		if !isGoodDistanceMatch(subcmd, known, d, cfg) {
 			continue
 		}
 		if d < bestDistance ||
-			(d == bestDistance && lengthDelta < bestLengthDelta) ||
-			(d == bestDistance && lengthDelta == bestLengthDelta && similarity > bestSimilarity) {
+			(d == bestDistance && transposed && !bestTransposition) ||
+			(d == bestDistance && transposed == bestTransposition && lengthDelta < bestLengthDelta) ||
+			(d == bestDistance && transposed == bestTransposition && lengthDelta == bestLengthDelta && similarity > bestSimilarity) {
 			bestDistance = d
 			bestLengthDelta = lengthDelta
 			bestMatch = known
 			bestSimilarity = similarity
+			bestTransposition = transposed
 		}
 	}
 
@@ -1173,6 +1224,18 @@ func isGoodDistanceMatch(original, candidate string, distance int, cfg distanceM
 	}
 
 	return Similarity(original, candidate, cfg.keyboard) >= cfg.similarityThreshold
+}
+
+func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
+	if isGoodDistanceMatch(original, candidate, distance, cfg) {
+		return true
+	}
+
+	if candidate == "" || distance > cfg.maxEditDistance {
+		return false
+	}
+
+	return isSingleAdjacentTransposition(original, candidate)
 }
 
 func isMeaningfulFix(original string, result FixResult) bool {
@@ -1538,6 +1601,7 @@ type commandCandidate struct {
 	distance   int
 	similarity float64
 	priority   int
+	transposed bool
 }
 
 func (e *Engine) commandPriority(cmd string) int {
@@ -1553,6 +1617,10 @@ func (e *Engine) commandPriority(cmd string) int {
 
 	if e.subcommands != nil && e.subcommands.HasSubcommands(cmd) {
 		score += 25
+	}
+
+	if e.commandTrees != nil && e.commandTrees.HasRoot(cmd) {
+		score += 50
 	}
 
 	return score
