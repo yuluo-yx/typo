@@ -28,7 +28,7 @@ Teach Typo a personal correction pair.
 typo learn "gst" "git status"
 ```
 
-Use `learn` for day-to-day teaching. `typo learn` and `typo rules add` both add the same user rule and clear conflicting history; `learn` is the simpler user-facing command.
+Use `learn` for day-to-day teaching. `typo learn` and `typo rules add` both add the same user rule, persist it to `~/.typo/rules.json`, and clear conflicting history; `learn` is the simpler user-facing command.
 
 ## `typo config`
 
@@ -63,6 +63,11 @@ typo rules remove "gst"
 typo rules disable git
 typo rules enable docker
 ```
+
+Persistence details:
+
+- `typo rules add` and `typo rules remove` update user rules in `~/.typo/rules.json`.
+- `typo rules enable` and `typo rules disable` update builtin scope switches in `~/.typo/config.json` through `rules.<scope>.enabled`.
 
 Builtin scopes currently available through `rules.<scope>.enabled`:
 

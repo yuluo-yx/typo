@@ -28,7 +28,7 @@ typo fix "typo hsitory lsit"
 typo learn "gst" "git status"
 ```
 
-日常教学优先用 `learn`。`typo learn` 和 `typo rules add` 都会写入同一类用户规则，并清理冲突历史；`learn` 更偏“教会 typo 一个习惯”。
+日常教学优先用 `learn`。`typo learn` 和 `typo rules add` 都会写入同一类用户规则，持久化到 `~/.typo/rules.json`，并清理冲突历史；`learn` 更偏“教会 typo 一个习惯”。
 
 ## `typo config`
 
@@ -63,6 +63,11 @@ typo rules remove "gst"
 typo rules disable git
 typo rules enable docker
 ```
+
+持久化行为说明：
+
+- `typo rules add` 和 `typo rules remove` 会更新 `~/.typo/rules.json` 中的用户规则。
+- `typo rules enable` 和 `typo rules disable` 会通过 `rules.<scope>.enabled` 更新 `~/.typo/config.json` 中的内置规则开关。
 
 当前可通过 `rules.<scope>.enabled` 控制的内置作用域：
 
