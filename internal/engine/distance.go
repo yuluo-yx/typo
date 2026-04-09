@@ -6,6 +6,7 @@ import (
 
 // Distance calculates the Levenshtein distance between two strings.
 // It uses keyboard-aware weights for substitution operations.
+// Only two rows of the DP matrix are kept at a time to reduce allocations.
 func Distance(a, b string, weights KeyboardWeights) int {
 	if len(a) == 0 {
 		return len(b)
@@ -14,42 +15,34 @@ func Distance(a, b string, weights KeyboardWeights) int {
 		return len(a)
 	}
 
-	// Convert to runes for proper Unicode handling
 	runesA := []rune(a)
 	runesB := []rune(b)
 	lenA := len(runesA)
 	lenB := len(runesB)
 
-	// Create distance matrix
-	matrix := make([][]float64, lenA+1)
-	for i := range matrix {
-		matrix[i] = make([]float64, lenB+1)
-	}
+	// Allocate two rows: previous and current.
+	buf := make([]float64, 2*(lenB+1))
+	prev := buf[:lenB+1]
+	curr := buf[lenB+1:]
 
-	// Initialize first column
-	for i := 0; i <= lenA; i++ {
-		matrix[i][0] = float64(i)
-	}
-
-	// Initialize first row
 	for j := 0; j <= lenB; j++ {
-		matrix[0][j] = float64(j)
+		prev[j] = float64(j)
 	}
 
-	// Fill the matrix
 	for i := 1; i <= lenA; i++ {
+		curr[0] = float64(i)
 		for j := 1; j <= lenB; j++ {
 			cost := substitutionCost(runesA[i-1], runesB[j-1], weights)
-
-			matrix[i][j] = minFloat64(
-				matrix[i-1][j]+1.0,    // deletion
-				matrix[i][j-1]+1.0,    // insertion
-				matrix[i-1][j-1]+cost, // substitution
+			curr[j] = minFloat64(
+				prev[j]+1.0,    // deletion
+				curr[j-1]+1.0,  // insertion
+				prev[j-1]+cost, // substitution
 			)
 		}
+		prev, curr = curr, prev
 	}
 
-	return int(math.Round(matrix[lenA][lenB]))
+	return int(math.Round(prev[lenB]))
 }
 
 // substitutionCost returns the cost of substituting one character for another.
@@ -72,10 +65,17 @@ func Similarity(a, b string, weights KeyboardWeights) float64 {
 	if len(a) == 0 && len(b) == 0 {
 		return 1.0
 	}
+	return SimilarityFromDistance(len(a), len(b), Distance(a, b, weights))
+}
 
-	maxLen := float64(max(len(a), len(b)))
-	distance := Distance(a, b, weights)
-	return 1.0 - float64(distance)/maxLen
+// SimilarityFromDistance derives a 0-1 similarity ratio from a precomputed
+// edit distance, avoiding a redundant Distance() call.
+func SimilarityFromDistance(lenA, lenB, distance int) float64 {
+	maxLen := max(lenA, lenB)
+	if maxLen == 0 {
+		return 1.0
+	}
+	return 1.0 - float64(distance)/float64(maxLen)
 }
 
 func minFloat64(vals ...float64) float64 {

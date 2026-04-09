@@ -30,9 +30,10 @@ type Engine struct {
 	rules               *Rules
 	history             *History
 	parser              *parser.Registry
-	commands            []string // Loaded command set, seeded first and expanded on demand.
-	availableCmds       []string // Cached command set after disabled-command filtering.
-	availableCmdsLen    int      // `availableCmds` 对应的原始 commands 长度，用于检测直接追加后的缓存失效。
+	commands            []string            // Loaded command set, seeded first and expanded on demand.
+	availableCmds       []string            // Cached command set after disabled-command filtering.
+	availableCmdsSet    map[string]struct{} // O(1) lookup mirror of availableCmds.
+	availableCmdsLen    int                 // `availableCmds` 对应的原始 commands 长度，用于检测直接追加后的缓存失效。
 	commandLoader       func() []string
 	commandsLoadOnce    sync.Once
 	commandsFullyLoad   bool
@@ -639,7 +640,7 @@ func (e *Engine) tryToolOptionFix(cmd string) FixResult {
 	}
 
 	mainCmd := parts[0]
-	if !containsString(e.availableCommands(), mainCmd) {
+	if !e.isAvailableCommand(mainCmd) {
 		resolved := e.findClosestCommand(mainCmd)
 		if resolved == "" {
 			return FixResult{Fixed: false}
@@ -766,7 +767,7 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	mainCmd := parts[0]
 
 	// If main command is not known, try to resolve it first
-	if !containsString(e.availableCommands(), mainCmd) {
+	if !e.isAvailableCommand(mainCmd) {
 		resolved := e.findClosestCommand(mainCmd)
 		if resolved == "" {
 			return FixResult{Fixed: false}
@@ -990,7 +991,7 @@ func tokenAt(tokens []string, idx int) string {
 
 func (e *Engine) resolveShellCommandLine(line *shellCommandLine) (string, string, error) {
 	mainCmd := line.commandWord()
-	if containsString(e.availableCommands(), mainCmd) || e.isProtectedCommandWord(mainCmd) {
+	if e.isAvailableCommand(mainCmd) || e.isProtectedCommandWord(mainCmd) {
 		return mainCmd, "", nil
 	}
 
@@ -1032,10 +1033,11 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 		}
 		seen[known] = true
 
+		d := Distance(cmd, known, e.keyboard)
 		candidates = append(candidates, commandCandidate{
 			name:       known,
-			distance:   Distance(cmd, known, e.keyboard),
-			similarity: Similarity(cmd, known, e.keyboard),
+			distance:   d,
+			similarity: SimilarityFromDistance(len(cmd), len(known), d),
 			priority:   e.commandPriority(known),
 			transposed: isSingleAdjacentTransposition(cmd, known),
 		})
@@ -1071,8 +1073,14 @@ func (e *Engine) availableCommands() []string {
 	return e.availableCmds
 }
 
+func (e *Engine) isAvailableCommand(cmd string) bool {
+	e.availableCommands() // ensure cache is fresh
+	_, ok := e.availableCmdsSet[cmd]
+	return ok
+}
+
 func (e *Engine) hasKnownCommand(cmd string) bool {
-	if containsString(e.availableCommands(), cmd) {
+	if e.isAvailableCommand(cmd) {
 		return true
 	}
 	if e.commandLoader == nil || e.commandsFullyLoad {
@@ -1080,7 +1088,7 @@ func (e *Engine) hasKnownCommand(cmd string) bool {
 	}
 
 	e.loadCommands()
-	return containsString(e.availableCommands(), cmd)
+	return e.isAvailableCommand(cmd)
 }
 
 func (e *Engine) loadCommands() {
@@ -1099,6 +1107,10 @@ func (e *Engine) loadCommands() {
 
 func (e *Engine) refreshAvailableCommands() {
 	e.availableCmds = e.filterDisabledCommands(e.commands)
+	e.availableCmdsSet = make(map[string]struct{}, len(e.availableCmds))
+	for _, cmd := range e.availableCmds {
+		e.availableCmdsSet[cmd] = struct{}{}
+	}
 	e.availableCmdsLen = len(e.commands)
 }
 
@@ -1125,19 +1137,7 @@ func (e *Engine) filterDisabledCommands(commands []string) []string {
 }
 
 func (e *Engine) isProtectedCommandWord(cmd string) bool {
-	for _, rule := range e.rules.ListRules() {
-		if rule.To == cmd {
-			return true
-		}
-	}
-
-	for _, entry := range e.history.List() {
-		if entry.To == cmd {
-			return true
-		}
-	}
-
-	return false
+	return e.rules.IsTarget(cmd) || e.history.IsTarget(cmd)
 }
 
 func containsString(slice []string, s string) bool {
@@ -1190,12 +1190,12 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 
 	for _, known := range knownSubcommands {
 		d := Distance(subcmd, known, cfg.keyboard)
-		lengthDelta := abs(len(subcmd) - len(known))
-		similarity := Similarity(subcmd, known, cfg.keyboard)
-		transposed := isSingleAdjacentTransposition(subcmd, known)
 		if !isGoodDistanceMatch(subcmd, known, d, cfg) {
 			continue
 		}
+		lengthDelta := abs(len(subcmd) - len(known))
+		similarity := SimilarityFromDistance(len(subcmd), len(known), d)
+		transposed := isSingleAdjacentTransposition(subcmd, known)
 		if d < bestDistance ||
 			(d == bestDistance && transposed && !bestTransposition) ||
 			(d == bestDistance && transposed == bestTransposition && lengthDelta < bestLengthDelta) ||
@@ -1223,7 +1223,7 @@ func isGoodDistanceMatch(original, candidate string, distance int, cfg distanceM
 		return false
 	}
 
-	return Similarity(original, candidate, cfg.keyboard) >= cfg.similarityThreshold
+	return SimilarityFromDistance(len(original), len(candidate), distance) >= cfg.similarityThreshold
 }
 
 func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
