@@ -4,7 +4,7 @@
 
 <p align="center">命令自动修正工具</p>
 
-[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
+[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
 
 **[English](README.md)** | 简体中文
 
@@ -26,97 +26,9 @@
 
 基于上面的原因，我用 Go 写了 Typo，它不是 TheFuck 的翻译。而是从头开始的！
 
-## 快速开始
+## Shell 集成
 
-### 通过 Homebrew 安装
-
-Coming soon.
-
-### macOS / Linux 通过脚本安装
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
-```
-
-脚本默认下载预编译的 Release 二进制。只有在从 `main` 分支源码构建时才需要 `Go`。
-
-可选参数：
-
-```bash
-# 显式安装最新 Release
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -s latest
-
-# 安装指定 Release 版本（语义化版本号）
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -s 0.2.0
-
-# 从 main 分支源码构建（需要 Go）
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -b
-```
-
-说明：安装脚本当前支持 macOS 和 Linux。
-它会通过 HTTPS 下载所选 Release 二进制，但当前不会自动校验 checksum。
-
-### Windows PowerShell 7+ 快速安装
-
-```powershell
-iwr -useb https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/quick-install.ps1 | iex
-```
-
-Windows 快速安装脚本会下载最新 Release 的二进制，使用 `checksums.txt` 做校验，将 `typo.exe` 安装到 `%LOCALAPPDATA%\Programs\typo\bin`，然后输出后续 PowerShell 集成步骤。
-
-### 校验 Release 二进制
-
-如果你是从 GitHub Release 页面手动下载二进制，请同时下载同一版本里的 `checksums.txt`，并在安装前先校验文件完整性。
-请在“二进制文件和 `checksums.txt` 位于同一目录”时执行下面的命令。
-
-Linux 示例：
-
-```bash
-grep ' typo-linux-amd64$' checksums.txt > typo-linux-amd64.checksums
-sha256sum -c typo-linux-amd64.checksums
-```
-
-macOS 示例：
-
-```bash
-grep ' typo-darwin-arm64$' checksums.txt > typo-darwin-arm64.checksums
-shasum -a 256 -c typo-darwin-arm64.checksums
-```
-
-请将命令里的文件名替换成你实际下载的产物名。校验成功时会输出 `OK`。
-
-## Windows 支持说明
-
-Typo 同时支持 Windows 原生 PowerShell 和 WSL：
-
-- 原生 Windows：通过 PowerShell 7+ 与 `PSReadLine` 支持。
-- WSL：通过现有 Linux 安装路径与 shell 集成方式支持。
-
-原生 PowerShell 的推荐步骤：
-
-1. 使用上面的 quick-install 命令安装。
-2. 运行 `Invoke-Expression (& typo init powershell | Out-String)`。
-3. 运行 `typo doctor`。
-
-WSL 的推荐步骤：
-
-1. 在 WSL 内使用 Linux 安装脚本安装 typo。
-2. 在 WSL 内运行 `eval "$(typo init zsh)"` 或 `eval "$(typo init bash)"`。
-3. 在 WSL 内运行 `typo doctor`。
-
-`typo doctor` 的预期表现：
-
-- 在原生 PowerShell 中，它应显示 `shell: powershell`，并在 shell integration 提示里显示 `$PROFILE.CurrentUserCurrentHost`。
-- 在 WSL 中，它应显示你的 Linux shell，通常是 `bash` 或 `zsh`，并输出对应的 `~/.bashrc` 或 `~/.zshrc` 提示。
-
-当前 Windows 限制：
-
-- PowerShell 集成依赖 PowerShell 7+ 和 `PSReadLine`。
-- 当前 PowerShell 集成对 native command 的 `stderr` 辅助纠错最稳定。
-- cmdlet 的 error stream 捕获仍可能受 PowerShell host 影响。
-- `tools/scripts/install.sh` 用于 macOS、Linux 和 WSL；原生 Windows 使用 `quick-install.ps1`。
-
-### Shell 集成
+安装与平台接入说明请看 [快速开始](docs/getting-started/quick-start_CN.md)。
 
 | Shell 终端 | 支持状态  |
 |-----------|----------|
@@ -125,7 +37,7 @@ WSL 的推荐步骤：
 | fish      | 🚧 计划中 |
 | PowerShell| ✅ 已支持 |
 
-### 运行
+## 运行
 
 ```bash
 # 添加到 ~/.zshrc
@@ -139,147 +51,21 @@ eval "$(typo init bash)"
 Invoke-Expression (& typo init powershell | Out-String)
 ```
 
-重启终端后，输错命令按 `Esc` `Esc` 即可修正。（不用回车也可！）
+重启终端后，先运行 `typo doctor`，然后输错命令按 `Esc` `Esc` 即可修正。
 
-PowerShell 说明：
+## 文档导航
 
-- shell 集成依赖 PowerShell 7+ 和 `PSReadLine`。
-- `typo init pwsh` 也可用，但主命令仍是 `typo init powershell`。
-- 当前首版只保证 native command 的 stderr 缓存辅助纠错；cmdlet 的 error stream 捕获会受宿主环境影响。
-
-## 命令
-
-> 更多用法请看：[use](./docs/example/use_CN.md)
-
-### `typo fix` - 修正命令
-
-```bash
-typo fix "gut stauts"                 # → git status
-typo fix "gut status && dcoker ps"    # → git status && docker ps
-typo fix "gut status | grep main"     # → git status | grep main
-typo fix "typ doctro"                 # → typo doctor
-typo fix "typo hsitory lsit"          # → typo history list
-```
-
-### `typo learn` - 学习修正规则
-
-```bash
-typo learn "gst" "git status"         # 更适合日常把常见输入习惯教给 typo
-```
-
-日常使用优先选 `learn`。`typo learn` 和 `typo rules add` 都会写入同一类用户规则，并清理冲突的历史记录；区别主要在命令意图上：`learn` 更像“教会 typo 一个习惯”，`rules add` 更像“显式管理规则表”，适合和 `rules list`、`rules remove` 搭配使用。
-
-### `typo config` - 管理全局配置
-
-```bash
-typo config list                         # 列出当前生效的全部配置
-typo config get keyboard                 # 读取单个配置项
-typo config set keyboard dvorak          # 持久化一个配置覆盖项
-typo config reset                        # 将 config.json 重置为默认值
-typo config gen                          # 生成默认配置文件
-typo config gen --force                  # 强制覆盖已有配置文件
-```
-
-### `typo rules` - 管理规则
-
-```bash
-typo rules list                    # 列出所有规则
-typo rules add "gst" "git status"  # 效果与 `learn` 相同，更偏规则管理操作
-typo rules remove "gst"            # 删除规则
-typo rules disable git             # 禁用内置 git 规则作用域
-typo rules enable docker           # 重新启用内置 docker 规则作用域
-```
-
-### `typo history` - 查看修正历史
-
-```bash
-typo history list      # 显示历史修正
-typo history clear     # 清除历史
-```
-
-### `typo doctor` - 诊断问题
-
-```bash
-typo doctor            # 诊断环境状态、当前生效配置和对应 shell 的接入提示
-```
-
-### 其他命令
-
-```bash
-typo init zsh          # 打印 shell 集成脚本
-typo init bash         # 打印 shell 集成脚本
-typo init powershell   # 打印 PowerShell 集成脚本
-typo version           # 显示版本
-typo uninstall         # 清理本地配置并提示剩余手动清理步骤
-```
-
-## 工作原理
-
-Typo 按以下优先级修正命令：
-
-1. **错误解析** - 在有 stderr 时优先提取命令自身给出的建议
-2. **用户规则** - 优先应用 learn 结果和用户自定义规则
-3. **历史记录** - 复用之前接受过的真实修正
-4. **内置规则** - 应用程序内置的常见 typo 映射
-5. **子命令修正** - 在继续回退前先尝试已知工具的子命令
-6. **编辑距离** - 基于键盘布局的模糊匹配，相邻按键替换成本更低
-
-### 支持的错误解析
-
-- **git**: `did you mean...`、无 upstream 分支等
-- **docker**: 未知命令建议
-- **npm**: 命令未找到建议
-
-`-s <file>` 表示让 `typo fix` 从文件里读取 stderr。它主要用于这类基于真实报错提示的修正场景，平时通常由 shell 集成在命令失败后自动传入。PowerShell 集成当前只对 native command 稳定提供这份 stderr 缓存。
-
-示例：
-
-```bash
-typo fix -s git.stderr "git remove -v"      # → git remote -v
-typo fix -s git.stderr "git pull"           # → git pull --set-upstream origin main
-typo fix -s docker.stderr "docker psa"      # → docker ps
-typo fix -s npm.stderr "npm isntall react"  # → npm install react
-```
-
-### 子命令智能修正
-
-自动解析工具子命令，智能修正：
-
-```bash
-typo fix "git stattus"   # → git status
-typo fix "docker biuld"  # → docker build
-```
-
-支持：git, docker, npm, yarn, kubectl, cargo, go, pip, brew, terraform, helm
-
-## 配置
-
-文件存储在 `~/.typo/` 目录：
-
-```
-~/.typo/
-├── config.json                  # 由 `typo config` 管理的全局运行时配置
-├── rules.json                   # learn 结果与用户自定义规则
-├── usage_history.json           # 已接受或直接执行修正的历史记录
-└── subcommands.json             # 子命令缓存
-```
-
-`config.json` 用来控制阈值、键盘布局、历史记录开关和规则集启停。可以先运行 `typo config gen` 生成一份完整默认配置，再按需修改。
-
-## 编译
-
-```bash
-make build      # 编译当前平台
-make build-all  # 编译所有平台
-make install    # 安装到 Go BIN
-make test       # 运行测试
-make coverage   # 运行覆盖率测试
-make lint       # 运行检查
-```
+- [快速开始](docs/getting-started/quick-start_CN.md)
+- [命令参考](docs/reference/commands_CN.md)
+- [使用示例](docs/example/use_CN.md)
+- [问题排查](docs/troubleshooting/troubleshooting_CN.md)
+- [工作原理](docs/reference/how-it-works_CN.md)
 
 ## Release 完整性
 
-每个 GitHub Release 都会额外发布一个 `checksums.txt`，其中包含所有平台二进制的 SHA-256 摘要。如果你是直接使用 Release 资产安装，请先对照该文件校验后再放到 `PATH` 中。
+每个 GitHub Release 都会额外发布一个 `checksums.txt`，其中包含所有平台二进制的 SHA-256 摘要。
+如果你是直接使用 Release 资产安装，请先对照该文件校验后再放到 `PATH` 中。
+完整校验步骤请看 [快速开始](docs/getting-started/quick-start_CN.md)。
 
 ## 社区贡献者
 

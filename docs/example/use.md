@@ -1,6 +1,6 @@
 # Typo Usage Examples
 
-English | [Simplified Chinese](use.md)
+English | [简体中文](use_CN.md)
 
 > Tips:
 > - Typo can fix commands before you press Enter. You do not need to run the command first and correct it afterward.
@@ -12,7 +12,7 @@ English | [Simplified Chinese](use.md)
 > Includes common Linux and macOS commands such as git, docker, brew, apt, and more.
 
 ```shell
-gti  <Esc, Esc>
+gti <Esc, Esc>
 
 git
 
@@ -85,14 +85,14 @@ If you wish to set tracking information for this branch you can do so with:
     git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check
 ```
 
-No problem. Press `Esc` `Esc`, and Typo can fix it automatically.
+Press `Esc` `Esc`, and Typo can add the suggested upstream automatically.
 
 ## No permission? Use `sudo`
 
 > You finish typing a command and then realize you do not have permission.
 
 ```shell
-$ mkcd test    <Enter, Esc, Esc>
+$ mkdir test <Enter, Esc, Esc>
 mkdir: test: Permission denied
 
 # fix it.
