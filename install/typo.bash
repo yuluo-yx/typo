@@ -58,7 +58,7 @@ _typo_owns_original_stderr_fd() {
     [[ -n "${TYPO_ORIG_STDERR_FD:-}" && "${TYPO_ORIG_STDERR_FD_OWNER:-}" == "$(_typo_current_shell_id)" ]]
 }
 
-# Initialize stderr cache file for this shell session.
+# Initialize stderr cache file and FIFO for this shell session.
 _typo_init_stderr_cache() {
     local tmp_dir="${TMPDIR:-/tmp}"
     local shell_id
@@ -72,6 +72,15 @@ _typo_init_stderr_cache() {
     fi
 
     if _typo_owns_stderr_cache && [[ -f "$TYPO_STDERR_CACHE" && -w "$TYPO_STDERR_CACHE" ]]; then
+        # Cache already exists, but we still need to ensure FIFO exists
+        if [[ -z "${_TYPO_STDERR_FIFO:-}" ]]; then
+            _TYPO_STDERR_FIFO="$tmp_dir/typo-fifo-$$.fifo"
+            rm -f "$_TYPO_STDERR_FIFO"
+            if ! mkfifo "$_TYPO_STDERR_FIFO"; then
+                echo "typo debug: mkfifo $_TYPO_STDERR_FIFO failed (cache exists)" >&2
+                unset _TYPO_STDERR_FIFO
+            fi
+        fi
         return 0
     fi
 
@@ -91,6 +100,18 @@ _typo_init_stderr_cache() {
 
     TYPO_STDERR_CACHE="$stderr_cache"
     TYPO_STDERR_CACHE_OWNER="$shell_id"
+
+    # Create a named pipe (FIFO) for reliable stderr capture in bash 4.x
+    # This avoids the process substitution race condition issue
+    if [[ -z "${_TYPO_STDERR_FIFO:-}" ]]; then
+        _TYPO_STDERR_FIFO="$tmp_dir/typo-fifo-$$.fifo"
+        # Remove any existing file with the same name (could be leftover or regular file)
+        rm -f "$_TYPO_STDERR_FIFO"
+        if ! mkfifo "$_TYPO_STDERR_FIFO"; then
+            echo "typo debug: mkfifo $_TYPO_STDERR_FIFO failed" >&2
+            unset _TYPO_STDERR_FIFO
+        fi
+    fi
 }
 
 # Remove stale caches older than one day.
@@ -132,14 +153,41 @@ _typo_preexec() {
     _typo_init_stderr_cache || return
     _typo_save_original_stderr
     : > "$TYPO_STDERR_CACHE"
-    exec 2> >(tee "$TYPO_STDERR_CACHE" >&3)
+    # Use named pipe (FIFO) for reliable stderr capture in bash 4.x.
+    # Process substitution (>(...)) in bash 4.x has a known issue where the shell
+    # waits for the tee process to complete before showing the next prompt.
+    #
+    # Our approach: use a named pipe with carefully ordered operations:
+    # 1. Start tee reading from FIFO (it will block until FIFO is opened for write)
+    # 2. Redirect stderr to FIFO (this unblocks tee)
+    # 3. In precmd, close stderr->FIFO (tee gets EOF) and wait for tee to finish
+    if [[ -n "${_TYPO_STDERR_FIFO:-}" && -p "${_TYPO_STDERR_FIFO:-}" ]]; then
+        # Start tee in background, reading from FIFO
+        tee "$TYPO_STDERR_CACHE" >&3 < "$_TYPO_STDERR_FIFO" &
+        _TYPO_TEE_PID=$!
+               # Now redirect stderr to the FIFO (this unblocks tee)
+        exec 2> "$_TYPO_STDERR_FIFO"
+    else
+        # Fallback: direct redirect to cache file (no real-time stderr display)
+        exec 2> "$TYPO_STDERR_CACHE"
+    fi
 }
 
 # Called from PROMPT_COMMAND; capture previous command status and restore stderr.
 _typo_precmd() {
     local status=$?
     TYPO_LAST_EXIT_CODE=$status
+
+    # First restore stderr to original (closes write end of FIFO)
+    # This sends EOF to tee, allowing it to terminate
     _typo_restore_stderr
+
+    # Wait for tee process to finish writing all stderr output
+    if [[ -n "${_TYPO_TEE_PID:-}" ]]; then
+        wait "$_TYPO_TEE_PID" 2>/dev/null
+        unset _TYPO_TEE_PID
+    fi
+
     TYPO_READY_FOR_PREEXEC=1
 }
 
@@ -157,6 +205,12 @@ _typo_bashexit() {
     fi
     unset TYPO_STDERR_CACHE
     unset TYPO_STDERR_CACHE_OWNER
+
+    # Clean up the named pipe
+    if [[ -n "${_TYPO_STDERR_FIFO:-}" && -p "${_TYPO_STDERR_FIFO:-}" ]]; then
+        rm -f -- "$_TYPO_STDERR_FIFO" 2>/dev/null
+    fi
+    unset _TYPO_STDERR_FIFO
 }
 
 _typo_debug_trap() {
@@ -223,17 +277,27 @@ _typo_install_exit_hook() {
     fi
 }
 
-# Esc+Esc to fix command.
-# Direct bind -x for \e\e is unreliable because readline treats \e as the
-# meta-prefix in emacs mode, causing ambiguity with \e\e[C / \e\e[D and
-# the built-in "complete" fallback. Work around this with macro indirection:
-# \e\e fires a macro that types an internal sequence, which is bound to the
-# real handler via bind -x. The internal sequence uses \C-x\C-_ (Ctrl+X
-# Ctrl+Underscore) which is otherwise unused and unlikely to be typed.
-bind -r '\e\e[C' 2>/dev/null
-bind -r '\e\e[D' 2>/dev/null
-bind -x '"\C-x\C-_":_typo_fix_command' 2>/dev/null
-bind '"\e\e":"\C-x\C-_"' 2>/dev/null
+_typo_install_fix_binding() {
+    local bash_major="${BASH_VERSINFO[0]:-0}"
+
+    bind -r '\e\e' 2>/dev/null
+    bind -r '\e\e[C' 2>/dev/null
+    bind -r '\e\e[D' 2>/dev/null
+    bind -r '\C-x\C-_' 2>/dev/null
+
+    if (( bash_major >= 5 )); then
+        # Bash 5.x handles a direct Esc+Esc binding more reliably and avoids
+        # the macro indirection path leaking `_typo_fix_command` into execution.
+        bind -x '"\e\e":"_typo_fix_command"' 2>/dev/null
+    else
+        # Bash 4.x is less reliable with a direct \e\e binding because readline
+        # treats \e as the meta prefix. Keep the macro indirection there and
+        # shorten the timeout so the second Esc is captured promptly.
+        bind 'set keyseq-timeout 50' 2>/dev/null
+        bind -x '"\C-x\C-_":"_typo_fix_command"' 2>/dev/null
+        bind '"\e\e":"\C-x\C-_"' 2>/dev/null
+    fi
+}
 
 _typo_init_stderr_cache
 _typo_save_original_stderr
@@ -241,6 +305,7 @@ _typo_cleanup_stale_caches
 _typo_install_precmd_hook
 _typo_install_debug_hook
 _typo_install_exit_hook
+_typo_install_fix_binding
 
 # Mark shell integration as loaded.
 export TYPO_SHELL_INTEGRATION=1
