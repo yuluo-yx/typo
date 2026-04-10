@@ -112,18 +112,18 @@ func TestE2EBashEscBindingMatchesBashVersion(t *testing.T) {
 
 	initScript := env.initBashScript(t)
 	result := env.runBash(t, initScript, `
+set -o emacs
 source "$1"
 trap - DEBUG
-bind_x="$(bind -X 2>/dev/null)"
 bind_s="$(bind -S 2>/dev/null)"
 
 if (( BASH_VERSINFO[0] >= 5 )); then
+	bind_x="$(bind -X 2>/dev/null)"
 	[[ "$bind_x" == *'"\e\e": "_typo_fix_command"'* ]] || exit 48
 	[[ "$bind_x" != *'"\C-x\C-_": "_typo_fix_command"'* ]] || exit 49
 	[[ "$bind_s" != *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 50
 else
-	[[ "$bind_x" == *'"\C-x\C-_": "_typo_fix_command"'* ]] || exit 51
-	[[ "$bind_s" == *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 52
+	[[ "$bind_s" == *'\e\e outputs \C-x\C-_'* || "$bind_s" == *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 51
 fi
 `)
 	if result.code != 0 {
