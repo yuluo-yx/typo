@@ -28,7 +28,9 @@ typo fix "typo hsitory lsit"
 typo learn "gst" "git status"
 ```
 
-日常教学优先用 `learn`。`typo learn` 和 `typo rules add` 都会写入同一类用户规则，持久化到 `~/.typo/rules.json`，并清理冲突历史；`learn` 更偏“教会 typo 一个习惯”。
+日常添加规则优先用 `learn`。`typo learn` 和 `typo rules add` 都会写入同一类用户规则，持久化到 `~/.typo/rules.json`，并清理冲突历史；`learn` 更偏“教会 typo 一个习惯”。
+
+当最短路径匹配难以推断特别离谱的拼写错误时，`learn` 也可以作为最后一道兜底，例如教会 `gitsss` -> `git`。它同样适合学习个人 alias。比如你的 shell 里有 `alias k=kubectl`，就可以教 Typo 识别 `k` 等价于 `kubectl`。
 
 ## `typo config`
 

@@ -30,6 +30,8 @@ typo learn "gst" "git status"
 
 Use `learn` for day-to-day teaching. `typo learn` and `typo rules add` both add the same user rule, persist it to `~/.typo/rules.json`, and clear conflicting history; `learn` is the simpler user-facing command.
 
+It is especially useful as a last-resort override for outrageous typos that the shortest-path matcher may not infer, such as teaching `gitsss` -> `git`. It can also learn personal aliases. For example, if your shell has `alias k=kubectl`, you can teach Typo that `k` should resolve to `kubectl`.
+
 ## `typo config`
 
 Manage persisted runtime settings in `~/.typo/config.json`.
