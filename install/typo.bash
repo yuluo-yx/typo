@@ -72,12 +72,22 @@ _typo_init_stderr_cache() {
     fi
 
     if _typo_owns_stderr_cache && [[ -f "$TYPO_STDERR_CACHE" && -w "$TYPO_STDERR_CACHE" ]]; then
+        # Cache already exists, but we still need to ensure FIFO exists
+        if [[ -z "${_TYPO_STDERR_FIFO:-}" ]]; then
+            _TYPO_STDERR_FIFO="$tmp_dir/typo-fifo-$$.fifo"
+            rm -f "$_TYPO_STDERR_FIFO"
+            if ! mkfifo "$_TYPO_STDERR_FIFO"; then
+                echo "typo debug: mkfifo $_TYPO_STDERR_FIFO failed (cache exists)" >&2
+                unset _TYPO_STDERR_FIFO
+            fi
+        fi
         return 0
     fi
 
     unset TYPO_STDERR_CACHE
     unset TYPO_STDERR_CACHE_OWNER
-       if command -v mktemp >/dev/null 2>&1; then
+
+    if command -v mktemp >/dev/null 2>&1; then
         stderr_cache=$(mktemp "$tmp_dir/typo-stderr-XXXXXX" 2>/dev/null)
     fi
     if [[ -z "$stderr_cache" ]]; then
@@ -95,7 +105,10 @@ _typo_init_stderr_cache() {
     # This avoids the process substitution race condition issue
     if [[ -z "${_TYPO_STDERR_FIFO:-}" ]]; then
         _TYPO_STDERR_FIFO="$tmp_dir/typo-fifo-$$.fifo"
-        if ! mkfifo "$_TYPO_STDERR_FIFO" 2>/dev/null; then
+        # Remove any existing file with the same name (could be leftover or regular file)
+        rm -f "$_TYPO_STDERR_FIFO"
+        if ! mkfifo "$_TYPO_STDERR_FIFO"; then
+            echo "typo debug: mkfifo $_TYPO_STDERR_FIFO failed" >&2
             unset _TYPO_STDERR_FIFO
         fi
     fi
@@ -140,7 +153,6 @@ _typo_preexec() {
     _typo_init_stderr_cache || return
     _typo_save_original_stderr
     : > "$TYPO_STDERR_CACHE"
-
     # Use named pipe (FIFO) for reliable stderr capture in bash 4.x.
     # Process substitution (>(...)) in bash 4.x has a known issue where the shell
     # waits for the tee process to complete before showing the next prompt.
