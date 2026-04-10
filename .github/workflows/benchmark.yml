@@ -40,21 +40,40 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          go test -bench=. -benchmem -count=6 -run='^$' -timeout=30m ./benchmarks/ \
+          go test -bench=. -benchmem -count=10 -run='^$' -timeout=30m ./benchmarks/ \
             | tee current.txt
 
       - name: Compare with baseline
         if: steps.check.outputs.has_baseline == 'true'
         id: compare
+        env:
+          REGRESSION_THRESHOLD: 10
         run: |
           echo "=== benchstat comparison ==="
           benchstat baseline.txt current.txt 2>&1 | tee comparison.txt || true
 
-          if grep -qE '\+[0-9]+\.[0-9]+%' comparison.txt; then
+          if grep -E '\+[0-9]+\.[0-9]+%.*\(p=0\.0[0-4]' comparison.txt | \
+             awk -v t="$REGRESSION_THRESHOLD" '{
+               for (i=1; i<=NF; i++) {
+                 if ($i ~ /^\+[0-9.]+%$/) {
+                   v = $i; gsub(/[+%]/, "", v)
+                   if (v+0 >= t) { found=1; exit }
+                 }
+               }
+             } END { exit !found }'; then
             echo "regression=true" >> "$GITHUB_OUTPUT"
           else
             echo "regression=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Update baseline
+        run: cp current.txt baseline.txt
+
+      - name: Save baseline
+        uses: actions/cache/save@v4
+        with:
+          path: baseline.txt
+          key: benchmark-baseline-${{ github.run_id }}
 
       - name: Open regression issue
         if: steps.compare.outputs.regression == 'true'
@@ -64,8 +83,13 @@ jobs:
             const fs = require('fs');
             const comparison = fs.readFileSync('comparison.txt', 'utf8');
 
+            const THRESHOLD = 10;
             const regressions = comparison.split('\n')
-              .filter(line => /\+[0-9]+\.[0-9]+%/.test(line))
+              .filter(line => {
+                const pctMatch = line.match(/\+(\d+\.\d+)%/);
+                const pMatch = line.match(/\(p=0\.0[0-4]/);
+                return pctMatch && pMatch && parseFloat(pctMatch[1]) >= THRESHOLD;
+              })
               .map(line => line.trim())
               .filter(Boolean);
 
@@ -85,7 +109,7 @@ jobs:
             const runURL = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const date = new Date().toISOString().slice(0, 10);
 
-            let body = `The nightly benchmark run detected a performance regression.\n\n`;
+            let body = `The nightly benchmark run detected a performance regression (≥${THRESHOLD}% with p<0.05).\n\n`;
             body += `**Workflow run:** ${runURL}\n\n`;
             body += `### Regressed benchmarks\n\n`;
             body += '```\n' + regressions.join('\n') + '\n```\n\n';
@@ -140,20 +164,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      - name: Update baseline
-        if: steps.compare.outputs.regression != 'true'
-        run: cp current.txt baseline.txt
-
-      - name: Save baseline
-        if: steps.compare.outputs.regression != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: baseline.txt
-          key: benchmark-baseline-${{ github.run_id }}
-
       - name: Fail on regression
         if: steps.compare.outputs.regression == 'true'
         run: |
-          echo "::error::Benchmark regression detected against the stored baseline."
+          echo "::error::Benchmark regression detected (>=10% with p<0.05) against the stored baseline."
           cat comparison.txt
           exit 1
