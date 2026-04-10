@@ -11,10 +11,10 @@ Thank you for your interest in contributing to Typo! This document outlines the 
 
 ## Getting Started
 
-After cloning the repository, install the pre-commit hooks:
+After cloning the repository, configure Git to use the project's hook directory:
 
 ```bash
-pre-commit install
+git config core.hooksPath .githooks
 ```
 
 This registers Git hooks that automatically run linting, formatting, spell

@@ -1,19 +1,12 @@
 #!/usr/bin/env sh
 set -eu
 
-# This project uses the pre-commit framework for Git hooks.
-# Please run `pre-commit install` to set up hooks automatically.
-# See CONTRIBUTING.md for details.
-
-echo "WARNING: You are using the legacy .githooks/pre-commit script."
-echo "Please run 'pre-commit install' to switch to the pre-commit framework."
-echo "See CONTRIBUTING.md for setup instructions."
-echo ""
+export PRE_COMMIT_COLOR=always
 
 if command -v pre-commit >/dev/null 2>&1; then
   exec pre-commit run --hook-stage pre-commit
 fi
 
 echo "pre-commit is not installed. Install it with: pip install pre-commit"
-echo "Then run: pre-commit install"
+echo "See CONTRIBUTING.md for setup instructions."
 exit 1
