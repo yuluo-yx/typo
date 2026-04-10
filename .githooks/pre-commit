@@ -1,10 +1,19 @@
 #!/usr/bin/env sh
 set -eu
 
-if ! command -v golangci-lint >/dev/null 2>&1; then
-  echo "golangci-lint not found. Install it before committing. You can run 'make install-golanglint' to install it."
-  exit 1
+# This project uses the pre-commit framework for Git hooks.
+# Please run `pre-commit install` to set up hooks automatically.
+# See CONTRIBUTING.md for details.
+
+echo "WARNING: You are using the legacy .githooks/pre-commit script."
+echo "Please run 'pre-commit install' to switch to the pre-commit framework."
+echo "See CONTRIBUTING.md for setup instructions."
+echo ""
+
+if command -v pre-commit >/dev/null 2>&1; then
+  exec pre-commit run --hook-stage pre-commit
 fi
 
-echo "Running golangci-lint before commit..."
-make lint-go
+echo "pre-commit is not installed. Install it with: pip install pre-commit"
+echo "Then run: pre-commit install"
+exit 1

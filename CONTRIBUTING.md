@@ -5,9 +5,28 @@ Thank you for your interest in contributing to Typo! This document outlines the 
 ## Prerequisites
 
 - [Go 1.25+](https://golang.org/dl/)
-- [golangci-lint v2](https://golangci-lint.run/welcome/install/)
+- [pre-commit](https://pre-commit.com/#install)
 - [Docker](https://docs.docker.com/get-docker/) (optional, for end-to-end tests)
 - [GNU Make](https://www.gnu.org/software/make/)
+
+## Getting Started
+
+After cloning the repository, install the pre-commit hooks:
+
+```bash
+pre-commit install
+```
+
+This registers Git hooks that automatically run linting, formatting, spell
+checking, and security scans before each commit. The pre-commit framework
+downloads and caches the correct version of every tool for you -- no need to
+install `golangci-lint`, `codespell`, or `markdownlint` manually.
+
+To run all hooks against the full repository at any time:
+
+```bash
+pre-commit run --all-files
+```
 
 ## Development Commands
 
