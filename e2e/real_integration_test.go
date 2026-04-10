@@ -107,6 +107,30 @@ printf "%s\n" "$READLINE_LINE"
 	}
 }
 
+func TestE2EBashEscBindingMatchesBashVersion(t *testing.T) {
+	env := newE2EEnv(t)
+
+	initScript := env.initBashScript(t)
+	result := env.runBash(t, initScript, `
+source "$1"
+trap - DEBUG
+bind_x="$(bind -X 2>/dev/null)"
+bind_s="$(bind -S 2>/dev/null)"
+
+if (( BASH_VERSINFO[0] >= 5 )); then
+	[[ "$bind_x" == *'"\e\e": "_typo_fix_command"'* ]] || exit 48
+	[[ "$bind_x" != *'"\C-x\C-_": "_typo_fix_command"'* ]] || exit 49
+	[[ "$bind_s" != *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 50
+else
+	[[ "$bind_x" == *'"\C-x\C-_": "_typo_fix_command"'* ]] || exit 51
+	[[ "$bind_s" == *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 52
+fi
+`)
+	if result.code != 0 {
+		t.Fatalf("bash esc binding selection failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
 func TestE2EZshIntegrationCapturesLiveStderr(t *testing.T) {
 	env := newE2EEnv(t)
 	env.writeBinScript(t, "git", `#!/bin/sh

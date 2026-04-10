@@ -277,21 +277,27 @@ _typo_install_exit_hook() {
     fi
 }
 
-# Esc+Esc to fix command.
-# Direct bind -x for \e\e is unreliable because readline treats \e as the
-# meta-prefix in emacs mode, causing ambiguity with \e\e[C / \e\e[D and
-# the built-in "complete" fallback. Work around this with macro indirection:
-# \e\e fires a macro that types an internal sequence, which is bound to the
-# real handler via bind -x. The internal sequence uses \C-x\C-_ (Ctrl+X
-# Ctrl+Underscore) which is otherwise unused and unlikely to be typed.
-#
-# Set a shorter keyseq-timeout to reduce Esc key response delay.
-# This helps bash 4.x respond faster to the Esc+Esc sequence.
-bind 'set keyseq-timeout 50' 2>/dev/null
-bind -r '\e\e[C' 2>/dev/null
-bind -r '\e\e[D' 2>/dev/null
-bind -x '"\C-x\C-_":_typo_fix_command' 2>/dev/null
-bind '"\e\e":"\C-x\C-_"' 2>/dev/null
+_typo_install_fix_binding() {
+    local bash_major="${BASH_VERSINFO[0]:-0}"
+
+    bind -r '\e\e' 2>/dev/null
+    bind -r '\e\e[C' 2>/dev/null
+    bind -r '\e\e[D' 2>/dev/null
+    bind -r '\C-x\C-_' 2>/dev/null
+
+    if (( bash_major >= 5 )); then
+        # Bash 5.x handles a direct Esc+Esc binding more reliably and avoids
+        # the macro indirection path leaking `_typo_fix_command` into execution.
+        bind -x '"\e\e":"_typo_fix_command"' 2>/dev/null
+    else
+        # Bash 4.x is less reliable with a direct \e\e binding because readline
+        # treats \e as the meta prefix. Keep the macro indirection there and
+        # shorten the timeout so the second Esc is captured promptly.
+        bind 'set keyseq-timeout 50' 2>/dev/null
+        bind -x '"\C-x\C-_":"_typo_fix_command"' 2>/dev/null
+        bind '"\e\e":"\C-x\C-_"' 2>/dev/null
+    fi
+}
 
 _typo_init_stderr_cache
 _typo_save_original_stderr
@@ -299,6 +305,7 @@ _typo_cleanup_stale_caches
 _typo_install_precmd_hook
 _typo_install_debug_hook
 _typo_install_exit_hook
+_typo_install_fix_binding
 
 # Mark shell integration as loaded.
 export TYPO_SHELL_INTEGRATION=1
