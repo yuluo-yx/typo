@@ -45,10 +45,11 @@ Typo 不仅能修正顶层命令，也能修正常见工具的子命令。
 
 - `git`、`docker`、`npm`、`yarn`、`kubectl`、`cargo`、`go`
 - `pip`、`brew`、`terraform`、`helm`
-- `aws`、`gcloud`、`az` 等云平台 CLI
+- `aws`、`sam`、`cdk`、`eksctl`、`gcloud`、`gsutil`、`az`、`func`、`azd`、`doctl`、`oci`、`linode-cli` 等云平台 CLI
 
 补充说明：
 
+- 常用云工具会作为内置命令候选加入，即使 PATH 发现还没执行，也能先修正顶层命令。
 - 常见工具内置了一批子命令，即使动态发现还没执行，也能先修正核心命令。
 - 动态发现到的子命令会缓存到 `~/.typo/subcommands.json`。
 - `aws`、`gcloud`、`az` 支持层级化子命令发现。

@@ -138,6 +138,17 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 		{name: "gcloud main command", command: "gclodu auth login", want: "gcloud auth login\n"},
 		{name: "gcloud nested subcommand after interleaved option with value", command: "gcloud compute --zone us-east1 isntances listt", want: "gcloud compute --zone us-east1 instances list\n"}, //nolint:misspell
 		{name: "az main command", command: "azz group list", want: "az group list\n"},
+		{name: "az transposition prefers cloud cli", command: "za group list", want: "az group list\n"},
+		{name: "aws sam cli", command: "samm build", want: "sam build\n"},
+		{name: "aws cdk cli", command: "cdkk deploy", want: "cdk deploy\n"},
+		{name: "aws eksctl cli", command: "eksctll create cluster", want: "eksctl create cluster\n"},
+		{name: "google cloud storage cli", command: "gsutill ls gs://bucket", want: "gsutil ls gs://bucket\n"},
+		{name: "azure functions cli", command: "funcc start", want: "func start\n"},
+		{name: "azure developer cli", command: "azdd up", want: "azd up\n"},
+		{name: "digitalocean cli", command: "doclt compute droplet list", want: "doctl compute droplet list\n"},
+		{name: "oracle cloud transposition prefers cloud cli", command: "oic os ns get", want: "oci os ns get\n"},
+		{name: "oracle cloud cli", command: "occi os ns get", want: "oci os ns get\n"},
+		{name: "linode cli", command: "linode-clii list", want: "linode-cli list\n"},
 	}
 
 	for _, tt := range tests {

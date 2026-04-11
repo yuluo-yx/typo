@@ -45,10 +45,11 @@ Common supported tools include:
 
 - `git`, `docker`, `npm`, `yarn`, `kubectl`, `cargo`, `go`
 - `pip`, `brew`, `terraform`, `helm`
-- Cloud CLIs such as `aws`, `gcloud`, and `az`
+- Cloud CLIs such as `aws`, `sam`, `cdk`, `eksctl`, `gcloud`, `gsutil`, `az`, `func`, `azd`, `doctl`, `oci`, and `linode-cli`
 
 Notes:
 
+- Built-in command candidates cover common cloud tools even before PATH discovery runs.
 - Built-in subcommands cover common tools even before dynamic discovery runs.
 - Typo caches discovered subcommands in `~/.typo/subcommands.json`.
 - Hierarchical subcommand discovery is supported for `aws`, `gcloud`, and `az`.

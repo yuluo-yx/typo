@@ -92,6 +92,74 @@ func TestEngine_FixWithHistory(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithHistory_DoesNotRewriteKnownSingleCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	for from, to := range map[string]string{
+		"azd":   "az",
+		"doctl": "local",
+	} {
+		if err := history.Record(from, to); err != nil {
+			t.Fatalf("Record failed: %v", err)
+		}
+	}
+
+	eng := NewEngine(
+		WithHistory(history),
+		WithCommands(commands.DiscoverCommon()),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	for _, cmd := range []string{"azd", "doctl"} {
+		t.Run(cmd, func(t *testing.T) {
+			result := eng.Fix(cmd, "")
+			if result.Fixed {
+				t.Fatalf("Expected known command %q to ignore stale history, got %+v", cmd, result)
+			}
+		})
+	}
+}
+
+func TestEngine_FixWithHistory_PrefersCommonTranspositionOverStaleHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	for from, to := range map[string]string{
+		"za":  "eza",
+		"oic": "tic",
+	} {
+		if err := history.Record(from, to); err != nil {
+			t.Fatalf("Record failed: %v", err)
+		}
+	}
+
+	commonCommands := append(commands.DiscoverCommon(), "eza", "tic")
+	eng := NewEngine(
+		WithHistory(history),
+		WithCommands(commonCommands),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	tests := []struct {
+		cmd     string
+		wantCmd string
+	}{
+		{cmd: "za", wantCmd: "az"},
+		{cmd: "oic", wantCmd: "oci"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if !result.Fixed {
+				t.Fatalf("Expected %q to be fixed", tt.cmd)
+			}
+			if result.Command != tt.wantCmd {
+				t.Fatalf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
 func TestEngine_FixWithParser(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),
@@ -1158,6 +1226,64 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			}
 			if result.Command != tt.wantCmd {
 				t.Errorf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_CloudProviderCommonCommands_CanBeFixed(t *testing.T) {
+	eng := NewEngine(
+		WithRules(NewRules(t.TempDir())),
+		WithCommands(commands.DiscoverCommon()),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{name: "aws sam cli", cmd: "samm build", wantCmd: "sam build"},
+		{name: "aws cdk cli", cmd: "cdkk deploy", wantCmd: "cdk deploy"},
+		{name: "aws eksctl cli", cmd: "eksctll create cluster", wantCmd: "eksctl create cluster"},
+		{name: "google cloud storage cli", cmd: "gsutill ls gs://bucket", wantCmd: "gsutil ls gs://bucket"},
+		{name: "azure functions cli", cmd: "funcc start", wantCmd: "func start"},
+		{name: "azure developer cli", cmd: "azdd up", wantCmd: "azd up"},
+		{name: "digitalocean cli", cmd: "doclt compute droplet list", wantCmd: "doctl compute droplet list"},
+		{name: "oracle cloud cli", cmd: "occi os ns get", wantCmd: "oci os ns get"},
+		{name: "linode cli", cmd: "linode-clii list", wantCmd: "linode-cli list"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.cmd, "")
+			if !result.Fixed {
+				t.Fatalf("Expected to fix %q, but got no fix", tt.cmd)
+			}
+			if result.Command != tt.wantCmd {
+				t.Errorf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_CloudProviderCommonCommands_DoNotRewriteValidShortCommands(t *testing.T) {
+	eng := NewEngine(
+		WithRules(NewRules(t.TempDir())),
+		WithCommands(commands.DiscoverCommon()),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	for _, cmd := range []string{
+		"cd app",
+		"az group list",
+		"sam deploy",
+		"oci os ns get",
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			result := eng.Fix(cmd, "")
+			if result.Fixed {
+				t.Fatalf("Expected valid command %q to stay unchanged, got %+v", cmd, result)
 			}
 		})
 	}
