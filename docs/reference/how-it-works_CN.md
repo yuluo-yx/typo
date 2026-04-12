@@ -117,5 +117,6 @@ make lint
 ## 相关文档
 
 - CLI 用法请看 [命令参考](commands_CN.md)。
+- v1.x 稳定性承诺请看 [稳定性契约](stability_CN.md)。
 - 安装说明请看 [快速开始](../getting-started/quick-start_CN.md)。
 - 用户视角的修正场景请看 [使用示例](../example/use_CN.md)。

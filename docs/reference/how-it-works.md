@@ -117,5 +117,6 @@ Related checks:
 ## Related docs
 
 - For CLI usage, see [Command Reference](commands.md).
+- For what stays stable across v1.x releases, see [Stability Contract](stability.md).
 - For installation, see [Quick Start](../getting-started/quick-start.md).
 - For user-facing scenarios, see [Usage Examples](../example/use.md).

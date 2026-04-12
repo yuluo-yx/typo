@@ -142,4 +142,5 @@ typo uninstall
 
 - 真实修正场景请看 [使用示例](../example/use_CN.md)。
 - 修正策略、配置文件和构建命令请看 [工作原理](how-it-works_CN.md)。
+- v1.x 稳定性承诺请看 [稳定性契约](stability_CN.md)。
 - 安装和平台接入请看 [快速开始](../getting-started/quick-start_CN.md)。

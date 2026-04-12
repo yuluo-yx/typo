@@ -61,6 +61,7 @@ Invoke-Expression (& typo init powershell | Out-String)
 - [快速开始](docs/getting-started/quick-start_CN.md)
 - [命令参考](docs/reference/commands_CN.md)
 - [使用示例](docs/example/use_CN.md)
+- [稳定性契约](docs/reference/stability_CN.md)
 - [问题排查](docs/troubleshooting/troubleshooting_CN.md)
 - [工作原理](docs/reference/how-it-works_CN.md)
 
