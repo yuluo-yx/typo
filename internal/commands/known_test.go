@@ -35,7 +35,11 @@ func TestDiscoverCommon(t *testing.T) {
 	}
 
 	for _, expected := range []string{
-		"git", "xargs", "aws", "gcloud", "az",
+		"git", "xargs",
+		"aws", "sam", "cdk", "eksctl",
+		"gcloud", "gsutil",
+		"az", "func", "azd",
+		"doctl", "oci", "linode-cli",
 		"terragrunt", "terramate", "opentofu", "tofu", "pulumi", "cdktf",
 		"crossplane", "packer", "vault", "consul", "nomad",
 	} {
@@ -49,6 +53,16 @@ func TestDiscoverCommon(t *testing.T) {
 		if !found {
 			t.Errorf("Expected %q in common commands", expected)
 		}
+	}
+}
+
+func TestDiscoverCommon_NoDuplicates(t *testing.T) {
+	seen := make(map[string]bool)
+	for _, cmd := range DiscoverCommon() {
+		if seen[cmd] {
+			t.Fatalf("Expected common command %q to appear only once", cmd)
+		}
+		seen[cmd] = true
 	}
 }
 
@@ -127,7 +141,11 @@ func TestIsCommonCommand(t *testing.T) {
 		t.Fatal("Expected docker to be a common command")
 	}
 	for _, cmd := range []string{
-		"aws", "gcloud", "az", "terraform",
+		"aws", "sam", "cdk", "eksctl",
+		"gcloud", "gsutil",
+		"az", "func", "azd",
+		"doctl", "oci", "linode-cli",
+		"terraform",
 		"terragrunt", "terramate", "opentofu", "tofu", "pulumi", "cdktf",
 		"crossplane", "packer", "vault", "consul", "nomad",
 	} {

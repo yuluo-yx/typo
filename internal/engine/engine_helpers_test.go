@@ -799,12 +799,18 @@ func TestEngine_TryDistance_FixesMainAndSubcommand(t *testing.T) {
 
 func TestEngine_TryDistance_PrefersAdjacentTransposition(t *testing.T) {
 	eng := NewEngine(
-		WithCommands([]string{"type", "fgrep"}),
+		WithCommands([]string{"type", "fgrep", "az", "eza", "oci", "tic"}),
 		WithKeyboard(NewQWERTYKeyboard()),
 	)
 
 	if got := eng.tryDistance("tyep gti"); !got.Fixed || got.Command != "type gti" {
 		t.Fatalf("Expected adjacent transposition to beat unrelated fuzzy match, got %+v", got)
+	}
+	if got := eng.tryDistance("za group list"); !got.Fixed || got.Command != "az group list" {
+		t.Fatalf("Expected az transposition to beat shorter PATH-like match, got %+v", got)
+	}
+	if got := eng.tryDistance("oic os ns get"); !got.Fixed || got.Command != "oci os ns get" {
+		t.Fatalf("Expected oci transposition to beat shorter PATH-like match, got %+v", got)
 	}
 }
 

@@ -90,7 +90,10 @@ func DiscoverCommon() []string {
 		"kubectl", "helm", "terraform", "ansible",
 		"terragrunt", "terramate", "opentofu", "tofu", "pulumi", "cdktf",
 		"crossplane", "packer", "vault", "consul", "nomad",
-		"aws", "gcloud", "az",
+		"aws", "sam", "cdk", "eksctl",
+		"gcloud", "gsutil",
+		"az", "func", "azd",
+		"doctl", "oci", "linode-cli",
 	}
 }
 

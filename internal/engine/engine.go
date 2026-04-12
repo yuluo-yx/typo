@@ -437,11 +437,15 @@ func (e *Engine) tryParser(input parser.Context) FixResult {
 
 func (e *Engine) tryHistory(cmd string) FixResult {
 	result := e.tryMatchOnCommand(cmd, "history", func(s string) (string, bool) {
-		entry, ok := e.history.Lookup(s)
-		if ok {
-			return entry.To, true
+		if e.shouldSkipHistoryLookup(s) {
+			return "", false
 		}
-		return "", false
+
+		entry, ok := e.history.Lookup(s)
+		if !ok || e.shouldSkipHistoryEntry(s, entry.To) {
+			return "", false
+		}
+		return entry.To, true
 	})
 
 	// If history fixed main command, also try to fix subcommand
@@ -450,6 +454,46 @@ func (e *Engine) tryHistory(cmd string) FixResult {
 	}
 
 	return result
+}
+
+// shouldSkipHistoryLookup keeps implicit history from rewriting a single token
+// that is already known. User rules still run earlier and remain the explicit
+// way to override a valid command.
+func (e *Engine) shouldSkipHistoryLookup(cmd string) bool {
+	parts := strings.Fields(strings.TrimSpace(cmd))
+	if len(parts) != 1 {
+		return false
+	}
+
+	return e.isAvailableCommand(parts[0]) || commands.IsShellBuiltin(parts[0])
+}
+
+// shouldSkipHistoryEntry rejects stale history when the input is a likely
+// adjacent transposition of a common command but history points somewhere else.
+func (e *Engine) shouldSkipHistoryEntry(from, to string) bool {
+	candidate := e.commonTranspositionCandidate(from)
+	return candidate != "" && candidate != to
+}
+
+// commonTranspositionCandidate finds the built-in common command that would be
+// reached by swapping one adjacent character pair in a single-word input.
+func (e *Engine) commonTranspositionCandidate(cmd string) string {
+	parts := strings.Fields(strings.TrimSpace(cmd))
+	if len(parts) != 1 {
+		return ""
+	}
+
+	cmdWord := parts[0]
+	for _, candidate := range e.availableCommands() {
+		if candidate == cmdWord || !commands.IsCommonCommand(candidate) {
+			continue
+		}
+		if isSingleAdjacentTransposition(cmdWord, candidate) {
+			return candidate
+		}
+	}
+
+	return ""
 }
 
 func (e *Engine) tryUserRules(cmd string) FixResult {
@@ -1048,11 +1092,16 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].distance != candidates[j].distance {
+		// Exact matches must stay first; otherwise, prefer adjacent
+		// transpositions over ordinary fuzzy matches from PATH.
+		if candidates[i].distance == 0 || candidates[j].distance == 0 {
 			return candidates[i].distance < candidates[j].distance
 		}
 		if candidates[i].transposed != candidates[j].transposed {
 			return candidates[i].transposed
+		}
+		if candidates[i].distance != candidates[j].distance {
+			return candidates[i].distance < candidates[j].distance
 		}
 		if candidates[i].similarity != candidates[j].similarity {
 			return candidates[i].similarity > candidates[j].similarity
