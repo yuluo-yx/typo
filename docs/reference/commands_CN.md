@@ -118,6 +118,8 @@ typo doctor
 - 二进制发现状态
 - 配置目录状态
 - shell integration 提示
+- Homebrew、curl 安装脚本、手动 Release 二进制、Windows quick install 与 `go install` 的安装方式检测
+- 常见 shell 配置错误提示，例如 fish 使用了错误的 init 命令风格
 - 通过 `go install` 安装时的 Go bin `PATH` 提示
 
 ## `typo version`

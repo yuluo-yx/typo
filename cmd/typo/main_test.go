@@ -2259,6 +2259,179 @@ func TestShellHelpersSupportFish(t *testing.T) {
 	}
 }
 
+func TestDoctorInstallMethodDetection(t *testing.T) {
+	homeDir := t.TempDir()
+	customInstallDir := filepath.Join(t.TempDir(), "custom-bin")
+	localAppData := filepath.Join(t.TempDir(), "AppData", "Local")
+
+	tests := []struct {
+		name  string
+		path  string
+		setup func(t *testing.T)
+		want  string
+	}{
+		{
+			name: "go install",
+			path: filepath.Join(homeDir, "go", "bin", "typo"),
+			setup: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("GOPATH", filepath.Join(homeDir, "go"))
+			},
+			want: "go install",
+		},
+		{
+			name: "homebrew prefix bin",
+			path: "/opt/homebrew/bin/typo",
+			setup: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("HOMEBREW_PREFIX", "/opt/homebrew")
+			},
+			want: "Homebrew",
+		},
+		{
+			name: "homebrew cellar",
+			path: "/opt/homebrew/Cellar/typo/1.0.0/bin/typo",
+			want: "Homebrew",
+		},
+		{
+			name: "curl local bin",
+			path: filepath.Join(homeDir, ".local", "bin", "typo"),
+			want: "curl/install.sh",
+		},
+		{
+			name: "curl custom install dir",
+			path: filepath.Join(customInstallDir, "typo"),
+			setup: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("TYPO_INSTALL_DIR", customInstallDir)
+			},
+			want: "curl/install.sh",
+		},
+		{
+			name: "windows quick install",
+			path: filepath.Join(localAppData, "Programs", "typo", "bin", "typo.exe"),
+			setup: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("LOCALAPPDATA", localAppData)
+			},
+			want: "Windows quick install",
+		},
+		{
+			name: "manual release",
+			path: filepath.Join(t.TempDir(), "downloads", "typo"),
+			want: "manual release",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", homeDir)
+			t.Setenv("USERPROFILE", homeDir)
+			t.Setenv("GOBIN", "")
+			t.Setenv("GOPATH", filepath.Join(t.TempDir(), "go"))
+			t.Setenv("HOMEBREW_PREFIX", "")
+			t.Setenv("TYPO_INSTALL_DIR", "")
+			t.Setenv("LOCALAPPDATA", "")
+			if tt.setup != nil {
+				tt.setup(t)
+			}
+
+			if got := detectDoctorInstallMethod(tt.path).name; got != tt.want {
+				t.Fatalf("detectDoctorInstallMethod(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDoctorReportsInstallMethodAndShellSetup(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+
+	homeDir := t.TempDir()
+	typoPath := filepath.Join(homeDir, ".local", "bin", "typo")
+	lookPath = func(file string) (string, error) {
+		if file == "typo" {
+			return typoPath, nil
+		}
+		return "", os.ErrNotExist
+	}
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("SHELL", "/bin/bash")
+	t.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	t.Setenv("GOBIN", "")
+	t.Setenv("GOPATH", filepath.Join(t.TempDir(), "go"))
+	t.Setenv("HOMEBREW_PREFIX", "")
+	t.Setenv("TYPO_INSTALL_DIR", "")
+	t.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
+	t.Setenv("PSModulePath", "")
+	t.Setenv("PSExecutionPolicyPreference", "")
+
+	os.Args = []string{"typo", "doctor"}
+	code := 0
+	output := captureStdout(t, func() {
+		code = run()
+	})
+
+	if code != 0 {
+		t.Fatalf("Expected exit code 0, got %d, output=%s", code, output)
+	}
+	if !bytes.Contains([]byte(output), []byte("install method: ✓ curl/install.sh")) {
+		t.Fatalf("Expected curl install method in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Shell config: ~/.bashrc")) {
+		t.Fatalf("Expected bash shell config in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte(`Shell init: eval "$(typo init bash)"`)) {
+		t.Fatalf("Expected bash shell init in doctor output, got: %s", output)
+	}
+}
+
+func TestDoctorReportsShellMisconfiguration(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
+
+	homeDir := t.TempDir()
+	fishConfig := filepath.Join(homeDir, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishConfig), 0755); err != nil {
+		t.Fatalf("Create fish config dir failed: %v", err)
+	}
+	if err := os.WriteFile(fishConfig, []byte(`eval "$(typo init fish)"`+"\n"), 0600); err != nil {
+		t.Fatalf("Write fish config failed: %v", err)
+	}
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("SHELL", "/opt/homebrew/bin/fish")
+	t.Setenv("TYPO_ACTIVE_SHELL", "")
+	t.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	t.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
+	t.Setenv("PSModulePath", "")
+	t.Setenv("PSExecutionPolicyPreference", "")
+
+	os.Args = []string{"typo", "doctor"}
+	code := 0
+	output := captureStdout(t, func() {
+		code = run()
+	})
+
+	if code != 1 {
+		t.Fatalf("Expected exit code 1 for shell misconfiguration, got %d, output=%s", code, output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Common shell integration misconfiguration detected")) {
+		t.Fatalf("Expected shell misconfiguration warning, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("typo init fish | source")) {
+		t.Fatalf("Expected fish setup command in warning, got: %s", output)
+	}
+}
+
 func TestDoctorWithShellIntegration(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()

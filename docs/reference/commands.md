@@ -118,6 +118,8 @@ The output includes:
 - binary discovery
 - config directory state
 - shell integration guidance
+- install method detection for Homebrew, the curl install script, manual Release binaries, Windows quick install, and `go install`
+- common shell setup misconfiguration warnings, such as fish using the wrong init command style
 - Go bin `PATH` guidance when installed through `go install`
 
 ## `typo version`
