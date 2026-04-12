@@ -139,6 +139,35 @@ func runPowerShellIntegrationScript(t *testing.T, script string, extraEnv ...str
 	return output
 }
 
+func runFishIntegrationScript(t *testing.T, script string, extraEnv ...string) []byte {
+	t.Helper()
+
+	if _, err := exec.LookPath("fish"); err != nil {
+		t.Skip("fish is not available")
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "typo.fish")
+	if err := os.WriteFile(scriptPath, []byte(fishIntegrationScript), 0600); err != nil {
+		t.Fatalf("Failed to write fish script: %v", err)
+	}
+
+	cmd := exec.Command("fish", "-c", script, scriptPath)
+	cmd.Env = append(os.Environ(),
+		"TMPDIR="+tmpDir,
+		"HOME="+tmpDir,
+		"XDG_CONFIG_HOME="+filepath.Join(tmpDir, ".config"),
+	)
+	cmd.Env = append(cmd.Env, extraEnv...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fish integration regression failed: %v\noutput:\n%s", err, output)
+	}
+
+	return output
+}
+
 func TestRun(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -202,6 +231,12 @@ func TestRun(t *testing.T) {
 			args:       []string{"typo", "init", "bash"},
 			wantCode:   0,
 			wantOutput: "bind -x",
+		},
+		{
+			name:       "init fish",
+			args:       []string{"typo", "init", "fish"},
+			wantCode:   0,
+			wantOutput: "bind escape,escape _typo_fix_command",
 		},
 		{
 			name:       "init powershell",
@@ -1672,6 +1707,29 @@ func TestPrintBashIntegrationAddsTrailingNewline(t *testing.T) {
 	}
 }
 
+func TestPrintFishIntegration(t *testing.T) {
+	output := captureStdout(t, func() {
+		printIntegrationScript("fish")
+	})
+
+	if output != fishIntegrationScript {
+		t.Error("Expected fish integration output to match embedded install script")
+	}
+	if !bytes.Contains([]byte(output), []byte("bind escape,escape _typo_fix_command")) {
+		t.Error("Expected fish integration to bind Escape,Escape")
+	}
+}
+
+func TestPrintFishIntegrationAddsTrailingNewline(t *testing.T) {
+	output := captureStdout(t, func() {
+		printScript("echo test")
+	})
+
+	if output != "echo test\n" {
+		t.Fatalf("Expected trailing newline to be appended, got %q", output)
+	}
+}
+
 func TestPrintPowerShellIntegration(t *testing.T) {
 	output := captureStdout(t, func() {
 		printIntegrationScript("powershell")
@@ -1990,6 +2048,42 @@ func TestDoctorShowsBashHintsWhenShellIsBash(t *testing.T) {
 	}
 }
 
+func TestDoctorShowsFishHintsWhenShellIsFish(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
+
+	t.Setenv("SHELL", "/opt/homebrew/bin/fish")
+	t.Setenv("TYPO_ACTIVE_SHELL", "")
+	t.Setenv("TYPO_SHELL_INTEGRATION", "")
+	t.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
+	t.Setenv("PSModulePath", "")
+	t.Setenv("PSExecutionPolicyPreference", "")
+
+	os.Args = []string{"typo", "doctor"}
+
+	output := captureStdout(t, func() {
+		code := run()
+		if code != 1 {
+			t.Fatalf("Expected exit code 1, got %d", code)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("shell: fish")) {
+		t.Fatalf("Expected fish shell in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("~/.config/fish/config.fish")) {
+		t.Fatalf("Expected fish config hint in doctor output, got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("typo init fish | source")) {
+		t.Fatalf("Expected init fish hint in doctor output, got: %s", output)
+	}
+}
+
 func TestDoctorShowsPowerShellHintsWhenShellIsPowerShell(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -2131,6 +2225,37 @@ func TestCurrentShellNameFallsBackToPowerShellEnvironment(t *testing.T) {
 
 	if got := currentShellName(); got != "powershell" {
 		t.Fatalf("currentShellName() = %q, want %q", got, "powershell")
+	}
+}
+
+func TestShellHelpersSupportFish(t *testing.T) {
+	if got := normalizeShellName(" fish "); got != "fish" {
+		t.Fatalf("normalizeShellName(fish) = %q, want fish", got)
+	}
+
+	t.Setenv("TYPO_ACTIVE_SHELL", "fish")
+	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
+	t.Setenv("PSModulePath", "")
+	t.Setenv("PSExecutionPolicyPreference", "")
+
+	if got := currentShellName(); got != "fish" {
+		t.Fatalf("currentShellName() = %q, want fish", got)
+	}
+
+	shellName, shellRC := detectShellIntegrationTarget()
+	if shellName != "fish" || shellRC != "~/.config/fish/config.fish" {
+		t.Fatalf("detectShellIntegrationTarget() = (%q, %q), want fish config", shellName, shellRC)
+	}
+
+	if got := shellInitCommand("fish"); got != "typo init fish | source" {
+		t.Fatalf("shellInitCommand(fish) = %q", got)
+	}
+	if got := shellReloadCommand("fish", "~/.config/fish/config.fish"); got != "source ~/.config/fish/config.fish" {
+		t.Fatalf("shellReloadCommand(fish) = %q", got)
+	}
+	if got := shellPathExportCommand("fish", "/tmp/typo-bin"); got != "set -gx PATH $PATH /tmp/typo-bin" {
+		t.Fatalf("shellPathExportCommand(fish) = %q", got)
 	}
 }
 
@@ -2907,6 +3032,68 @@ Write-Output "ok"
 	}
 }
 
+func TestFishIntegrationRegistersBindingStateAndFixes(t *testing.T) {
+	output := runFishIntegrationScript(t, `
+set -g TYPO_TEST_BUFFER "gti stauts && dcoker ps"
+set -g TYPO_TEST_CURSOR 0
+set -g TYPO_TEST_ARGS ""
+
+function commandline
+    switch "$argv[1]"
+        case -b
+            printf "%s\n" "$TYPO_TEST_BUFFER"
+        case -r
+            set -g TYPO_TEST_BUFFER "$argv[2]"
+        case -C
+            set -g TYPO_TEST_CURSOR "$argv[2]"
+        case -f
+            true
+    end
+end
+
+function typo
+    set -g TYPO_TEST_ARGS (string join " " -- $argv)
+    if contains -- --exit-code $argv
+        printf "%s\n" "git status"
+    else
+        printf "%s\n" "git status && docker ps"
+    end
+end
+
+function history
+    printf "%s\n" "git stauts"
+end
+
+source "$argv[1]"
+
+test "$TYPO_ACTIVE_SHELL" = fish; or exit 81
+test "$TYPO_SHELL_INTEGRATION" = 1; or exit 82
+bind | string match -q "*bind escape,escape _typo_fix_command*"; or exit 83
+
+_typo_fix_command
+test "$TYPO_TEST_BUFFER" = "git status && docker ps"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 84; end
+string match -q "*--no-history*" "$TYPO_TEST_ARGS"; or exit 85
+
+set -g TYPO_TEST_BUFFER ""
+set -gx TYPO_LAST_EXIT_CODE 1
+_typo_fix_command
+test "$TYPO_TEST_BUFFER" = "git status"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 86; end
+string match -q "*--exit-code 1*" "$TYPO_TEST_ARGS"; or exit 87
+
+_typo_preexec git stauts
+test "$TYPO_LAST_COMMAND" = "git stauts"; or exit 88
+false
+_typo_postexec
+test "$TYPO_LAST_EXIT_CODE" = 1; or exit 89
+
+printf "%s\n" "ok"
+`)
+
+	if !bytes.Contains(output, []byte("ok")) {
+		t.Fatalf("Expected fish integration smoke test output, got %q", output)
+	}
+}
+
 func TestUninstall(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -3136,6 +3323,55 @@ func TestUninstallWithBashrcHint(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("manual cleanup required in ~/.bashrc")) {
 		t.Fatalf("Expected .bashrc cleanup hint, got %q", output)
+	}
+}
+
+func TestUninstallWithFishConfigHint(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tmpDir, err := os.MkdirTemp("", "typo-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Fatalf("RemoveAll failed: %v", err)
+		}
+	}()
+
+	oldHome := os.Getenv("HOME")
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("Setenv failed: %v", err)
+	}
+
+	fishConfig := filepath.Join(tmpDir, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishConfig), 0755); err != nil {
+		t.Fatalf("Failed to create fish config dir: %v", err)
+	}
+	if err := os.WriteFile(fishConfig, []byte("typo init fish | source\n"), 0600); err != nil {
+		t.Fatalf("Failed to create fish config: %v", err)
+	}
+
+	os.Args = []string{"typo", "uninstall"}
+
+	output := captureStdout(t, func() {
+		code := run()
+		if code != 0 {
+			t.Fatalf("Expected uninstall to succeed, got %d", code)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("manual cleanup required in ~/.config/fish/config.fish")) {
+		t.Fatalf("Expected fish cleanup hint, got %q", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("typo init fish | source")) {
+		t.Fatalf("Expected fish init cleanup command, got %q", output)
 	}
 }
 

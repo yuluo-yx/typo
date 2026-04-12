@@ -62,13 +62,14 @@ Typo may currently write the following files locally:
 - `~/.typo/rules.json`: user-learned rules
 - `~/.typo/usage_history.json`: correction history, including original and corrected commands
 - `~/.typo/subcommands.json`: subcommand cache
-- `typo-stderr-*` under `/tmp` or `$TMPDIR`: temporary files used by shell integration to read the previous command's `stderr`
+- `typo-stderr-*` under `/tmp` or `$TMPDIR`: temporary files used by zsh, bash, and PowerShell shell integration to read the previous command's `stderr`
 
 Current implementation notes:
 
 - The JSON files above are currently written with `0600` permissions
 - The `~/.typo` directory is currently created with `0755` permissions
 - `typo-stderr-*` files are usually removed when the shell exits normally, but may remain after terminal crashes, forced shell termination, or abnormal system shutdown
+- Fish integration does not create `typo-stderr-*` files in its first supported release
 - There is currently no content-level redaction, secret scanning, or automatic exclusion of sensitive fields from command content or `stderr`
 
 If your command arguments, command history, or error output may contain sensitive data:

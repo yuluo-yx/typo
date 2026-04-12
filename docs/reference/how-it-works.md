@@ -25,8 +25,9 @@ Currently documented parser coverage:
 - `docker`: unknown command suggestions
 - `npm`: command-not-found suggestions
 
-Shell integration typically passes the `stderr` cache automatically through `typo fix -s <file>`.
+zsh, bash, and PowerShell integration can pass the `stderr` cache automatically through `typo fix -s <file>`.
 In PowerShell, the first supported release guarantees this flow most reliably for native commands.
+Fish integration supports current-buffer correction and empty-buffer last-command correction with exit-code context, but it does not create or pass a `typo-stderr-*` real-time `stderr` cache in its first supported release.
 
 Examples:
 

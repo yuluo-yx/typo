@@ -114,6 +114,7 @@ var builtinCommandTrees = []*CommandTree{
 			}),
 			"init": commandBranch(map[string]*CommandTreeNode{
 				"bash": commandLeaf(),
+				"fish": commandLeaf(),
 				"zsh":  commandLeaf(),
 			}),
 			"learn": commandLeaf(),

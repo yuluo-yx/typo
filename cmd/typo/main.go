@@ -33,6 +33,7 @@ var (
 
 	zshIntegrationScript        = install.ZshScript
 	bashIntegrationScript       = install.BashScript
+	fishIntegrationScript       = install.FishScript
 	powerShellIntegrationScript = install.PowerShellScript
 )
 
@@ -122,6 +123,7 @@ Usage:
   typo history clear                      Clear correction history
   typo init zsh                           Print zsh integration script
   typo init bash                          Print bash integration script
+  typo init fish                          Print fish integration script
   typo init powershell                    Print PowerShell integration script
   typo doctor                             Check configuration status
   typo uninstall                          Remove local config and show remaining cleanup steps
@@ -140,6 +142,9 @@ Zsh Integration:
 
 Bash Integration:
   After running 'eval "$(typo init bash)"', press <Esc><Esc> to fix the current command.
+
+Fish Integration:
+  Add 'typo init fish | source' to ~/.config/fish/config.fish, then press <Esc><Esc> to fix the current command.
 
 PowerShell Integration:
   Add 'Invoke-Expression (& typo init powershell)' to $PROFILE.CurrentUserCurrentHost, then press <Esc><Esc> to fix the current command.`)
@@ -461,7 +466,7 @@ func cmdHistory(args []string) int {
 
 func cmdInit(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash, powershell)")
+		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash, fish, powershell)")
 		return 1
 	}
 
@@ -471,6 +476,9 @@ func cmdInit(args []string) int {
 		return 0
 	case "bash":
 		printIntegrationScript("bash")
+		return 0
+	case "fish":
+		printIntegrationScript("fish")
 		return 0
 	case "powershell":
 		printIntegrationScript("powershell")
@@ -631,6 +639,8 @@ func checkDoctorShellIntegration(shellName, shellRC string) bool {
 	fmt.Println("  eval \"$(typo init zsh)\"")
 	fmt.Println("  # Bash (~/.bashrc)")
 	fmt.Println("  eval \"$(typo init bash)\"")
+	fmt.Println("  # Fish (~/.config/fish/config.fish)")
+	fmt.Println("  typo init fish | source")
 	fmt.Println("  # PowerShell ($PROFILE.CurrentUserCurrentHost)")
 	fmt.Println("  Invoke-Expression (& typo init powershell)")
 	fmt.Println()
@@ -698,10 +708,12 @@ func detectShellIntegrationTarget() (string, string) {
 		return "bash", "~/.bashrc"
 	case "zsh":
 		return "zsh", "~/.zshrc"
+	case "fish":
+		return "fish", "~/.config/fish/config.fish"
 	case "powershell":
 		return "powershell", "$PROFILE.CurrentUserCurrentHost"
 	default:
-		return "", "~/.zshrc or ~/.bashrc or $PROFILE.CurrentUserCurrentHost"
+		return "", "~/.zshrc or ~/.bashrc or ~/.config/fish/config.fish or $PROFILE.CurrentUserCurrentHost"
 	}
 }
 
@@ -710,7 +722,7 @@ func normalizeShellName(shell string) string {
 	shell = strings.TrimSuffix(shell, ".exe")
 
 	switch shell {
-	case "bash", "zsh":
+	case "bash", "fish", "zsh":
 		return shell
 	case "pwsh", "powershell":
 		return "powershell"
@@ -729,6 +741,8 @@ func shellInitCommand(shellName string) string {
 	switch shellName {
 	case "powershell":
 		return "Invoke-Expression (& typo init powershell)"
+	case "fish":
+		return "typo init fish | source"
 	case "bash", "zsh":
 		return fmt.Sprintf("eval \"$(typo init %s)\"", shellName)
 	default:
@@ -740,7 +754,7 @@ func shellReloadCommand(shellName, shellRC string) string {
 	switch shellName {
 	case "powershell":
 		return fmt.Sprintf(". %s", shellRC)
-	case "bash", "zsh":
+	case "bash", "fish", "zsh":
 		return fmt.Sprintf("source %s", shellRC)
 	default:
 		return ""
@@ -751,6 +765,8 @@ func shellPathExportCommand(shellName, dir string) string {
 	switch shellName {
 	case "powershell":
 		return fmt.Sprintf("$env:PATH = \"$env:PATH%c%s\"", os.PathListSeparator, dir)
+	case "fish":
+		return fmt.Sprintf("set -gx PATH $PATH %s", dir)
 	default:
 		return fmt.Sprintf("export PATH=\"$PATH:%s\"", dir)
 	}
@@ -828,18 +844,23 @@ func cmdUninstall() int {
 		}{
 			{shell: "zsh", rc: ".zshrc"},
 			{shell: "bash", rc: ".bashrc"},
+			{shell: "fish", rc: ".config/fish/config.fish"},
 		} {
 			rcPath := filepath.Join(homeDir, target.rc)
 			if _, statErr := statPath(rcPath); statErr == nil {
 				foundShellConfig = true
 				fmt.Printf("manual cleanup required in ~/%s:\n", target.rc)
 				fmt.Println()
-				fmt.Printf("    eval \"$(typo init %s)\"\n", target.shell)
+				if target.shell == "fish" {
+					fmt.Println("    typo init fish | source")
+				} else {
+					fmt.Printf("    eval \"$(typo init %s)\"\n", target.shell)
+				}
 				fmt.Println()
 			}
 		}
 		if !foundShellConfig {
-			fmt.Println("✓ no .zshrc or .bashrc found")
+			fmt.Println("✓ no .zshrc, .bashrc, or .config/fish/config.fish found")
 		}
 	}
 
@@ -870,6 +891,8 @@ func printIntegrationScript(shell string) {
 		script = zshIntegrationScript
 	case "bash":
 		script = bashIntegrationScript
+	case "fish":
+		script = fishIntegrationScript
 	case "powershell":
 		script = powerShellIntegrationScript
 	default:

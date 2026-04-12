@@ -25,8 +25,9 @@ Typo 按以下顺序修正命令：
 - `docker`：未知命令建议
 - `npm`：命令未找到建议
 
-shell 集成通常会自动通过 `typo fix -s <file>` 传入这份 `stderr` 缓存。
+zsh、bash 和 PowerShell 集成可以自动通过 `typo fix -s <file>` 传入这份 `stderr` 缓存。
 在 PowerShell 中，当前首个受支持版本对 native command 的这条链路最稳定。
+fish 集成支持当前缓冲区修正，以及空缓冲区时结合上一条历史命令和退出码进行修正；首个受支持版本不会创建或传入 `typo-stderr-*` 实时 `stderr` 缓存。
 
 示例：
 

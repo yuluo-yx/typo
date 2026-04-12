@@ -92,6 +92,7 @@ typo history clear
 ```bash
 typo init zsh
 typo init bash
+typo init fish
 typo init powershell
 ```
 
@@ -99,6 +100,7 @@ typo init powershell
 
 - `zsh`
 - `bash`
+- `fish`
 - `powershell`
 - `pwsh` 可作为别名使用，内部会归一化为 `powershell`
 
