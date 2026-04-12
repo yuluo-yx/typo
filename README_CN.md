@@ -62,6 +62,7 @@ Invoke-Expression (& typo init powershell | Out-String)
 - [命令参考](docs/reference/commands_CN.md)
 - [使用示例](docs/example/use_CN.md)
 - [问题排查](docs/troubleshooting/troubleshooting_CN.md)
+- [从 0.x 升级](docs/troubleshooting/upgrade-from-0x_CN.md)
 - [工作原理](docs/reference/how-it-works_CN.md)
 
 ## Release 完整性
