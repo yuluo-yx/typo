@@ -32,7 +32,7 @@ See [Quick Start](docs/getting-started/quick-start.md) for installation and plat
 |------------|--------|
 | zsh        | ✅ Supported |
 | bash       | ✅ Supported |
-| fish       | 🚧 Planned |
+| fish       | ✅ Supported |
 | PowerShell | ✅ Supported |
 
 ## Run
@@ -43,6 +43,9 @@ eval "$(typo init zsh)"
 
 # Or add to ~/.bashrc
 eval "$(typo init bash)"
+
+# Or add to ~/.config/fish/config.fish
+typo init fish | source
 
 # Or add to $PROFILE.CurrentUserCurrentHost
 # Tips: The Powershell version must >= 7.x. you can check by `$PSVersionTable.PSVersion`.

@@ -34,7 +34,7 @@
 |-----------|----------|
 | zsh       | ✅ 已支持 |
 | bash      | ✅ 已支持 |
-| fish      | 🚧 计划中 |
+| fish      | ✅ 已支持 |
 | PowerShell| ✅ 已支持 |
 
 ## 运行
@@ -45,6 +45,9 @@ eval "$(typo init zsh)"
 
 # 或添加到 ~/.bashrc
 eval "$(typo init bash)"
+
+# 或添加到 ~/.config/fish/config.fish
+typo init fish | source
 
 # 或添加到 $PROFILE.CurrentUserCurrentHost
 # 注意: Powershell 版本需要大于等于 7.x. 你可以通过 `$PSVersionTable.PSVersion` 检查版本.

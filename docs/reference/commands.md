@@ -92,6 +92,7 @@ Print the shell integration script for a supported shell.
 ```bash
 typo init zsh
 typo init bash
+typo init fish
 typo init powershell
 ```
 
@@ -99,6 +100,7 @@ Supported shell names:
 
 - `zsh`
 - `bash`
+- `fish`
 - `powershell`
 - `pwsh` is accepted as an alias and normalizes to `powershell`
 

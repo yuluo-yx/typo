@@ -52,7 +52,7 @@ See: https://ghostty.org/docs/help/terminfo#ssh
 
 ## 3. Jetbraines 通过 Gateway 启动的 Remote IDE 终端里绑定 esc 键无效？
 
-确认是 Jetbrains IDE 的问题。将 shell 集成脚本（`typo init zsh`、`typo init bash` 或 `typo init powershell`）中的按键改为其他键即可生效。
+确认是 Jetbrains IDE 的问题。将 shell 集成脚本（`typo init zsh`、`typo init bash`、`typo init fish` 或 `typo init powershell`）中的按键改为其他键即可生效。
 
 ```shell
 # zsh
@@ -62,6 +62,10 @@ bindkey '^T' _typo_fix_command
 # bash
 bind -x '"\e\e":_typo_fix_command'
 bind -x '"\C-t":_typo_fix_command'
+
+# fish
+bind escape,escape _typo_fix_command
+bind ctrl-t _typo_fix_command
 
 # PowerShell
 Set-PSReadLineKeyHandler -Chord Escape,Escape -ScriptBlock { __typo_FixCommand }

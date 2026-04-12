@@ -110,3 +110,61 @@ printf "%s\n" "$READLINE_LINE"
 		})
 	}
 }
+
+func TestE2EFishInventoryFlows(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initFishScript(t)
+
+	tests := []struct {
+		name   string
+		buffer string
+		want   string
+	}{
+		{
+			name:   "builtins and system commands",
+			buffer: `echp ok | gerp ok && taill -n 1 app.log`,
+			want:   "echo ok | grep ok && tail -n 1 app.log",
+		},
+		{
+			name:   "source and docker commands",
+			buffer: `sourc ~/.config/fish/config.fish && dcoker ps`,
+			want:   "source ~/.config/fish/config.fish && docker ps",
+		},
+		{
+			name:   "mixed supported tools",
+			buffer: `kubctl get pods && bre update && helmm list`,
+			want:   "kubectl get pods && brew update && helm list",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script := `
+set -g TYPO_TEST_BUFFER '` + tt.buffer + `'
+
+function commandline
+    switch "$argv[1]"
+        case -b
+            printf "%s\n" "$TYPO_TEST_BUFFER"
+        case -r
+            set -g TYPO_TEST_BUFFER "$argv[2]"
+        case -C
+            true
+        case -f
+            true
+    end
+end
+
+source "$argv[1]"
+_typo_fix_command
+test "$TYPO_TEST_BUFFER" = "` + tt.want + `"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 51; end
+printf "%s\n" "$TYPO_TEST_BUFFER"
+`
+
+			result := env.runFish(t, initScript, script)
+			if result.code != 0 || !strings.Contains(result.stdout, tt.want) {
+				t.Fatalf("fish inventory fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+			}
+		})
+	}
+}

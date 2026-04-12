@@ -247,6 +247,7 @@ func (e *e2eEnv) commandEnv(extra ...string) []string {
 		"TEMP=",
 		"SHELL=",
 		"TMPDIR=",
+		"XDG_CONFIG_HOME=",
 		"ZDOTDIR=",
 		"TYPO_SHELL_INTEGRATION=",
 		"TYPO_ACTIVE_SHELL=",
@@ -263,6 +264,7 @@ func (e *e2eEnv) commandEnv(extra ...string) []string {
 		"TMP="+e.tmpDir,
 		"TEMP="+e.tmpDir,
 		"TMPDIR="+e.tmpDir,
+		"XDG_CONFIG_HOME="+filepath.Join(e.home, ".config"),
 		"ZDOTDIR="+e.home,
 	)
 	filtered = appendWindowsHomeEnv(filtered, e.home)
@@ -364,6 +366,22 @@ func (e *e2eEnv) initBashScript(t *testing.T) string {
 	return scriptPath
 }
 
+func (e *e2eEnv) initFishScript(t *testing.T) string {
+	t.Helper()
+
+	result := e.run(t, "init", "fish")
+	if result.code != 0 {
+		t.Fatalf("failed to generate fish init script: %s", result.stderr)
+	}
+
+	scriptPath := filepath.Join(e.tmpDir, "typo-init.fish")
+	if err := os.WriteFile(scriptPath, []byte(result.stdout), 0600); err != nil {
+		t.Fatalf("failed to write fish init script: %v", err)
+	}
+
+	return scriptPath
+}
+
 func (e *e2eEnv) initPowerShellScript(t *testing.T) string {
 	t.Helper()
 
@@ -436,6 +454,40 @@ func (e *e2eEnv) runBash(t *testing.T, initScriptPath, script string) e2eResult 
 			code = exitErr.ExitCode()
 		} else {
 			t.Fatalf("failed to execute bash e2e script: %v", err)
+		}
+	}
+
+	return e2eResult{
+		stdout: stdout.String(),
+		stderr: stderr.String(),
+		code:   code,
+	}
+}
+
+func (e *e2eEnv) runFish(t *testing.T, initScriptPath, script string) e2eResult {
+	t.Helper()
+
+	fishPath, err := exec.LookPath("fish")
+	if err != nil {
+		t.Skip("fish is not available; skipping fish e2e test")
+	}
+
+	cmd := exec.Command(fishPath, "-c", script, initScriptPath)
+	cmd.Dir = e.root
+	cmd.Env = e.commandEnv("SHELL=" + fishPath)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+	code := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else {
+			t.Fatalf("failed to execute fish e2e script: %v", err)
 		}
 	}
 
@@ -564,6 +616,9 @@ func TestE2EReadmeExamples(t *testing.T) {
 
 	initBash := env.run(t, "init", "bash")
 	assertE2EStdoutContains(t, initBash, "bind -x", "unexpected init bash output")
+
+	initFish := env.run(t, "init", "fish")
+	assertE2EStdoutContains(t, initFish, "bind escape,escape", "unexpected init fish output")
 
 	initPowerShell := env.run(t, "init", "powershell")
 	assertE2EStdoutContains(t, initPowerShell, "Set-PSReadLineKeyHandler", "unexpected init powershell output")
@@ -737,6 +792,13 @@ func TestE2EUninstallWorkflow(t *testing.T) {
 	if err := os.WriteFile(bashrc, []byte("eval \"$(typo init bash)\"\n"), 0600); err != nil {
 		t.Fatalf("failed to write .bashrc: %v", err)
 	}
+	fishConfig := filepath.Join(env.home, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishConfig), 0755); err != nil {
+		t.Fatalf("failed to create fish config directory: %v", err)
+	}
+	if err := os.WriteFile(fishConfig, []byte("typo init fish | source\n"), 0600); err != nil {
+		t.Fatalf("failed to write fish config: %v", err)
+	}
 
 	uninstall := env.run(t, "uninstall")
 	if uninstall.code != 0 {
@@ -747,6 +809,7 @@ func TestE2EUninstallWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(uninstall.stdout, "eval \"$(typo init zsh)\"") ||
 		!strings.Contains(uninstall.stdout, "eval \"$(typo init bash)\"") ||
+		!strings.Contains(uninstall.stdout, "typo init fish | source") ||
 		!strings.Contains(uninstall.stdout, env.bin) {
 		t.Fatalf("uninstall output is incomplete: stdout=%q stderr=%q", uninstall.stdout, uninstall.stderr)
 	}
@@ -768,6 +831,32 @@ func TestE2EDoctorDetectsPowerShellHints(t *testing.T) {
 	}
 	if !strings.Contains(doctor.stdout, "Invoke-Expression (& typo init powershell)") {
 		t.Fatalf("expected PowerShell init hint, got: %q", doctor.stdout)
+	}
+}
+
+func TestE2EDoctorDetectsFishHints(t *testing.T) {
+	env := newE2EEnv(t)
+
+	fishPath, err := exec.LookPath("fish")
+	if err != nil {
+		t.Skip("fish is not available; skipping fish doctor e2e test")
+	}
+
+	doctor := env.runWithEnv(t, []string{
+		"SHELL=" + fishPath,
+	}, "doctor")
+
+	if doctor.code != 1 {
+		t.Fatalf("expected doctor to fail when shell integration is not loaded: stdout=%q stderr=%q code=%d", doctor.stdout, doctor.stderr, doctor.code)
+	}
+	if !strings.Contains(doctor.stdout, "shell: fish") {
+		t.Fatalf("expected fish shell in doctor output, got: %q", doctor.stdout)
+	}
+	if !strings.Contains(doctor.stdout, "~/.config/fish/config.fish") {
+		t.Fatalf("expected fish config hint, got: %q", doctor.stdout)
+	}
+	if !strings.Contains(doctor.stdout, "typo init fish | source") {
+		t.Fatalf("expected fish init hint, got: %q", doctor.stdout)
 	}
 }
 
@@ -1039,5 +1128,66 @@ printf "%s\n" "$READLINE_LINE"
 `)
 	if stderrFix.code != 0 || !strings.Contains(stderrFix.stdout, "git remote -v") {
 		t.Fatalf("bash stderr fix failed: stdout=%q stderr=%q code=%d", stderrFix.stdout, stderrFix.stderr, stderrFix.code)
+	}
+}
+
+func TestE2EFishIntegrationDailyFlow(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initFishScript(t)
+
+	bufferFix := env.runFish(t, initScript, `
+set -g TYPO_TEST_BUFFER "gti stauts && dcoker ps"
+
+function commandline
+    switch "$argv[1]"
+        case -b
+            printf "%s\n" "$TYPO_TEST_BUFFER"
+        case -r
+            set -g TYPO_TEST_BUFFER "$argv[2]"
+        case -C
+            true
+        case -f
+            true
+    end
+end
+
+source "$argv[1]"
+_typo_fix_command
+test "$TYPO_TEST_BUFFER" = "git status && docker ps"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 91; end
+test ! -e "$HOME/.typo/usage_history.json"; or exit 92
+printf "%s\n" "$TYPO_TEST_BUFFER"
+`)
+	if bufferFix.code != 0 || !strings.Contains(bufferFix.stdout, "git status && docker ps") {
+		t.Fatalf("fish buffer fix failed: stdout=%q stderr=%q code=%d", bufferFix.stdout, bufferFix.stderr, bufferFix.code)
+	}
+
+	historyFix := env.runFish(t, initScript, `
+set -g TYPO_TEST_BUFFER ""
+
+function commandline
+    switch "$argv[1]"
+        case -b
+            printf "%s\n" "$TYPO_TEST_BUFFER"
+        case -r
+            set -g TYPO_TEST_BUFFER "$argv[2]"
+        case -C
+            true
+        case -f
+            true
+    end
+end
+
+function history
+    printf "%s\n" "git stauts"
+end
+
+source "$argv[1]"
+set -gx TYPO_LAST_EXIT_CODE 1
+_typo_fix_command
+test "$TYPO_TEST_BUFFER" = "git status"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 93; end
+printf "%s\n" "$TYPO_TEST_BUFFER"
+`)
+	if historyFix.code != 0 || !strings.Contains(historyFix.stdout, "git status") {
+		t.Fatalf("fish history fix failed: stdout=%q stderr=%q code=%d", historyFix.stdout, historyFix.stderr, historyFix.code)
 	}
 }
