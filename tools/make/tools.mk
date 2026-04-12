@@ -4,7 +4,7 @@
 
 .PHONY: install-tools
 install-tools: ## Install tools
-install-tools: install-golangcilint install-markdownlint install-codespell
+install-tools: install-precommit install-golangcilint install-markdownlint install-codespell
 
 .PHONY: install-golangcilint
 install-golangcilint: ## Install golangci-lint
@@ -30,3 +30,18 @@ install-codespell: ## Install codespell tools
 	else \
 		pip3 install codespell; \
 	fi
+
+.PHONY: install-precommit
+install-precommit: ## Install pre-commit hook framework
+	@$(LOG_TARGET)
+	@if command -v pre-commit >/dev/null 2>&1; then \
+		echo "pre-commit is already installed, skipping..."; \
+	else \
+		pip3 install pre-commit; \
+	fi
+
+.PHONY: setup
+setup: ## One-time dev environment setup (installs pre-commit and configures hooks)
+setup: install-precommit
+	@git config core.hooksPath .githooks
+	@echo "Done. Pre-commit hooks are now active."
