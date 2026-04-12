@@ -666,6 +666,8 @@ func TestE2EReadmeExamples(t *testing.T) {
 
 	doctor := env.runWithEnv(t, []string{"TYPO_SHELL_INTEGRATION=1"}, "doctor")
 	assertE2EStdoutContains(t, doctor, "All checks passed", "doctor e2e failed")
+	assertE2EStdoutContains(t, doctor, "install method", "doctor should report install method")
+	assertE2EStdoutContains(t, doctor, "Shell setup:", "doctor should include shell setup guidance")
 }
 
 func TestE2ELearnHistoryWorkflow(t *testing.T) {
