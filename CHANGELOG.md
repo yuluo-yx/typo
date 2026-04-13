@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.0.0](https://github.com/yuluo-yx/typo/compare/v0.2.0...v1.0.0) (2026-04-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **docs:** Establishes the v1.x stability contract. All CLI subcommands, flags, config keys, and shell integration behaviors documented in docs/reference/stability.md are now subject to semantic versioning guarantees.
+
+### Features
+
+* **cloud:** add more cloud cli support ([#85](https://github.com/yuluo-yx/typo/issues/85)) ([2034415](https://github.com/yuluo-yx/typo/commit/2034415122bc908f6ef3d52ffa122b8537a759be))
+* **command:** add typo command fix ([#34](https://github.com/yuluo-yx/typo/issues/34)) ([dbb3d5d](https://github.com/yuluo-yx/typo/commit/dbb3d5d6aaf065e331ede192921e289a5b3a1dd4))
+* **commands:** add common IaC tools to DiscoverCommon ([#55](https://github.com/yuluo-yx/typo/issues/55)) ([0e5c9e7](https://github.com/yuluo-yx/typo/commit/0e5c9e7ac3130f21642a6983e1cc3facc4a5f954))
+* **doctor:** update typo doctor command ([#87](https://github.com/yuluo-yx/typo/issues/87)) ([e360552](https://github.com/yuluo-yx/typo/commit/e360552f66daa48ceb7fd259e1f3697b29624083))
+* **fish:** add fish integration ([#86](https://github.com/yuluo-yx/typo/issues/86)) ([40db08b](https://github.com/yuluo-yx/typo/commit/40db08b37bdc2f39bd0c93a8633b21f712f6df09))
+* **win:** add windows download scripts and update related docs ([#72](https://github.com/yuluo-yx/typo/issues/72)) ([180dca7](https://github.com/yuluo-yx/typo/commit/180dca7e51b56821488f4b53be4b7c7eda43fa6f))
+
+
+### Bug Fixes
+
+* **bash:** fix bash 4.x integration error ([#79](https://github.com/yuluo-yx/typo/issues/79)) ([fbda5e2](https://github.com/yuluo-yx/typo/commit/fbda5e240329648b66e821ad67ffa665a23371c0))
+* **ci:** reduce benchmark false positives with 10% threshold and rolling baseline ([#83](https://github.com/yuluo-yx/typo/issues/83)) ([1768b78](https://github.com/yuluo-yx/typo/commit/1768b78e003b38b51d4036689fcbf8103519270b))
+* **lint:** fix code lint error ([b8a3652](https://github.com/yuluo-yx/typo/commit/b8a36521e8d7d22f9983ed49605721dd6e44bac5))
+* **make:** fix repeat makefile target ([c665d74](https://github.com/yuluo-yx/typo/commit/c665d74a3cdd059ef2df5261d87a1f74c1bbbc7a))
+
+
+### Performance Improvements
+
+* **engine:** eliminate redundant distance computations on hot path ([#74](https://github.com/yuluo-yx/typo/issues/74)) ([16f7ef4](https://github.com/yuluo-yx/typo/commit/16f7ef4fb887b65cd613b8ba3d04e5809787a7f4)), closes [#44](https://github.com/yuluo-yx/typo/issues/44)
+
+
+### Miscellaneous Chores
+
+* **docs:** define v1.x stability and compatibility contract ([#89](https://github.com/yuluo-yx/typo/issues/89)) ([287eecd](https://github.com/yuluo-yx/typo/commit/287eecd5a2fb2fb4af0b251bec5dca7bb1f95db9))
+
 ## [0.2.0](https://github.com/yuluo-yx/typo/compare/v0.1.1...v0.2.0) (2026-04-06)
 
 ### Features
