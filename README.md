@@ -60,6 +60,7 @@ Restart your terminal, run `typo doctor`, then press `Esc` `Esc` after a typo.
 - [Command Reference](docs/reference/commands.md)
 - [Usage Examples](docs/example/use.md)
 - [Troubleshooting](docs/troubleshooting/troubleshooting.md)
+- [Upgrading from 0.x](docs/troubleshooting/upgrade-from-0x.md)
 - [How Typo Works](docs/reference/how-it-works.md)
 
 ## Release Integrity
