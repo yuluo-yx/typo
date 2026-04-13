@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: ./tools/github-setup-deps
 
       - name: Derive version from release tag
@@ -68,12 +70,42 @@ jobs:
             typo-windows-amd64.exe \
             typo-windows-arm64.exe > checksums.txt
 
+      - name: Verify checksum manifest
+        run: |
+          cd bin
+          for file in \
+            typo-darwin-amd64 \
+            typo-darwin-arm64 \
+            typo-linux-amd64 \
+            typo-linux-arm64 \
+            typo-windows-amd64.exe \
+            typo-windows-arm64.exe; do
+            grep -Eq "^[0-9a-f]{64}[[:space:]]+${file}$" checksums.txt
+          done
+
       - name: Upload release artifacts
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1 (pin SHA to avoid supply chain attacks)
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
+          fail_on_unmatched_files: true
           files: |
             bin/typo-*
             bin/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew formula
+        run: tools/release/update-homebrew-formula.sh "${{ needs.release-please.outputs.tag_name }}"
+
+      - name: Commit Homebrew formula
+        run: |
+          if git diff --quiet -- Formula/typo.rb; then
+            echo "Homebrew formula is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/typo.rb
+          git commit -m "chore(brew): update formula to ${{ needs.release-please.outputs.tag_name }} [skip ci]"
+          git push origin HEAD:main

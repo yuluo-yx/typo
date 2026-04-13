@@ -24,9 +24,18 @@ There were a few reasons:
 
 For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is built from scratch.
 
+## Install
+
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+See [Quick Start](docs/getting-started/quick-start.md) for script installation, upgrades, and platform-specific setup.
+
 ## Shell Integration
 
-See [Quick Start](docs/getting-started/quick-start.md) for installation and platform-specific setup.
+Install typo first, then enable the integration for your shell.
 
 | Shell      | Status |
 |------------|--------|

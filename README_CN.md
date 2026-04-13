@@ -26,9 +26,18 @@
 
 基于上面的原因，我用 Go 写了 Typo，它不是 TheFuck 的翻译。而是从头开始的！
 
+## 安装
+
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+脚本安装、升级和平台接入细节请看 [快速开始](docs/getting-started/quick-start_CN.md)。
+
 ## Shell 集成
 
-安装与平台接入说明请看 [快速开始](docs/getting-started/quick-start_CN.md)。
+请先安装 typo，再为当前 shell 启用集成。
 
 | Shell 终端 | 支持状态  |
 |-----------|----------|

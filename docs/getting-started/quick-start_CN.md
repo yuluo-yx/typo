@@ -6,7 +6,29 @@
 
 ### Homebrew
 
-Homebrew 支持还在规划中，当前暂未提供。
+Homebrew 会安装 macOS 或 Linux 对应的预编译 Release 二进制。
+由于 tap 维护在当前仓库内，请先使用显式仓库 URL 添加 tap。
+
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+升级已有的 Homebrew 安装：
+
+```bash
+brew update
+brew upgrade typo
+```
+
+卸载 typo 并移除 tap：
+
+```bash
+brew uninstall typo
+brew untap yuluo-yx/typo
+```
+
+安装完成后，请继续参考 README 中的 `运行` 部分配置 shell 集成。
 
 ### macOS / Linux 脚本安装
 

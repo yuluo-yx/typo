@@ -1,0 +1,50 @@
+name: Homebrew
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Formula/**'
+      - 'tools/release/update-homebrew-formula.sh'
+      - '.github/workflows/homebrew.yml'
+      - '.github/workflows/release-please.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Formula/**'
+      - 'tools/release/update-homebrew-formula.sh'
+      - '.github/workflows/homebrew.yml'
+      - '.github/workflows/release-please.yml'
+
+jobs:
+  test:
+    name: Homebrew ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    if: github.repository == 'yuluo-yx/typo'
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: Homebrew/actions/setup-homebrew@59e6b20d96df1a3c9ccb0aa402676e01a4cc6ff3
+
+      - name: Tap local checkout
+        run: brew tap yuluo-yx/typo "$GITHUB_WORKSPACE"
+
+      - name: Audit formula
+        run: brew audit --strict --online yuluo-yx/typo/typo
+
+      - name: Install formula
+        run: HOMEBREW_NO_INSTALL_FROM_API=1 brew install --verbose yuluo-yx/typo/typo
+
+      - name: Test formula
+        run: brew test yuluo-yx/typo/typo
+
+      - name: Verify binary
+        run: typo version
