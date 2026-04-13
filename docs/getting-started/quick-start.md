@@ -110,4 +110,5 @@ Replace the filename in the command with the asset you downloaded. A successful 
 - For shell setup, see the `Shell Integration` and `Run` sections in the [README](../../README.md).
 - For command details, see [Command Reference](../reference/commands.md).
 - For practical correction scenarios, see [Usage Examples](../example/use.md).
+- For what stays stable across v1.x, see [Stability Contract](../reference/stability.md).
 - For common environment issues, see [Troubleshooting](../troubleshooting/troubleshooting.md).

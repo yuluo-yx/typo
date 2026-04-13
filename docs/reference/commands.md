@@ -142,4 +142,5 @@ typo uninstall
 
 - For real correction scenarios, see [Usage Examples](../example/use.md).
 - For correction strategy, config files, and build commands, see [How Typo Works](how-it-works.md).
+- For what stays stable across v1.x releases, see [Stability Contract](stability.md).
 - For installation and platform setup, see [Quick Start](../getting-started/quick-start.md).

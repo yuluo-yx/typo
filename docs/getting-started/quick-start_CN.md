@@ -110,4 +110,5 @@ shasum -a 256 -c typo-darwin-arm64.checksums
 - shell 接入方式请看 [README](../../README_CN.md) 中的 `Shell 集成` 和 `运行`。
 - 命令说明请看 [命令参考](../reference/commands_CN.md)。
 - 典型修正场景请看 [使用示例](../example/use_CN.md)。
+- v1.x 稳定性承诺请看 [稳定性契约](../reference/stability_CN.md)。
 - 环境问题排查请看 [问题排查](../troubleshooting/troubleshooting_CN.md)。
