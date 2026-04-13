@@ -23,7 +23,7 @@ jobs:
         run: go install golang.org/x/perf/cmd/benchstat@latest
 
       - name: Restore baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: baseline.txt
           key: benchmark-baseline-${{ github.run_id }}
@@ -70,7 +70,7 @@ jobs:
         run: cp current.txt baseline.txt
 
       - name: Save baseline
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: baseline.txt
           key: benchmark-baseline-${{ github.run_id }}
