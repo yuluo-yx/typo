@@ -5,24 +5,58 @@ Thank you for your interest in contributing to Typo! This document outlines the 
 ## Prerequisites
 
 - [Go 1.25+](https://golang.org/dl/)
-- [golangci-lint v2](https://golangci-lint.run/welcome/install/)
+- [pre-commit](https://pre-commit.com/#install)
 - [Docker](https://docs.docker.com/get-docker/) (optional, for end-to-end tests)
 - [GNU Make](https://www.gnu.org/software/make/)
+
+## Getting Started
+
+After cloning the repository, run the one-time setup:
+
+```bash
+make setup
+```
+
+This installs `pre-commit` (if not already present) and configures Git to use
+the project's hook directory. From this point on, every `git commit` will
+automatically run linting, formatting, spell checking, and security scans. The
+pre-commit framework downloads and caches the correct version of every tool for
+you -- no need to install `golangci-lint`, `codespell`, or `markdownlint`
+manually.
+
+To run all hooks against the full repository at any time:
+
+```bash
+pre-commit run --all-files
+```
+
+> **Behind a firewall or proxy?** Pre-commit downloads hooks from GitHub on
+> first run and caches them locally. If you have trouble reaching GitHub, set
+> your proxy before running:
+>
+> ```bash
+> export HTTPS_PROXY=http://your-proxy:port
+> pre-commit run --all-files
+> ```
+>
+> After the initial download, all subsequent runs use the local cache with no
+> network required.
 
 ## Development Commands
 
 ```bash
-make build          # Build for current platform
-make build-all      # Cross-compile for all supported platforms
-make install        # Install to $GOPATH/bin
-make test           # Run unit tests with race detection
-make coverage       # Run tests and report coverage
-make benchmark      # Run benchmarks
-make test-e2e       # Run end-to-end tests locally
+make setup           # One-time dev environment setup (pre-commit + hooks)
+make build           # Build for current platform
+make build-all       # Cross-compile for all supported platforms
+make install         # Install to $GOPATH/bin
+make test            # Run unit tests with race detection
+make coverage        # Run tests and report coverage
+make benchmark       # Run benchmarks
+make test-e2e        # Run end-to-end tests locally
 make test-e2e-docker # Run end-to-end tests in Docker
-make fmt            # Format code with gofmt and goimports
-make lint           # Run golangci-lint (v2 required)
-make ci             # Run formatting, linting, and tests in sequence
+make fmt             # Format code with gofmt and goimports
+make lint            # Run golangci-lint (v2 required)
+make ci              # Run formatting, linting, and tests in sequence
 ```
 
 Run `make ci` before pushing any changes.

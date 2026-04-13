@@ -1,10 +1,12 @@
 #!/usr/bin/env sh
 set -eu
 
-if ! command -v golangci-lint >/dev/null 2>&1; then
-  echo "golangci-lint not found. Install it before committing. You can run 'make install-golanglint' to install it."
-  exit 1
+export PRE_COMMIT_COLOR=always
+
+if command -v pre-commit >/dev/null 2>&1; then
+  exec pre-commit run --hook-stage pre-commit
 fi
 
-echo "Running golangci-lint before commit..."
-make lint-go
+echo "pre-commit is not installed. Install it with: pip install pre-commit"
+echo "See CONTRIBUTING.md for setup instructions."
+exit 1
