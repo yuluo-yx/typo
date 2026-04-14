@@ -27,7 +27,7 @@ For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is
 ## Install
 
 ```bash
-brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew tap yuluo-yx/typo
 brew install typo
 ```
 
