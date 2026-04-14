@@ -6,7 +6,29 @@ English | [简体中文](quick-start_CN.md)
 
 ### Homebrew
 
-Homebrew support is planned, but it is not available yet.
+Homebrew installs the prebuilt Release binary for macOS or Linux.
+Because the tap is maintained in this repository, add it with the explicit repository URL first.
+
+```bash
+brew tap yuluo-yx/typo
+brew install typo
+```
+
+Upgrade an existing Homebrew installation:
+
+```bash
+brew update
+brew upgrade typo
+```
+
+Uninstall typo and remove the tap:
+
+```bash
+brew uninstall typo
+brew untap yuluo-yx/typo
+```
+
+After installing, continue with the shell integration steps in the `Run` section of the README.
 
 ### macOS / Linux via script
 
