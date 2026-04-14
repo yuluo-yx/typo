@@ -87,7 +87,7 @@ func Run() int {
 	case "init":
 		return cmdInit(os.Args[2:])
 	case "version":
-		CmdVersion()
+		cmdVersion()
 		return 0
 	case "doctor":
 		return cmdDoctor()

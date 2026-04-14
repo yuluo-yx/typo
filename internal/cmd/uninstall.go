@@ -18,7 +18,7 @@ func cmdUninstall() int {
 	// Remove ~/.typo directory
 	fmt.Print("[1/3] Removing config directory: ")
 	if cfg.ConfigDir != "" {
-		if err := RemoveAll(cfg.ConfigDir); err != nil {
+		if err := removeAll(cfg.ConfigDir); err != nil {
 			fmt.Printf("✗ failed: %v\n", err)
 			hasError = true
 		} else {
@@ -30,7 +30,7 @@ func cmdUninstall() int {
 
 	// Show manual cleanup instructions for shell configuration leftovers.
 	fmt.Print("[2/3] Shell integration: ")
-	homeDir, err := UserHomeDir()
+	homeDir, err := userHomeDir()
 	if err != nil {
 		fmt.Println("✗ cannot determine home directory")
 		hasError = true
@@ -52,7 +52,7 @@ func cmdUninstall() int {
 			{shell: "fish", rc: ".config/fish/config.fish"},
 		} {
 			rcPath := filepath.Join(homeDir, target.rc)
-			if _, statErr := StatPath(rcPath); statErr == nil {
+			if _, statErr := statPath(rcPath); statErr == nil {
 				foundShellConfig = true
 				fmt.Printf("manual cleanup required in ~/%s:\n", target.rc)
 				fmt.Println()
@@ -71,7 +71,7 @@ func cmdUninstall() int {
 
 	// Show manual cleanup instructions for the installed binary.
 	fmt.Print("[3/3] Binary: ")
-	execPath, err := Executable()
+	execPath, err := executable()
 	if err != nil {
 		fmt.Println("✗ cannot determine binary location")
 		hasError = true

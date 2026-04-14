@@ -35,13 +35,13 @@ func printIntegrationScript(shell string) {
 	var script string
 	switch shell {
 	case "zsh":
-		script = ZshIntegrationScript
+		script = zshIntegrationScript
 	case "bash":
-		script = BashIntegrationScript
+		script = bashIntegrationScript
 	case "fish":
-		script = FishIntegrationScript
+		script = fishIntegrationScript
 	case "powershell":
-		script = PowerShellIntegrationScript
+		script = powerShellIntegrationScript
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", shell)
 		os.Exit(1)

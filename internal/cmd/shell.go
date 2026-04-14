@@ -102,7 +102,7 @@ func shellPathExportCommand(shellName, dir string) string {
 }
 
 func shellConfigFilePath(shellName string) string {
-	homeDir, err := UserHomeDir()
+	homeDir, err := userHomeDir()
 	if err != nil {
 		return ""
 	}
@@ -141,7 +141,7 @@ func getGoBinDir() string {
 	}
 	if goPath == "" {
 		// Try default GOPATH
-		homeDir, err := UserHomeDir()
+		homeDir, err := userHomeDir()
 		if err != nil {
 			return ""
 		}
@@ -156,7 +156,7 @@ func checkGoBinTypo() string {
 		return ""
 	}
 	typoPath := filepath.Join(goBinDir, "typo")
-	if _, err := StatPath(typoPath); err == nil {
+	if _, err := statPath(typoPath); err == nil {
 		return goBinDir
 	}
 	return ""

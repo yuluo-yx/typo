@@ -19,7 +19,7 @@ func cmdDoctor() int {
 
 	// Check if typo is in PATH
 	fmt.Print("[1/6] typo command: ")
-	typoPath, err := LookPath("typo")
+	typoPath, err := lookPath("typo")
 	if err == nil {
 		fmt.Printf("✓ available in PATH (%s)\n", typoPath)
 	} else {
@@ -38,7 +38,7 @@ func cmdDoctor() int {
 
 	// Check config directory
 	fmt.Print("[2/6] config directory: ")
-	if info, err := StatPath(cfg.ConfigDir); err == nil && info.IsDir() {
+	if info, err := statPath(cfg.ConfigDir); err == nil && info.IsDir() {
 		fmt.Printf("✓ %s\n", cfg.ConfigDir)
 	} else {
 		fmt.Printf("⊘ %s (will be created on first use)\n", cfg.ConfigDir)
@@ -47,7 +47,7 @@ func cmdDoctor() int {
 	// Check config file and print effective settings
 	fmt.Print("[3/6] config file: ")
 	if configFile := cfg.ConfigFilePath(); configFile != "" {
-		if info, err := StatPath(configFile); err == nil && !info.IsDir() {
+		if info, err := statPath(configFile); err == nil && !info.IsDir() {
 			fmt.Printf("✓ %s\n", configFile)
 		} else {
 			fmt.Printf("⊘ %s (using defaults; run 'typo config gen' to create it)\n", configFile)
@@ -174,7 +174,7 @@ func doctorInstallPath(typoPath string) string {
 		return typoPath
 	}
 
-	if execPath, err := Executable(); err == nil {
+	if execPath, err := executable(); err == nil {
 		return execPath
 	}
 	return ""

@@ -50,7 +50,7 @@ func isScriptInstallPath(typoPath string) bool {
 		return true
 	}
 
-	homeDir, err := UserHomeDir()
+	homeDir, err := userHomeDir()
 	if err == nil && SameDir(filepath.Dir(typoPath), filepath.Join(homeDir, ".local", "bin")) {
 		return true
 	}
