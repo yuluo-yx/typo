@@ -10,7 +10,7 @@ Homebrew installs the prebuilt Release binary for macOS or Linux.
 Because the tap is maintained in this repository, add it with the explicit repository URL first.
 
 ```bash
-brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew tap yuluo-yx/typo
 brew install typo
 ```
 
