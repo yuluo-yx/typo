@@ -22,8 +22,8 @@ func cmdInit(args []string) int {
 	case "fish":
 		printIntegrationScript("fish")
 		return 0
-	case "powershell":
-		printIntegrationScript("powershell")
+	case shellNamePowerShell:
+		printIntegrationScript(shellNamePowerShell)
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", args[0])
@@ -40,7 +40,7 @@ func printIntegrationScript(shell string) {
 		script = bashIntegrationScript
 	case "fish":
 		script = fishIntegrationScript
-	case "powershell":
+	case shellNamePowerShell:
 		script = powerShellIntegrationScript
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", shell)

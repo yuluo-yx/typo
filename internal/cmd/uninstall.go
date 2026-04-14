@@ -36,7 +36,7 @@ func cmdUninstall() int {
 		hasError = true
 	} else {
 		foundShellConfig := false
-		if shellName == "powershell" {
+		if shellName == shellNamePowerShell {
 			foundShellConfig = true
 			fmt.Println("manual cleanup required in $PROFILE.CurrentUserCurrentHost:")
 			fmt.Println()

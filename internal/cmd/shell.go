@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const shellNamePowerShell = "powershell"
+
 // Shell detection functions.
 
 func currentShellName() string {
@@ -25,7 +27,7 @@ func currentShellName() string {
 	}
 
 	if detectPowerShellEnvironment() {
-		return "powershell"
+		return shellNamePowerShell
 	}
 
 	return UnknownValue
@@ -39,8 +41,8 @@ func detectShellIntegrationTarget() (string, string) {
 		return "zsh", "~/.zshrc"
 	case "fish":
 		return "fish", "~/.config/fish/config.fish"
-	case "powershell":
-		return "powershell", "$PROFILE.CurrentUserCurrentHost"
+	case shellNamePowerShell:
+		return shellNamePowerShell, "$PROFILE.CurrentUserCurrentHost"
 	default:
 		return "", "~/.zshrc or ~/.bashrc or ~/.config/fish/config.fish or $PROFILE.CurrentUserCurrentHost"
 	}
@@ -53,8 +55,8 @@ func normalizeShellName(shell string) string {
 	switch shell {
 	case "bash", "fish", "zsh":
 		return shell
-	case "pwsh", "powershell":
-		return "powershell"
+	case "pwsh", shellNamePowerShell:
+		return shellNamePowerShell
 	default:
 		return ""
 	}
@@ -68,7 +70,7 @@ func detectPowerShellEnvironment() bool {
 
 func shellInitCommand(shellName string) string {
 	switch shellName {
-	case "powershell":
+	case shellNamePowerShell:
 		return "Invoke-Expression (& typo init powershell)"
 	case "fish":
 		return "typo init fish | source"
@@ -81,7 +83,7 @@ func shellInitCommand(shellName string) string {
 
 func shellReloadCommand(shellName, shellRC string) string {
 	switch shellName {
-	case "powershell":
+	case shellNamePowerShell:
 		return fmt.Sprintf(". %s", shellRC)
 	case "bash", "fish", "zsh":
 		return fmt.Sprintf("source %s", shellRC)
@@ -92,7 +94,7 @@ func shellReloadCommand(shellName, shellRC string) string {
 
 func shellPathExportCommand(shellName, dir string) string {
 	switch shellName {
-	case "powershell":
+	case shellNamePowerShell:
 		return fmt.Sprintf("$env:PATH = \"$env:PATH%c%s\"", os.PathListSeparator, dir)
 	case "fish":
 		return fmt.Sprintf("set -gx PATH $PATH %s", dir)
