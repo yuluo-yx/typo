@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"bytes"
@@ -281,7 +281,7 @@ func TestRun(t *testing.T) {
 			os.Stdout = wOut
 			os.Stderr = wErr
 
-			code := run()
+			code := Run()
 
 			if err := wOut.Close(); err != nil {
 				t.Fatalf("Close stdout pipe failed: %v", err)
@@ -374,24 +374,6 @@ func TestShouldRecordHistory(t *testing.T) {
 	}
 }
 
-func TestMainProcess(t *testing.T) {
-	if os.Getenv("TYPO_TEST_MAIN_PROCESS") == "1" {
-		os.Args = []string{"typo", "version"}
-		main()
-		return
-	}
-
-	cmd := exec.Command(os.Args[0], "-test.run=TestMainProcess")
-	cmd.Env = append(os.Environ(), "TYPO_TEST_MAIN_PROCESS=1")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("main subprocess failed: %v\noutput:\n%s", err, output)
-	}
-	if !bytes.Contains(output, []byte("typo")) {
-		t.Fatalf("Expected main subprocess output to contain version text, got %q", output)
-	}
-}
-
 func TestFixCommand(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -402,7 +384,7 @@ func TestFixCommand(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -463,7 +445,7 @@ func TestFixDokcerPrefersDocker(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -494,7 +476,7 @@ func TestFixNoMatch(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -548,7 +530,7 @@ func TestFixHistoryWriteError(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -582,7 +564,7 @@ func TestFixValidCommandDoesNotReturnSuccess(t *testing.T) {
 	os.Stdout = wOut
 	os.Stderr = wErr
 
-	code := run()
+	code := Run()
 
 	if err := wOut.Close(); err != nil {
 		t.Fatalf("Close stdout pipe failed: %v", err)
@@ -641,7 +623,7 @@ func TestFixWithStderrFile(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -689,7 +671,7 @@ func TestFixWithExitCodeAndPermissionDenied(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -720,7 +702,7 @@ func TestFixWithGlobalOptionBeforeSubcommand(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -751,7 +733,7 @@ func TestFixWithSudoWrappedCommand(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -782,7 +764,7 @@ func TestFixPreservesQuotedArguments(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -813,7 +795,7 @@ func TestFixPreservesCompoundCommandWithSemicolon(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -844,7 +826,7 @@ func TestFixWithSudoWrappedCompoundCommand(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -875,7 +857,7 @@ func TestFixCanCorrectMultipleTyposInCompoundCommand(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -907,7 +889,7 @@ func TestFixWithNonexistentStderrFile(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -939,7 +921,7 @@ func TestRulesList(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -971,7 +953,7 @@ func TestRulesAddRemove(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -988,7 +970,7 @@ func TestRulesAddRemove(t *testing.T) {
 	_, w, _ = os.Pipe()
 	os.Stdout = w
 
-	code = run()
+	code = Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1010,7 +992,7 @@ func TestRulesAddMissingArgs(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1032,7 +1014,7 @@ func TestRulesRemoveMissingArgs(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1054,7 +1036,7 @@ func TestRulesUnknownSubcommand(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1225,7 +1207,7 @@ func TestHistoryList(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1253,7 +1235,7 @@ func TestHistoryClear(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1275,7 +1257,7 @@ func TestRulesRemoveNonexistent(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1297,7 +1279,7 @@ func TestHistoryUnknownSubcommand(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1344,7 +1326,7 @@ func TestCmdLearnError(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1390,7 +1372,7 @@ func TestHistoryClearError(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1436,7 +1418,7 @@ func TestRulesAddError(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1461,7 +1443,7 @@ func TestFixWithMessage(t *testing.T) {
 	os.Stdout = wOut
 	os.Stderr = wErr
 
-	code := run()
+	code := Run()
 
 	if err := wOut.Close(); err != nil {
 		t.Fatalf("Close stdout pipe failed: %v", err)
@@ -1519,7 +1501,7 @@ func TestInitMissingShell(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -1950,7 +1932,7 @@ func TestDoctor(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2024,7 +2006,7 @@ func TestDoctorShowsBashHintsWhenShellIsBash(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2067,7 +2049,7 @@ func TestDoctorShowsFishHintsWhenShellIsFish(t *testing.T) {
 	os.Args = []string{"typo", "doctor"}
 
 	output := captureStdout(t, func() {
-		code := run()
+		code := Run()
 		if code != 1 {
 			t.Fatalf("Expected exit code 1, got %d", code)
 		}
@@ -2139,7 +2121,7 @@ func TestDoctorShowsPowerShellHintsWhenShellIsPowerShell(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2372,7 +2354,7 @@ func TestDoctorReportsInstallMethodAndShellSetup(t *testing.T) {
 	os.Args = []string{"typo", "doctor"}
 	code := 0
 	output := captureStdout(t, func() {
-		code = run()
+		code = Run()
 	})
 
 	if code != 0 {
@@ -2418,7 +2400,7 @@ func TestDoctorReportsShellMisconfiguration(t *testing.T) {
 	os.Args = []string{"typo", "doctor"}
 	code := 0
 	output := captureStdout(t, func() {
-		code = run()
+		code = Run()
 	})
 
 	if code != 1 {
@@ -2466,7 +2448,7 @@ func TestDoctorWithShellIntegration(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2554,7 +2536,7 @@ func TestDoctorGoBinNotInPath(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2600,7 +2582,7 @@ func TestDoctorTypoMissingFromPath(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2665,7 +2647,7 @@ func TestDoctorPrintsCustomConfig(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2717,7 +2699,7 @@ func TestFixWritesUsageHistory(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2773,7 +2755,7 @@ func TestFixWithPermissionParser_DoesNotWriteUsageHistory(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2838,7 +2820,7 @@ func TestFixWithParser_DoesNotWriteUsageHistory(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2886,7 +2868,7 @@ func TestFixNoHistoryFlag_DoesNotWriteUsageHistory(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2917,12 +2899,12 @@ func TestLearnSurvivesHistoryClear(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	os.Args = []string{"typo", "learn", "gut", "mygit"}
-	if code := run(); code != 0 {
+	if code := Run(); code != 0 {
 		t.Fatalf("Expected learn to succeed, got %d", code)
 	}
 
 	os.Args = []string{"typo", "history", "clear"}
-	if code := run(); code != 0 {
+	if code := Run(); code != 0 {
 		t.Fatalf("Expected history clear to succeed, got %d", code)
 	}
 
@@ -2931,7 +2913,7 @@ func TestLearnSurvivesHistoryClear(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -2993,7 +2975,7 @@ func TestLearnOverridesConflictingHistory(t *testing.T) {
 	}
 
 	os.Args = []string{"typo", "learn", "dokcer", "docker"}
-	if code := run(); code != 0 {
+	if code := Run(); code != 0 {
 		t.Fatalf("Expected learn to succeed, got %d", code)
 	}
 
@@ -3007,7 +2989,7 @@ func TestLearnOverridesConflictingHistory(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3304,7 +3286,7 @@ func TestUninstall(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3368,7 +3350,7 @@ func TestUninstallNonexistentConfig(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3423,7 +3405,7 @@ func TestUninstallWithZshrcHint(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3478,7 +3460,7 @@ func TestUninstallWithBashrcHint(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3534,7 +3516,7 @@ func TestUninstallWithFishConfigHint(t *testing.T) {
 	os.Args = []string{"typo", "uninstall"}
 
 	output := captureStdout(t, func() {
-		code := run()
+		code := Run()
 		if code != 0 {
 			t.Fatalf("Expected uninstall to succeed, got %d", code)
 		}
@@ -3598,7 +3580,7 @@ func TestUninstallWithPowerShellHint(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3655,7 +3637,7 @@ func TestUninstallConfigRemoveFailure(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3701,7 +3683,7 @@ func TestUninstallInjectedErrors(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	code := run()
+	code := Run()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)
@@ -3742,7 +3724,7 @@ func runCLI(t *testing.T, args []string) (int, string, string) {
 	os.Stdout = wOut
 	os.Stderr = wErr
 
-	code := run()
+	code := Run()
 
 	if err := wOut.Close(); err != nil {
 		t.Fatalf("Close stdout pipe failed: %v", err)
