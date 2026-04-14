@@ -29,7 +29,7 @@
 ## 安装
 
 ```bash
-brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew tap yuluo-yx/typo
 brew install typo
 ```
 
