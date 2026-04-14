@@ -10,7 +10,7 @@ Homebrew 会安装 macOS 或 Linux 对应的预编译 Release 二进制。
 由于 tap 维护在当前仓库内，请先使用显式仓库 URL 添加 tap。
 
 ```bash
-brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew tap yuluo-yx/typo
 brew install typo
 ```
 
