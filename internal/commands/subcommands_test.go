@@ -80,133 +80,131 @@ func TestToolTreeRegistry_GetMergesBuiltinSubcommands(t *testing.T) {
 	}
 }
 
-func TestLoadCache(t *testing.T) {
-	t.Run("loads existing cache", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		cacheFile := filepath.Join(tmpDir, "subcommands.json")
+func TestLoadCache_LoadsExistingCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, "subcommands.json")
 
-		wrapper := struct {
-			SchemaVersion int              `json:"schema_version"`
-			Tools         []*ToolTreeCache `json:"tools"`
-		}{
-			SchemaVersion: subcommandCacheSchemaVersion,
-			Tools: []*ToolTreeCache{
-				{
-					Tool: "git",
-					Tree: treeBranch(map[string]*TreeNode{
-						"add":    {},
-						"commit": {},
-					}),
-					UpdatedAt: time.Now(),
-				},
-				{
-					Tool: "gcloud",
-					Tree: treeBranch(map[string]*TreeNode{
-						"auth": {},
-						"compute": treeBranch(map[string]*TreeNode{
-							"instances": {},
-						}),
-					}),
-					UpdatedAt: time.Now(),
-				},
+	wrapper := struct {
+		SchemaVersion int              `json:"schema_version"`
+		Tools         []*ToolTreeCache `json:"tools"`
+	}{
+		SchemaVersion: subcommandCacheSchemaVersion,
+		Tools: []*ToolTreeCache{
+			{
+				Tool: "git",
+				Tree: treeBranch(map[string]*TreeNode{
+					"add":    {},
+					"commit": {},
+				}),
+				UpdatedAt: time.Now(),
 			},
-		}
-		data, _ := json.MarshalIndent(wrapper, "", "  ")
-		if err := os.WriteFile(cacheFile, data, 0644); err != nil {
-			t.Fatalf("Failed to write cache file: %v", err)
-		}
+			{
+				Tool: "gcloud",
+				Tree: treeBranch(map[string]*TreeNode{
+					"auth": {},
+					"compute": treeBranch(map[string]*TreeNode{
+						"instances": {},
+					}),
+				}),
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(wrapper, "", "  ")
+	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
+		t.Fatalf("Failed to write cache file: %v", err)
+	}
 
-		r := &ToolTreeRegistry{
-			trees:    make(map[string]*ToolTreeCache),
-			cacheDir: tmpDir,
-		}
-		r.loadCache()
+	r := &ToolTreeRegistry{
+		trees:    make(map[string]*ToolTreeCache),
+		cacheDir: tmpDir,
+	}
+	r.loadCache()
 
-		if len(r.trees) != 2 {
-			t.Errorf("Expected 2 cached tools, got %d", len(r.trees))
-		}
-		if got := r.Get("git"); !hasString(got, "add") || !hasString(got, "commit") {
-			t.Error("Expected git cache with 2 subcommands")
-		}
-		if got := r.GetChildren("gcloud", []string{"compute"}); len(got) != 1 || got[0] != "instances" {
-			t.Error("Expected gcloud cache with nested children")
-		}
-	})
+	if len(r.trees) != 2 {
+		t.Errorf("Expected 2 cached tools, got %d", len(r.trees))
+	}
+	if got := r.Get("git"); !hasString(got, "add") || !hasString(got, "commit") {
+		t.Error("Expected git cache with 2 subcommands")
+	}
+	if got := r.GetChildren("gcloud", []string{"compute"}); len(got) != 1 || got[0] != "instances" {
+		t.Error("Expected gcloud cache with nested children")
+	}
+}
 
-	t.Run("handles nonexistent cache file", func(t *testing.T) {
-		r := &ToolTreeRegistry{
-			trees:    make(map[string]*ToolTreeCache),
-			cacheDir: t.TempDir(),
-		}
-		r.loadCache()
+func TestLoadCache_NonexistentCacheFile(t *testing.T) {
+	r := &ToolTreeRegistry{
+		trees:    make(map[string]*ToolTreeCache),
+		cacheDir: t.TempDir(),
+	}
+	r.loadCache()
 
-		if len(r.trees) != 0 {
-			t.Errorf("Expected empty cache, got %d", len(r.trees))
-		}
-	})
+	if len(r.trees) != 0 {
+		t.Errorf("Expected empty cache, got %d", len(r.trees))
+	}
+}
 
-	t.Run("handles invalid JSON", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		cacheFile := filepath.Join(tmpDir, "subcommands.json")
-		if err := os.WriteFile(cacheFile, []byte("invalid json"), 0644); err != nil {
-			t.Fatalf("Failed to write cache file: %v", err)
-		}
+func TestLoadCache_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, "subcommands.json")
+	if err := os.WriteFile(cacheFile, []byte("invalid json"), 0644); err != nil {
+		t.Fatalf("Failed to write cache file: %v", err)
+	}
 
-		r := &ToolTreeRegistry{
-			trees:    make(map[string]*ToolTreeCache),
-			cacheDir: tmpDir,
-		}
-		r.loadCache()
+	r := &ToolTreeRegistry{
+		trees:    make(map[string]*ToolTreeCache),
+		cacheDir: tmpDir,
+	}
+	r.loadCache()
 
-		if len(r.trees) != 0 {
-			t.Fatalf("Expected invalid JSON load to keep explicit cache empty, got %d", len(r.trees))
-		}
+	if len(r.trees) != 0 {
+		t.Fatalf("Expected invalid JSON load to keep explicit cache empty, got %d", len(r.trees))
+	}
 
-		matches, err := filepath.Glob(cacheFile + ".corrupt-*")
-		if err != nil {
-			t.Fatalf("Glob failed: %v", err)
-		}
-		if len(matches) != 1 {
-			t.Fatalf("Expected one quarantined cache file, got %v", matches)
-		}
-	})
+	matches, err := filepath.Glob(cacheFile + ".corrupt-*")
+	if err != nil {
+		t.Fatalf("Glob failed: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("Expected one quarantined cache file, got %v", matches)
+	}
+}
 
-	t.Run("handles empty cacheDir", func(t *testing.T) {
-		r := &ToolTreeRegistry{
-			trees:    make(map[string]*ToolTreeCache),
-			cacheDir: "",
-		}
-		r.loadCache()
+func TestLoadCache_EmptyCacheDir(t *testing.T) {
+	r := &ToolTreeRegistry{
+		trees:    make(map[string]*ToolTreeCache),
+		cacheDir: "",
+	}
+	r.loadCache()
 
-		if len(r.trees) != 0 {
-			t.Errorf("Expected empty cache, got %d", len(r.trees))
-		}
-	})
+	if len(r.trees) != 0 {
+		t.Errorf("Expected empty cache, got %d", len(r.trees))
+	}
+}
 
-	t.Run("quarantines legacy array cache", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		cacheFile := filepath.Join(tmpDir, "subcommands.json")
-		if err := os.WriteFile(cacheFile, []byte(`[{"tool":"git","subcommands":["status"]}]`), 0644); err != nil {
-			t.Fatalf("Failed to write legacy cache file: %v", err)
-		}
+func TestLoadCache_LegacyArrayCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, "subcommands.json")
+	if err := os.WriteFile(cacheFile, []byte(`[{"tool":"git","subcommands":["status"]}]`), 0644); err != nil {
+		t.Fatalf("Failed to write legacy cache file: %v", err)
+	}
 
-		r := &ToolTreeRegistry{
-			trees:    make(map[string]*ToolTreeCache),
-			cacheDir: tmpDir,
-		}
-		r.loadCache()
+	r := &ToolTreeRegistry{
+		trees:    make(map[string]*ToolTreeCache),
+		cacheDir: tmpDir,
+	}
+	r.loadCache()
 
-		if len(r.trees) != 0 {
-			t.Fatalf("Expected legacy cache load to keep tree cache empty, got %d", len(r.trees))
-		}
-		matches, err := filepath.Glob(cacheFile + ".corrupt-*")
-		if err != nil {
-			t.Fatalf("Glob failed: %v", err)
-		}
-		if len(matches) != 1 {
-			t.Fatalf("Expected one quarantined legacy cache file, got %v", matches)
-		}
-	})
+	if len(r.trees) != 0 {
+		t.Fatalf("Expected legacy cache load to keep tree cache empty, got %d", len(r.trees))
+	}
+	matches, err := filepath.Glob(cacheFile + ".corrupt-*")
+	if err != nil {
+		t.Fatalf("Glob failed: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("Expected one quarantined legacy cache file, got %v", matches)
+	}
 }
 
 func hasString(values []string, want string) bool {

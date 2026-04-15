@@ -18,19 +18,19 @@ import (
 	"github.com/yuluo-yx/typo/internal/storage"
 )
 
-// CacheHeader 用于识别子命令缓存结构版本。
+// CacheHeader identifies the subcommand cache schema version.
 type CacheHeader struct {
 	SchemaVersion int `json:"schema_version"`
 }
 
-// ToolTreeCache 表示单个工具的树形子命令缓存。
+// ToolTreeCache stores one tool's tree-shaped subcommand cache.
 type ToolTreeCache struct {
 	Tool      string    `json:"tool"`
 	Tree      *TreeNode `json:"tree"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// TreeNode 是 v2 子命令缓存使用的 JSON 树节点。
+// TreeNode is the JSON tree node used by the v2 subcommand cache.
 type TreeNode struct {
 	Children    map[string]*TreeNode `json:"children,omitempty"`
 	Terminal    bool                 `json:"terminal,omitempty"`
@@ -38,7 +38,7 @@ type TreeNode struct {
 	Alias       string               `json:"alias,omitempty"`
 }
 
-// ToCommandTreeNode 将缓存中的 JSON 树节点转换为引擎命令树节点。
+// ToCommandTreeNode converts a cached JSON tree node into an engine command tree node.
 func (n *TreeNode) ToCommandTreeNode() *CommandTreeNode {
 	if n == nil {
 		return nil
@@ -89,7 +89,7 @@ func (n *TreeNode) childTokens() []string {
 	return tokens
 }
 
-// ToolTreeRegistry 管理外部工具的树形子命令。
+// ToolTreeRegistry manages tree-shaped subcommands for external tools.
 type ToolTreeRegistry struct {
 	mu          sync.RWMutex
 	saveMu      sync.Mutex
@@ -105,7 +105,7 @@ const (
 	maxHierarchicalSubcommandDepth = 3
 )
 
-// NewToolTreeRegistry 创建并加载 v2 树形子命令缓存。
+// NewToolTreeRegistry creates and loads the v2 tree-shaped subcommand cache.
 func NewToolTreeRegistry(cacheDir string) *ToolTreeRegistry {
 	r := &ToolTreeRegistry{
 		trees:       make(map[string]*ToolTreeCache),
@@ -117,12 +117,12 @@ func NewToolTreeRegistry(cacheDir string) *ToolTreeRegistry {
 	return r
 }
 
-// Get 返回工具的根级子命令，必要时执行动态发现。
+// Get returns a tool's root-level subcommands, running dynamic discovery when needed.
 func (r *ToolTreeRegistry) Get(tool string) []string {
 	return r.GetChildren(tool, nil)
 }
 
-// GetChildren 返回指定前缀路径下的子命令。
+// GetChildren returns subcommands under the given prefix path.
 func (r *ToolTreeRegistry) GetChildren(tool string, prefix []string) []string {
 	if tool == "" {
 		return nil
@@ -146,7 +146,7 @@ func (r *ToolTreeRegistry) GetChildren(tool string, prefix []string) []string {
 	return append([]string(nil), children...)
 }
 
-// ResolveChild 返回精确匹配子节点的规范名称。
+// ResolveChild returns the canonical name for an exact matching child node.
 func (r *ToolTreeRegistry) ResolveChild(tool string, prefix []string, token string) (string, bool) {
 	if tool == "" || token == "" {
 		return "", false
@@ -313,7 +313,7 @@ func ensureTreePath(root *TreeNode, tool string, prefix []string) *TreeNode {
 	return node
 }
 
-// fetchSubcommands 动态获取工具子命令，结果会缓存到 ~/.typo/subcommands.json。
+// fetchSubcommands dynamically fetches tool subcommands and caches results in ~/.typo/subcommands.json.
 func (r *ToolTreeRegistry) fetchSubcommands(tool string, prefix ...string) []string {
 	// Check if tool exists in PATH
 	if GetPath(tool) == "" {
@@ -558,7 +558,7 @@ func (r *ToolTreeRegistry) saveCache() {
 	_ = storage.WriteFileAtomic(cacheFile, data, 0600)
 }
 
-// 各工具帮助输出解析函数。
+// Tool help output parsers.
 
 func parseGitHelp(output string) []string {
 	// Git help format:
@@ -897,7 +897,7 @@ func normalizeHelpSection(value string) string {
 	return strings.ToUpper(trimmed)
 }
 
-// HasSubcommands 检查工具是否属于已知子命令工具。
+// HasSubcommands checks whether the tool is known to have subcommands.
 func (r *ToolTreeRegistry) HasSubcommands(tool string) bool {
 	return knownSubcommandTools[tool]
 }
@@ -943,7 +943,7 @@ var (
 	builtinToolTrees     = buildBuiltinToolTrees()
 )
 
-// HasBuiltinSubcommand 判断工具的内置根级子命令集合是否包含指定子命令。
+// HasBuiltinSubcommand reports whether a tool's builtin root-level subcommands contain the given subcommand.
 func HasBuiltinSubcommand(tool, subcommand string) bool {
 	if tool == "" || subcommand == "" {
 		return false
@@ -1240,7 +1240,7 @@ func supportsHierarchicalDiscovery(tool string) bool {
 	}
 }
 
-// PreFetch 预取常见工具的子命令。
+// PreFetch prefetches common tool subcommands.
 func (r *ToolTreeRegistry) PreFetch() {
 	tools := []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "go", "aws", "gcloud", "az"}
 

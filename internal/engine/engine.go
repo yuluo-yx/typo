@@ -33,7 +33,7 @@ type Engine struct {
 	commands            []string            // Loaded command set, seeded first and expanded on demand.
 	availableCmds       []string            // Cached command set after disabled-command filtering.
 	availableCmdsSet    map[string]struct{} // O(1) lookup mirror of availableCmds.
-	availableCmdsLen    int                 // `availableCmds` 对应的原始 commands 长度，用于检测直接追加后的缓存失效。
+	availableCmdsLen    int                 // Original commands length for `availableCmds`; detects stale cache after direct appends.
 	commandLoader       func() []string
 	commandsLoadOnce    sync.Once
 	commandsFullyLoad   bool
@@ -110,7 +110,7 @@ func WithCommandLoader(loader func() []string) Option {
 	return func(e *Engine) { e.commandLoader = loader }
 }
 
-// WithToolTrees 设置外部工具命令树注册表。
+// WithToolTrees sets the external tool command tree registry.
 func WithToolTrees(trees *commands.ToolTreeRegistry) Option {
 	return func(e *Engine) { e.toolTrees = trees }
 }
@@ -1021,7 +1021,7 @@ func shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken string, subcomma
 		return false
 	}
 
-	// 层级子命令之间允许插入 `--flag value`，这里用下一层子命令候选做保守判断。
+	// Hierarchical subcommands can contain `--flag value`; use next-level candidates as a conservative boundary.
 	return isSubcommandCandidate(nextNextToken, subcommands, cfg)
 }
 

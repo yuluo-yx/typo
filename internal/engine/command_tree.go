@@ -141,7 +141,7 @@ func (e *Engine) matchCommandTreeRoot(token string) (*commands.CommandTree, stri
 		}
 	}
 
-	// 已经是可执行的首命令时，不再重写到 typo 命令树。
+	// Do not rewrite to the typo command tree when the first command is already executable.
 	if e.hasKnownCommand(token) {
 		return nil, "", false
 	}

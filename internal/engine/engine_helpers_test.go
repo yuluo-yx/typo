@@ -807,11 +807,11 @@ func TestEngine_TrySubcommandFix_CommonToolMatrix(t *testing.T) {
 		{name: "composer install", cmd: "composer isntall", wantCmd: "composer install"},
 		{name: "composer dump-autoload", cmd: "composer dump-autolad", wantCmd: "composer dump-autoload"},
 		{name: "brew search", cmd: "brew serach ripgrep", wantCmd: "brew search ripgrep"},
-		{name: "brew nested services", cmd: "brew servics strat nginx", wantCmd: "brew services start nginx"},
+		{name: "brew nested services", cmd: "brew servics strat nginx", wantCmd: "brew services start nginx"}, //nolint:misspell // Intentional misspelled command input.
 		{name: "terraform plan", cmd: "terraform pln -out tfplan", wantCmd: "terraform plan -out tfplan"},
 		{name: "terraform option before subcommand", cmd: "terraform -chdir infra valdiate", wantCmd: "terraform -chdir infra validate"},
 		{name: "terraform nested state", cmd: "terraform state lst", wantCmd: "terraform state list"},
-		{name: "helm upgrade", cmd: "helm upgarde release chart", wantCmd: "helm upgrade release chart"},
+		{name: "helm upgrade", cmd: "helm upgarde release chart", wantCmd: "helm upgrade release chart"}, //nolint:misspell // Intentional misspelled command input.
 		{name: "helm option before subcommand", cmd: "helm --kube-context prod temlpate chart", wantCmd: "helm --kube-context prod template chart"},
 		{name: "helm nested repo", cmd: "helm repo udpate", wantCmd: "helm repo update"},
 		{name: "aws nested s3", cmd: "aws s3 syn s3://a s3://b", wantCmd: "aws s3 sync s3://a s3://b"},
