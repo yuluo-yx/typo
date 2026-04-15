@@ -32,7 +32,7 @@ Every public interface falls into one of two tiers:
 | `config.json` | Runtime settings managed by `typo config` |
 | `rules.json` | Learned and user-defined rules |
 | `usage_history.json` | Accepted correction history |
-| `subcommands.json` | Cached discovered subcommands |
+| `subcommands.json` | Cached discovered subcommand trees |
 
 New files may be added to `~/.typo/` in minor releases, but existing files will
 not be renamed, moved, or have their purpose changed.
@@ -43,6 +43,11 @@ If a minor release changes the internal schema of a config file, Typo will
 migrate the file automatically on first load and preserve a backup
 (`<file>.backup-<timestamp>`). Manual migration will never be required within
 v1.x.
+
+Cache files may use a different path. If `subcommands.json` changes format,
+typo may quarantine the old cache as `subcommands.json.corrupt-<timestamp>` and
+regenerate it instead of migrating it in place. This is allowed because
+`subcommands.json` contains only discovered command metadata.
 
 ## Config file format
 

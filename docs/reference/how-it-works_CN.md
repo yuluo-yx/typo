@@ -51,9 +51,46 @@ Typo 不仅能修正顶层命令，也能修正常见工具的子命令。
 补充说明：
 
 - 常用云工具会作为内置命令候选加入，即使 PATH 发现还没执行，也能先修正顶层命令。
-- 常见工具内置了一批子命令，即使动态发现还没执行，也能先修正核心命令。
-- 动态发现到的子命令会缓存到 `~/.typo/subcommands.json`。
-- `aws`、`gcloud`、`az` 支持层级化子命令发现。
+- `git`、`docker`、`kubectl` 内置了树形子命令结构，即使动态发现还没执行，也能修正常见多层子命令。
+- 动态发现到的子命令会以 `schema_version: 2` 的树形结构缓存到 `~/.typo/subcommands.json`。
+- `git`、`docker`、`aws`、`gcloud`、`az` 支持层级化子命令发现；`kubectl` 资源修正使用保守的内置资源树。
+- 不符合 `schema_version: 2` 的旧子命令缓存会被自动隔离，并在后续使用时重新生成。
+
+### 子命令缓存 v2
+
+`subcommands.json` 使用带版本号的树形格式：
+
+```json
+{
+  "schema_version": 2,
+  "tools": [
+    {
+      "tool": "git",
+      "tree": {
+        "children": {
+          "stash": {
+            "children": {
+              "save": {"terminal": true}
+            }
+          }
+        }
+      },
+      "updated_at": "2026-04-15T12:00:00Z"
+    }
+  ]
+}
+```
+
+v2 会直接保存嵌套子命令，不再使用“根级扁平列表 + 路径子列表”的旧格式。这样 Typo 可以逐层修正命令，例如把 `gcloud container clusers lisr` 修正为 `gcloud container clusters list`。
+
+节点字段含义如下：
+
+- `children`：当前层级下的有效子命令。
+- `terminal`：该 token 可以作为命令路径的结束。
+- `passthrough`：该 token 后面的内容按用户参数处理，不再继续当作子命令修正。
+- `alias`：短别名对应的规范输出名称。
+
+如果 Typo 发现旧格式缓存，会把该文件重命名为 `subcommands.json.corrupt-<时间戳>`，并在下次使用时重新生成 v2 缓存。该文件只包含动态发现到的命令元数据，不包含用户规则、历史记录或配置，因此隔离旧缓存不会丢失用户数据。
 
 ## 本地文件
 
@@ -72,7 +109,7 @@ Typo 会把本地状态保存在 `~/.typo/`：
 - `config.json`：由 `typo config` 管理的运行配置
 - `rules.json`：learn 结果和用户自定义规则
 - `usage_history.json`：已接受修正的历史记录
-- `subcommands.json`：动态发现到的子命令缓存
+- `subcommands.json`：动态发现到的子命令树缓存
 
 ## 配置模型
 

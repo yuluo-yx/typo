@@ -131,10 +131,10 @@ func TestEngine_CommandPriority(t *testing.T) {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
-	subcommands := commands.NewSubcommandRegistry(tmpDir)
+	subcommands := commands.NewToolTreeRegistry(tmpDir)
 	eng := NewEngine(
 		WithRules(rules),
-		WithSubcommands(subcommands),
+		WithToolTrees(subcommands),
 	)
 
 	dockerPriority := eng.commandPriority("docker")
@@ -748,12 +748,170 @@ func TestEngine_TrySubcommandFix_MultiLevelCloudCommands(t *testing.T) {
 	}
 }
 
+func TestEngine_TrySubcommandFix_BuiltinNestedToolTrees(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{name: "git first level", cmd: "git stsh save", wantCmd: "git stash save"},
+		{name: "git second level", cmd: "git stash sve", wantCmd: "git stash save"},
+		{name: "docker first level", cmd: "docker imge ls", wantCmd: "docker image ls"},
+		{name: "docker second level", cmd: "docker container stp", wantCmd: "docker container stop"},
+		{name: "kubectl resource", cmd: "kubectl get pds", wantCmd: "kubectl get pods"},
+		{name: "kubectl alias canonicalization", cmd: "kubectl get po", wantCmd: "kubectl get pods"},
+		{name: "git option before nested command", cmd: "git -C repo stash sve", wantCmd: "git -C repo stash save"},
+		{name: "docker option before nested command", cmd: "docker --context prod imge ls", wantCmd: "docker --context prod image ls"},
+		{name: "kubectl option after resource", cmd: "kubectl get pds -n prod", wantCmd: "kubectl get pods -n prod"},
+		{name: "sudo wrapper", cmd: "sudo git stsh save", wantCmd: "sudo git stash save"},
+		{name: "compound command", cmd: "git stsh save && git stsh list", wantCmd: "git stash save && git stash list"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+		})
+	}
+
+	if got := eng.Fix("git commit somefile", ""); got.Fixed {
+		t.Fatalf("Expected passthrough argument to stay untouched, got %+v", got)
+	}
+}
+
+func TestEngine_TrySubcommandFix_CommonToolMatrix(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{name: "npm install", cmd: "npm isntall react", wantCmd: "npm install react"},
+		{name: "npm run", cmd: "npm rn test", wantCmd: "npm run test"},
+		{name: "npm option before subcommand", cmd: "npm --prefix app rn build", wantCmd: "npm --prefix app run build"},
+		{name: "npm nested config", cmd: "npm cnfig st registry https://registry.npmjs.org", wantCmd: "npm config set registry https://registry.npmjs.org"},
+		{name: "yarn install", cmd: "yarn isntall --frozen-lockfile", wantCmd: "yarn install --frozen-lockfile"},
+		{name: "yarn run", cmd: "yarn rn build", wantCmd: "yarn run build"},
+		{name: "cargo check", cmd: "cargo chcek", wantCmd: "cargo check"},
+		{name: "cargo option before subcommand", cmd: "cargo -C crates/core chcek", wantCmd: "cargo -C crates/core check"},
+		{name: "go build", cmd: "go buidl ./...", wantCmd: "go build ./..."},
+		{name: "go option before subcommand", cmd: "go -C service tset ./...", wantCmd: "go -C service test ./..."},
+		{name: "go nested mod", cmd: "go mod tdy", wantCmd: "go mod tidy"},
+		{name: "pip install", cmd: "pip isntall requests", wantCmd: "pip install requests"},
+		{name: "pip3 uninstall", cmd: "pip3 uninstal oldpkg", wantCmd: "pip3 uninstall oldpkg"},
+		{name: "composer install", cmd: "composer isntall", wantCmd: "composer install"},
+		{name: "composer dump-autoload", cmd: "composer dump-autolad", wantCmd: "composer dump-autoload"},
+		{name: "brew search", cmd: "brew serach ripgrep", wantCmd: "brew search ripgrep"},
+		{name: "brew nested services", cmd: "brew servics strat nginx", wantCmd: "brew services start nginx"}, //nolint:misspell // Intentional misspelled command input.
+		{name: "terraform plan", cmd: "terraform pln -out tfplan", wantCmd: "terraform plan -out tfplan"},
+		{name: "terraform option before subcommand", cmd: "terraform -chdir infra valdiate", wantCmd: "terraform -chdir infra validate"},
+		{name: "terraform nested state", cmd: "terraform state lst", wantCmd: "terraform state list"},
+		{name: "helm upgrade", cmd: "helm upgarde release chart", wantCmd: "helm upgrade release chart"}, //nolint:misspell // Intentional misspelled command input.
+		{name: "helm option before subcommand", cmd: "helm --kube-context prod temlpate chart", wantCmd: "helm --kube-context prod template chart"},
+		{name: "helm nested repo", cmd: "helm repo udpate", wantCmd: "helm repo update"},
+		{name: "aws nested s3", cmd: "aws s3 syn s3://a s3://b", wantCmd: "aws s3 sync s3://a s3://b"},
+		{name: "aws option before nested command", cmd: "aws --region us-east-1 ec2 dscribe-instances", wantCmd: "aws --region us-east-1 ec2 describe-instances"},
+		{name: "gcloud nested config", cmd: "gcloud config st project demo", wantCmd: "gcloud config set project demo"},
+		{name: "az nested account", cmd: "az account lisr", wantCmd: "az account list"},
+		{name: "sudo wrapper with pip", cmd: "sudo pip isntall wheel", wantCmd: "sudo pip install wheel"},
+		{name: "env wrapper with go", cmd: "env GOFLAGS=-mod=mod go tset ./...", wantCmd: "env GOFLAGS=-mod=mod go test ./..."},
+		{name: "compound different tools", cmd: "npm rn test && go mod tdy && helm repo udpate", wantCmd: "npm run test && go mod tidy && helm repo update"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_TrySubcommandFix_ThreeLevelCloudSubcommands(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{
+			name:    "aws cloudformation waiter",
+			cmd:     "aws cloudformation wiit stack-create-complet",
+			wantCmd: "aws cloudformation wait stack-create-complete",
+		},
+		{
+			name:    "aws option before three-level waiter",
+			cmd:     "aws --region us-east-1 cloudformation wait stack-update-complet",
+			wantCmd: "aws --region us-east-1 cloudformation wait stack-update-complete",
+		},
+		{
+			name:    "gcloud container clusters",
+			cmd:     "gcloud container clusers lisr",
+			wantCmd: "gcloud container clusters list",
+		},
+		{
+			name:    "gcloud option before three-level command",
+			cmd:     "gcloud --project demo container clusters get-credential",
+			wantCmd: "gcloud --project demo container clusters get-credentials",
+		},
+		{
+			name:    "az storage account",
+			cmd:     "az storage acount lisr",
+			wantCmd: "az storage account list",
+		},
+		{
+			name:    "az four-level network path",
+			cmd:     "az network vnet subnet lst",
+			wantCmd: "az network vnet subnet list",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_TrySubcommandFix_DoesNotRewriteCommonToolArguments(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []string{
+		"npm install isntall",
+		"yarn add isntall",
+		"go build tset",
+		"pip install uninstal",
+		"composer require isntall",
+		"terraform plan validate",
+		"helm upgrade repo",
+		"aws s3 sync lss",
+	}
+
+	for _, cmd := range tests {
+		t.Run(cmd, func(t *testing.T) {
+			if got := eng.Fix(cmd, ""); got.Fixed {
+				t.Fatalf("Expected %q to stay unchanged, got %+v", cmd, got)
+			}
+		})
+	}
+}
+
 func TestEngine_TrySubcommandFix_EmptyDynamicSubcommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(
 		WithCommands([]string{"composer"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(commands.NewSubcommandRegistry(tmpDir)),
+		WithToolTrees(commands.NewToolTreeRegistry(tmpDir)),
 	)
 
 	if got := eng.trySubcommandFix("composer isntall"); got.Fixed {
@@ -763,13 +921,13 @@ func TestEngine_TrySubcommandFix_EmptyDynamicSubcommands(t *testing.T) {
 
 func TestEngine_TrySubcommandFixWithShell_ContinuesUntilLaterFix(t *testing.T) {
 	eng := newEngineWithCommonToolSubcommands(t)
-	eng.commands = append(eng.commands, "composer")
+	eng.commands = append(eng.commands, "mytool")
 
-	got, parsed := eng.trySubcommandFixWithShell("unknown biuld && composer isntall && docker build && docker zzzz && git stattus")
+	got, parsed := eng.trySubcommandFixWithShell("unknown biuld && mytool isntall && docker build && docker zzzz && git stattus")
 	if !parsed {
 		t.Fatal("Expected shell subcommand fixer to parse the compound command")
 	}
-	if !got.Fixed || got.Command != "unknown biuld && composer isntall && docker build && docker zzzz && git status" {
+	if !got.Fixed || got.Command != "unknown biuld && mytool isntall && docker build && docker zzzz && git status" {
 		t.Fatalf("Expected later git subcommand fix after continue branches, got %+v", got)
 	}
 }

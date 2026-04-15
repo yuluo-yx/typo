@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// filteredCommandEnv 过滤掉会污染测试隔离环境的变量。
+// filteredCommandEnv removes variables that can leak into isolated test environments.
 func filteredCommandEnv(excludedPrefixes []string, extraCapacity int) []string {
 	filtered := make([]string, 0, len(os.Environ())+extraCapacity)
 	for _, item := range os.Environ() {
@@ -27,7 +27,7 @@ func hasEnvPrefix(item string, prefixes []string) bool {
 	return false
 }
 
-// appendWindowsHomeEnv 在 Windows 风格路径下补齐 home 相关变量。
+// appendWindowsHomeEnv fills home-related variables for Windows-style paths.
 func appendWindowsHomeEnv(env []string, home string) []string {
 	volume := filepath.VolumeName(home)
 	if volume == "" {

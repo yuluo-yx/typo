@@ -98,6 +98,22 @@ The `~/.typo/` directory layout has expanded:
 - `subcommands.json` is a cache file. Deleting it is safe — it will be regenerated on next use.
 - The directory permissions should be `0755` and file permissions should be `0600`.
 
+### Subcommand cache format
+
+Current v1 builds write `subcommands.json` with `schema_version: 2`. This format
+stores a tree of subcommands so typo can correct nested command paths such as
+`aws cloudformation wait stack-create-complete` and
+`gcloud container clusters list`.
+
+Older cache files from previous builds may not have a `schema_version` field or
+may use a flat list format. On first load, typo moves those files aside as
+`subcommands.json.corrupt-<timestamp>` and creates a fresh cache when
+subcommand discovery runs again.
+
+No manual migration is required. The cache does not store user rules, history,
+or configuration. If you want to force a refresh, delete `~/.typo/subcommands.json`
+and run a command that uses subcommand correction.
+
 ### Rule scopes
 
 v1 introduces additional builtin rule scopes beyond what was available in 0.2.0:

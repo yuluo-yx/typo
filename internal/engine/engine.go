@@ -33,11 +33,11 @@ type Engine struct {
 	commands            []string            // Loaded command set, seeded first and expanded on demand.
 	availableCmds       []string            // Cached command set after disabled-command filtering.
 	availableCmdsSet    map[string]struct{} // O(1) lookup mirror of availableCmds.
-	availableCmdsLen    int                 // `availableCmds` 对应的原始 commands 长度，用于检测直接追加后的缓存失效。
+	availableCmdsLen    int                 // Original commands length for `availableCmds`; detects stale cache after direct appends.
 	commandLoader       func() []string
 	commandsLoadOnce    sync.Once
 	commandsFullyLoad   bool
-	subcommands         *commands.SubcommandRegistry
+	toolTrees           *commands.ToolTreeRegistry
 	commandTrees        *commands.CommandTreeRegistry
 }
 
@@ -110,9 +110,9 @@ func WithCommandLoader(loader func() []string) Option {
 	return func(e *Engine) { e.commandLoader = loader }
 }
 
-// WithSubcommands sets the subcommand registry.
-func WithSubcommands(s *commands.SubcommandRegistry) Option {
-	return func(e *Engine) { e.subcommands = s }
+// WithToolTrees sets the external tool command tree registry.
+func WithToolTrees(trees *commands.ToolTreeRegistry) Option {
+	return func(e *Engine) { e.toolTrees = trees }
 }
 
 // WithCommandTrees sets the command tree registry.
@@ -449,7 +449,7 @@ func (e *Engine) tryHistory(cmd string) FixResult {
 	})
 
 	// If history fixed main command, also try to fix subcommand
-	if result.Fixed && e.subcommands != nil {
+	if result.Fixed && e.toolTrees != nil {
 		result = e.fixSubcommandInResult(result)
 	}
 
@@ -506,7 +506,7 @@ func (e *Engine) tryUserRules(cmd string) FixResult {
 	})
 
 	// If rule fixed main command, also try to fix subcommand
-	if result.Fixed && e.subcommands != nil {
+	if result.Fixed && e.toolTrees != nil {
 		result = e.fixSubcommandInResult(result)
 	}
 
@@ -523,7 +523,7 @@ func (e *Engine) tryBuiltinRules(cmd string) FixResult {
 	})
 
 	// If rule fixed main command, also try to fix subcommand
-	if result.Fixed && e.subcommands != nil {
+	if result.Fixed && e.toolTrees != nil {
 		result = e.fixSubcommandInResult(result)
 	}
 
@@ -624,7 +624,7 @@ func (e *Engine) tryDistance(cmd string) FixResult {
 		}
 
 		// Also try to fix subcommand
-		if e.subcommands != nil {
+		if e.toolTrees != nil {
 			result = e.fixSubcommandInResult(result)
 		}
 
@@ -661,7 +661,7 @@ func (e *Engine) tryDistanceWithShell(cmd string) (FixResult, bool) {
 			Source:  "distance",
 		}
 
-		if e.subcommands != nil {
+		if e.toolTrees != nil {
 			result = e.fixSubcommandInResult(result)
 		}
 
@@ -795,7 +795,7 @@ func (e *Engine) tryToolOptionFixWithShell(cmd string) (FixResult, bool) {
 }
 
 func (e *Engine) trySubcommandFix(cmd string) FixResult {
-	if e.subcommands == nil {
+	if e.toolTrees == nil {
 		return FixResult{Fixed: false}
 	}
 
@@ -930,7 +930,7 @@ func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, 
 			continue
 		}
 
-		subcommands := e.subcommands.GetChildren(mainCmd, prefix)
+		subcommands := e.toolTrees.GetChildren(mainCmd, prefix)
 		if len(subcommands) == 0 {
 			break
 		}
@@ -944,8 +944,12 @@ func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, 
 			continue
 		}
 
-		if containsString(subcommands, token) {
-			prefix = append(prefix, token)
+		if canonical, ok := e.toolTrees.ResolveChild(mainCmd, prefix, token); ok {
+			if canonical != token {
+				replacements = append(replacements, subcommandReplacement{index: i, value: canonical})
+				changed = true
+			}
+			prefix = append(prefix, canonical)
 			continue
 		}
 
@@ -954,8 +958,13 @@ func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, 
 			break
 		}
 
-		replacements = append(replacements, subcommandReplacement{index: i, value: match})
-		prefix = append(prefix, match)
+		canonical := match
+		if resolved, ok := e.toolTrees.ResolveChild(mainCmd, prefix, match); ok {
+			canonical = resolved
+		}
+
+		replacements = append(replacements, subcommandReplacement{index: i, value: canonical})
+		prefix = append(prefix, canonical)
 		changed = true
 	}
 
@@ -1012,7 +1021,7 @@ func shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken string, subcomma
 		return false
 	}
 
-	// 层级子命令之间允许插入 `--flag value`，这里用下一层子命令候选做保守判断。
+	// Hierarchical subcommands can contain `--flag value`; use next-level candidates as a conservative boundary.
 	return isSubcommandCandidate(nextNextToken, subcommands, cfg)
 }
 
@@ -1664,7 +1673,7 @@ func (e *Engine) commandPriority(cmd string) int {
 		score += 25
 	}
 
-	if e.subcommands != nil && e.subcommands.HasSubcommands(cmd) {
+	if e.toolTrees != nil && e.toolTrees.HasSubcommands(cmd) {
 		score += 25
 	}
 

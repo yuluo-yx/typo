@@ -52,17 +52,18 @@ exit 1
 		t.Fatalf("failed to read subcommand cache: %v", err)
 	}
 
-	var caches []commands.SubcommandCache
-	if err := json.Unmarshal(data, &caches); err != nil {
+	var wrapper struct {
+		SchemaVersion int                       `json:"schema_version"`
+		Tools         []*commands.ToolTreeCache `json:"tools"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err != nil {
 		t.Fatalf("failed to parse subcommand cache: %v", err)
 	}
 
-	for _, cache := range caches {
+	for _, cache := range wrapper.Tools {
 		if cache.Tool == "git" {
-			for _, subcommand := range cache.Subcommands {
-				if subcommand == "status" {
-					return
-				}
+			if treeHasChild(cache.Tree, "status") {
+				return
 			}
 		}
 	}
@@ -320,22 +321,25 @@ exit 1
 				t.Fatalf("failed to read subcommand cache: %v", err)
 			}
 
-			var caches []commands.SubcommandCache
-			if err := json.Unmarshal(data, &caches); err != nil {
+			var wrapper struct {
+				SchemaVersion int                       `json:"schema_version"`
+				Tools         []*commands.ToolTreeCache `json:"tools"`
+			}
+			if err := json.Unmarshal(data, &wrapper); err != nil {
 				t.Fatalf("failed to parse subcommand cache: %v", err)
 			}
 
-			for _, cache := range caches {
+			for _, cache := range wrapper.Tools {
 				if cache.Tool != tt.tool {
 					continue
 				}
-				children := cache.Children[tt.cachePath]
+				children := cachedChildrenAtPath(cache.Tree, tt.cachePath)
 				if len(children) != len(tt.cacheChildren) {
 					t.Fatalf("expected cache path %q children %v, got %v", tt.cachePath, tt.cacheChildren, children)
 				}
-				for i, child := range tt.cacheChildren {
-					if children[i] != child {
-						t.Fatalf("expected cache path %q children[%d] = %q, got %q", tt.cachePath, i, child, children[i])
+				for _, child := range tt.cacheChildren {
+					if !containsE2EString(children, child) {
+						t.Fatalf("expected cache path %q children to contain %q, got %v", tt.cachePath, child, children)
 					}
 				}
 				return
@@ -344,4 +348,39 @@ exit 1
 			t.Fatalf("tool %s was not cached after dynamic discovery: %s", tt.tool, data)
 		})
 	}
+}
+
+func cachedChildrenAtPath(root *commands.TreeNode, path string) []string {
+	node := root
+	for _, token := range strings.Fields(path) {
+		if node == nil {
+			return nil
+		}
+		node = node.Children[token]
+	}
+	if node == nil {
+		return nil
+	}
+	children := make([]string, 0, len(node.Children))
+	for child := range node.Children {
+		children = append(children, child)
+	}
+	return children
+}
+
+func treeHasChild(root *commands.TreeNode, child string) bool {
+	if root == nil || root.Children == nil {
+		return false
+	}
+	_, ok := root.Children[child]
+	return ok
+}
+
+func containsE2EString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
