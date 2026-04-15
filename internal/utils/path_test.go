@@ -80,7 +80,7 @@ func TestPathWithinDir(t *testing.T) {
 		},
 		{
 			name: "parent escape",
-			path: filepath.Join("tmp"),
+			path: "tmp",
 			dir:  dir,
 			want: false,
 		},
@@ -111,7 +111,7 @@ func TestPathContainsDir(t *testing.T) {
 	target := filepath.Join("tmp", "dir")
 	pathValue := filepath.Join("usr", "bin") + string(os.PathListSeparator) +
 		target + string(os.PathListSeparator) +
-		filepath.Join("bin")
+		"bin"
 
 	tests := []struct {
 		name      string
@@ -127,7 +127,7 @@ func TestPathContainsDir(t *testing.T) {
 		},
 		{
 			name:      "path list does not contain directory",
-			pathValue: filepath.Join("usr", "bin") + string(os.PathListSeparator) + filepath.Join("bin"),
+			pathValue: filepath.Join("usr", "bin") + string(os.PathListSeparator) + "bin",
 			dir:       target,
 			want:      false,
 		},

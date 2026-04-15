@@ -5,8 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yuluo-yx/typo/internal/utils"
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 type shellCommandLine struct {
