@@ -68,6 +68,7 @@ Run `make ci` before pushing any changes.
 - All lint checks defined in `.golangci.yml` must pass. Run `make lint` to verify.
 - Keep functions focused and cyclomatic complexity under 15.
 - Export only what needs to be exported.
+- Use `internal/types` only for stable data contracts shared across packages; keep package-owned behavior, storage, validation, discovery, and lifecycle details in their owning packages.
 
 ## Testing Standards
 

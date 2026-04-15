@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yuluo-yx/typo/internal/storage"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // CacheHeader identifies the subcommand cache schema version.
@@ -39,17 +40,17 @@ type TreeNode struct {
 }
 
 // ToCommandTreeNode converts a cached JSON tree node into an engine command tree node.
-func (n *TreeNode) ToCommandTreeNode() *CommandTreeNode {
+func (n *TreeNode) ToCommandTreeNode() *itypes.CommandTreeNode {
 	if n == nil {
 		return nil
 	}
 
-	node := &CommandTreeNode{
+	node := &itypes.CommandTreeNode{
 		StopAfterMatch: n.Terminal && !n.Passthrough,
 		Alias:          n.Alias,
 	}
 	if len(n.Children) > 0 {
-		node.Children = make(map[string]*CommandTreeNode, len(n.Children))
+		node.Children = make(map[string]*itypes.CommandTreeNode, len(n.Children))
 		for name, child := range n.Children {
 			node.Children[name] = child.ToCommandTreeNode()
 		}

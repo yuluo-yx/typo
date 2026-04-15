@@ -2,6 +2,8 @@ package parser
 
 import (
 	"testing"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func TestGitParser_Parse(t *testing.T) {
@@ -77,7 +79,7 @@ func TestGitParser_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(Context{Command: tt.cmd, Stderr: tt.stderr})
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
 			if result.Fixed != tt.wantFix {
 				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
 			}
@@ -142,7 +144,7 @@ func TestDockerParser_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(Context{Command: tt.cmd, Stderr: tt.stderr})
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
 			if result.Fixed != tt.wantFix {
 				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
 			}
@@ -233,7 +235,7 @@ func TestNpmParser_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(Context{Command: tt.cmd, Stderr: tt.stderr})
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
 			if result.Fixed != tt.wantFix {
 				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
 			}
@@ -255,7 +257,7 @@ func TestRegistry_Parse(t *testing.T) {
 	r := NewRegistry()
 
 	// Test git error
-	result := r.Parse(Context{Command: "git remove -v", Stderr: "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"})
+	result := r.Parse(itypes.ParserContext{Command: "git remove -v", Stderr: "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"})
 	if !result.Fixed {
 		t.Error("Expected to fix git error")
 	}
@@ -264,7 +266,7 @@ func TestRegistry_Parse(t *testing.T) {
 	}
 
 	// Test unknown error
-	result = r.Parse(Context{Command: "unknown command", Stderr: "unknown error"})
+	result = r.Parse(itypes.ParserContext{Command: "unknown command", Stderr: "unknown error"})
 	if result.Fixed {
 		t.Error("Expected not to fix unknown error")
 	}
@@ -274,7 +276,7 @@ func TestRegistry_Register(t *testing.T) {
 	r := &Registry{}
 
 	// Initially no parsers
-	result := r.Parse(Context{Command: "test", Stderr: "error"})
+	result := r.Parse(itypes.ParserContext{Command: "test", Stderr: "error"})
 	if result.Fixed {
 		t.Error("Expected not to fix with no parsers")
 	}
@@ -283,7 +285,7 @@ func TestRegistry_Register(t *testing.T) {
 	r.Register(NewGitParser())
 
 	// Now should parse git errors
-	result = r.Parse(Context{Command: "git remove -v", Stderr: "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"})
+	result = r.Parse(itypes.ParserContext{Command: "git remove -v", Stderr: "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"})
 	if !result.Fixed {
 		t.Error("Expected to fix git error after registering parser")
 	}
@@ -294,12 +296,12 @@ func TestPermissionParser_Parse(t *testing.T) {
 
 	tests := []struct {
 		name string
-		ctx  Context
+		ctx  itypes.ParserContext
 		want string
 	}{
 		{
 			name: "macos mkdir permission denied",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:  "mkdir 1",
 				Stderr:   "mkdir: 1: Permission denied\n",
 				ExitCode: 1,
@@ -308,7 +310,7 @@ func TestPermissionParser_Parse(t *testing.T) {
 		},
 		{
 			name: "linux mkdir permission denied",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:  "mkdir 1",
 				Stderr:   "mkdir: cannot create directory '1': Permission denied\n",
 				ExitCode: 1,
@@ -317,7 +319,7 @@ func TestPermissionParser_Parse(t *testing.T) {
 		},
 		{
 			name: "already sudo prompt should be ignored",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:             "mkdir 1",
 				Stderr:              "Password:\n",
 				ExitCode:            1,
@@ -326,7 +328,7 @@ func TestPermissionParser_Parse(t *testing.T) {
 		},
 		{
 			name: "shell builtin should be ignored",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:  "cd /root",
 				Stderr:   "cd: permission denied: /root\n",
 				ExitCode: 1,
@@ -334,7 +336,7 @@ func TestPermissionParser_Parse(t *testing.T) {
 		},
 		{
 			name: "multiple commands should be ignored",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:             "mkdir 1",
 				Stderr:              "mkdir: 1: Permission denied\n",
 				ExitCode:            1,
@@ -343,7 +345,7 @@ func TestPermissionParser_Parse(t *testing.T) {
 		},
 		{
 			name: "redirection should be ignored",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:        "echo hi",
 				Stderr:         "zsh: permission denied: /root/out\n",
 				ExitCode:       1,
@@ -352,14 +354,14 @@ func TestPermissionParser_Parse(t *testing.T) {
 		},
 		{
 			name: "no stderr should be ignored",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:  "mkdir 1",
 				ExitCode: 1,
 			},
 		},
 		{
 			name: "git publickey denied should be ignored",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:  "git push origin main",
 				Stderr:   "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n",
 				ExitCode: 128,
@@ -367,7 +369,7 @@ func TestPermissionParser_Parse(t *testing.T) {
 		},
 		{
 			name: "docker socket permission denied should still fix",
-			ctx: Context{
+			ctx: itypes.ParserContext{
 				Command:  "docker ps",
 				Stderr:   "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock\n",
 				ExitCode: 1,
@@ -416,7 +418,7 @@ func TestPermissionParser_Helpers(t *testing.T) {
 		}
 	}
 
-	if got := p.Parse(Context{
+	if got := p.Parse(itypes.ParserContext{
 		Command:          "chmod 644 /etc/hosts",
 		Stderr:           "operation not permitted",
 		ExitCode:         1,
@@ -425,7 +427,7 @@ func TestPermissionParser_Helpers(t *testing.T) {
 		t.Fatalf("Expected shell parse failure to skip permission fix, got %+v", got)
 	}
 
-	if got := p.Parse(Context{
+	if got := p.Parse(itypes.ParserContext{
 		Command:  "chmod 644 /etc/hosts",
 		Stderr:   "operation not permitted",
 		ExitCode: 1,
@@ -433,7 +435,7 @@ func TestPermissionParser_Helpers(t *testing.T) {
 		t.Fatalf("Expected strong permission pattern to trigger sudo, got %+v", got)
 	}
 
-	if !p.shouldSkipContext(Context{ExitCode: 0}) {
+	if !p.shouldSkipContext(itypes.ParserContext{ExitCode: 0}) {
 		t.Fatal("Expected zero exit code to be skipped")
 	}
 	if !p.shouldSkipStderr("[sudo] password for user:") {
@@ -447,7 +449,7 @@ func TestPermissionParser_Helpers(t *testing.T) {
 	}
 
 	result := p.sudoResult("tar -xf archive.tar")
-	if !result.Fixed || result.Command != "sudo tar -xf archive.tar" || result.Kind != ResultKindPermissionSudo {
+	if !result.Fixed || result.Command != "sudo tar -xf archive.tar" || result.Kind != itypes.FixKindPermissionSudo {
 		t.Fatalf("Unexpected sudoResult: %+v", result)
 	}
 }
@@ -595,7 +597,7 @@ func TestParserOffsetToIndex(t *testing.T) {
 }
 
 func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
-	gitResult := NewGitParser().Parse(Context{
+	gitResult := NewGitParser().Parse(itypes.ParserContext{
 		Command: "git remove '",
 		Stderr:  "git: 'remove' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
 	})
@@ -603,7 +605,7 @@ func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
 		t.Fatalf("Expected git fallback replacement, got %+v", gitResult)
 	}
 
-	dockerResult := NewDockerParser().Parse(Context{
+	dockerResult := NewDockerParser().Parse(itypes.ParserContext{
 		Command: "docker psa '",
 		Stderr:  "docker: 'psa' is not a docker command.\nSimilar command: ps\n\nRun 'docker --help' for more information",
 	})
@@ -611,7 +613,7 @@ func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
 		t.Fatalf("Expected docker fallback replacement, got %+v", dockerResult)
 	}
 
-	npmResult := NewNpmParser().Parse(Context{
+	npmResult := NewNpmParser().Parse(itypes.ParserContext{
 		Command: "npm ist '",
 		Stderr:  "npm ERR! Did you mean list?",
 	})
@@ -619,7 +621,7 @@ func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
 		t.Fatalf("Expected npm fallback replacement, got %+v", npmResult)
 	}
 
-	npmNotFound := NewNpmParser().Parse(Context{
+	npmNotFound := NewNpmParser().Parse(itypes.ParserContext{
 		Command: "npm isntall '",
 		Stderr:  "npm ERR! code E404\nnpm ERR! 404 command isntall not found\nnpm ERR! Did you mean install?",
 	})
@@ -627,7 +629,7 @@ func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
 		t.Fatalf("Expected npm not-found fallback replacement, got %+v", npmNotFound)
 	}
 
-	dockerUnknown := NewDockerParser().Parse(Context{
+	dockerUnknown := NewDockerParser().Parse(itypes.ParserContext{
 		Command: "docker imagesa '",
 		Stderr:  "unknown command: imagesa\n\nDid you mean: images?",
 	})
@@ -637,7 +639,7 @@ func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
 }
 
 func TestGitParser_ParseNoUpstreamPlaceholderWithoutLocalBranch(t *testing.T) {
-	result := NewGitParser().Parse(Context{
+	result := NewGitParser().Parse(itypes.ParserContext{
 		Command: "git pull",
 		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\n\n    git branch --set-upstream-to=origin/<branch>\n",
 	})
@@ -710,7 +712,7 @@ func TestNpmParser_ParseCommandNotFoundWithSuggestion(t *testing.T) {
 	p := NewNpmParser()
 
 	// Test: command not found pattern with did you mean suggestion
-	result := p.Parse(Context{
+	result := p.Parse(itypes.ParserContext{
 		Command: "npm isntall",
 		Stderr:  "npm ERR! code E404\nnpm ERR! 404 command isntall not found\nnpm ERR! Did you mean install?",
 	})
@@ -726,7 +728,7 @@ func TestNpmParser_ParseJustSuggestionNoParts(t *testing.T) {
 	p := NewNpmParser()
 
 	// Test: just suggestion with npm command only (no subcommand)
-	result := p.Parse(Context{
+	result := p.Parse(itypes.ParserContext{
 		Command: "npm",
 		Stderr:  "npm ERR! Did you mean install?",
 	})

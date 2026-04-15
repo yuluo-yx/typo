@@ -6,6 +6,7 @@ import (
 
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func TestTryMatch(t *testing.T) {
@@ -380,15 +381,15 @@ func TestEngine_TryParser_FallbackAndShell(t *testing.T) {
 	eng := NewEngine(WithParser(parser.NewRegistry()))
 
 	stderr := "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"
-	if got := eng.tryParser(parser.Context{Command: "sudo git remove -v", Stderr: stderr}); !got.Fixed || got.Command != "sudo git remote -v" {
+	if got := eng.tryParser(itypes.ParserContext{Command: "sudo git remove -v", Stderr: stderr}); !got.Fixed || got.Command != "sudo git remote -v" {
 		t.Fatalf("Expected shell parser fix, got %+v", got)
 	}
 
-	if got := eng.tryParser(parser.Context{Command: "git remove '", Stderr: stderr}); !got.Fixed || got.Command != "git remote '" {
+	if got := eng.tryParser(itypes.ParserContext{Command: "git remove '", Stderr: stderr}); !got.Fixed || got.Command != "git remote '" {
 		t.Fatalf("Expected fallback parser fix, got %+v", got)
 	}
 
-	if got := eng.tryParser(parser.Context{Command: "git status", Stderr: "unrecognized error"}); got.Fixed {
+	if got := eng.tryParser(itypes.ParserContext{Command: "git status", Stderr: "unrecognized error"}); got.Fixed {
 		t.Fatalf("Expected parser miss for unrelated stderr, got %+v", got)
 	}
 }

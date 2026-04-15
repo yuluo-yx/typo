@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	"github.com/yuluo-yx/typo/internal/config"
-	"github.com/yuluo-yx/typo/internal/engine"
-	"github.com/yuluo-yx/typo/internal/parser"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func cmdFix(args []string) int {
@@ -37,7 +36,7 @@ func cmdFix(args []string) int {
 	cfg := config.Load()
 	eng := createEngine(cfg)
 
-	result := eng.FixWithContext(parser.Context{
+	result := eng.FixWithContext(itypes.ParserContext{
 		Command:  cmd,
 		Stderr:   stderr,
 		ExitCode: *exitCode,
@@ -61,10 +60,10 @@ func cmdFix(args []string) int {
 	return 1
 }
 
-func shouldRecordHistory(original string, result engine.FixResult) bool {
+func shouldRecordHistory(original string, result itypes.FixResult) bool {
 	if !result.Fixed || result.Command == original {
 		return false
 	}
 
-	return result.Kind != parser.ResultKindPermissionSudo && !result.UsedParser
+	return result.Kind != itypes.FixKindPermissionSudo && !result.UsedParser
 }

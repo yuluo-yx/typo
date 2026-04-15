@@ -1,41 +1,10 @@
 package parser
 
-// Context carries the execution context for a single fix attempt.
-type Context struct {
-	Command             string
-	Stderr              string
-	ExitCode            int
-	HasMultipleCommands bool
-	HasRedirection      bool
-	HasPrivilegeWrapper bool
-	ShellParseFailed    bool
-}
-
-// Result represents the result of error parsing.
-type Result struct {
-	Fixed   bool   // Whether a fix was found
-	Command string // The corrected command
-	Message string // Optional message to display
-	Kind    string // Internal result tag used to distinguish fix categories.
-}
-
-const (
-	// ResultKindPermissionSudo identifies fixes that prepend sudo after a permission error.
-	ResultKindPermissionSudo = "permission_sudo"
-)
-
-// Parser defines the interface for error output parsers.
-type Parser interface {
-	// Name returns the parser name (e.g., "git", "npm")
-	Name() string
-
-	// Parse parses the stderr output and returns a correction result.
-	Parse(ctx Context) Result
-}
+import itypes "github.com/yuluo-yx/typo/internal/types"
 
 // Registry manages all available parsers.
 type Registry struct {
-	parsers []Parser
+	parsers []itypes.Parser
 }
 
 // NewRegistry creates a new parser registry with default parsers.
@@ -49,17 +18,17 @@ func NewRegistry() *Registry {
 }
 
 // Register adds a parser to the registry.
-func (r *Registry) Register(p Parser) {
+func (r *Registry) Register(p itypes.Parser) {
 	r.parsers = append(r.parsers, p)
 }
 
 // Parse tries all registered parsers and returns the first successful result.
-func (r *Registry) Parse(ctx Context) Result {
+func (r *Registry) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	for _, p := range r.parsers {
 		result := p.Parse(ctx)
 		if result.Fixed {
 			return result
 		}
 	}
-	return Result{Fixed: false}
+	return itypes.ParserResult{Fixed: false}
 }

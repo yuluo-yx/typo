@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yuluo-yx/typo/internal/commands"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // PermissionParser adds a sudo prefix when stderr shows a permission error.
@@ -64,23 +65,23 @@ func (p *PermissionParser) Name() string {
 }
 
 // Parse decides whether sudo should be prepended based on stderr output.
-func (p *PermissionParser) Parse(ctx Context) Result {
+func (p *PermissionParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	if p.shouldSkipContext(ctx) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	stderr := strings.TrimSpace(ctx.Stderr)
 	if p.shouldSkipStderr(stderr) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	cmdWord := firstCommandWord(ctx.Command)
 	if cmdWord == "" || commands.IsShellBuiltin(cmdWord) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	if p.matchesAny(stderr, p.remoteAuthPatterns) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	if p.matchesAny(stderr, p.strongPermissionPatterns) {
@@ -91,10 +92,10 @@ func (p *PermissionParser) Parse(ctx Context) Result {
 		return p.sudoResult(ctx.Command)
 	}
 
-	return Result{Fixed: false}
+	return itypes.ParserResult{Fixed: false}
 }
 
-func (p *PermissionParser) shouldSkipContext(ctx Context) bool {
+func (p *PermissionParser) shouldSkipContext(ctx itypes.ParserContext) bool {
 	return ctx.ExitCode == 0 ||
 		ctx.Stderr == "" ||
 		ctx.HasPrivilegeWrapper ||
@@ -116,11 +117,11 @@ func (p *PermissionParser) matchesAny(stderr string, patterns []*regexp.Regexp) 
 	return false
 }
 
-func (p *PermissionParser) sudoResult(command string) Result {
-	return Result{
+func (p *PermissionParser) sudoResult(command string) itypes.ParserResult {
+	return itypes.ParserResult{
 		Fixed:   true,
 		Command: "sudo " + command,
-		Kind:    ResultKindPermissionSudo,
+		Kind:    itypes.FixKindPermissionSudo,
 	}
 }
 

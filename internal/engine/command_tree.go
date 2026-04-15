@@ -3,20 +3,20 @@ package engine
 import (
 	"strings"
 
-	"github.com/yuluo-yx/typo/internal/commands"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 type commandTreeTokenCandidate struct {
 	token       string
-	node        *commands.CommandTreeNode
+	node        *itypes.CommandTreeNode
 	distance    int
 	similarity  float64
 	lengthDelta int
 }
 
-func (e *Engine) tryCommandTreeFix(cmd string) FixResult {
+func (e *Engine) tryCommandTreeFix(cmd string) itypes.FixResult {
 	if e.commandTrees == nil {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	if result, parsed := e.tryCommandTreeFixWithShell(cmd); parsed {
@@ -25,18 +25,18 @@ func (e *Engine) tryCommandTreeFix(cmd string) FixResult {
 
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	tree, rootToken, ok := e.matchCommandTreeRoot(parts[0])
 	if !ok || tree == nil {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	rootChanged := rootToken != parts[0]
 	matchedTokens, matchedChildren := e.matchCommandTreeTokens(parts[1:], tree.Node)
 	if rootChanged && len(parts) > 1 && matchedChildren == 0 {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	changed := false
@@ -53,20 +53,20 @@ func (e *Engine) tryCommandTreeFix(cmd string) FixResult {
 	}
 
 	if !changed {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
-	return FixResult{
+	return itypes.FixResult{
 		Fixed:   true,
 		Command: strings.Join(parts, " "),
 		Source:  "tree",
 	}
 }
 
-func (e *Engine) tryCommandTreeFixWithShell(cmd string) (FixResult, bool) {
+func (e *Engine) tryCommandTreeFixWithShell(cmd string) (itypes.FixResult, bool) {
 	lines, err := parseShellCommandLines(cmd)
 	if err != nil {
-		return FixResult{Fixed: false}, false
+		return itypes.FixResult{Fixed: false}, false
 	}
 
 	for _, line := range lines {
@@ -75,14 +75,14 @@ func (e *Engine) tryCommandTreeFixWithShell(cmd string) (FixResult, bool) {
 			continue
 		}
 
-		return FixResult{
+		return itypes.FixResult{
 			Fixed:   true,
 			Command: line.replaceWords(replacements...),
 			Source:  "tree",
 		}, true
 	}
 
-	return FixResult{Fixed: false}, true
+	return itypes.FixResult{Fixed: false}, true
 }
 
 func (e *Engine) commandTreeReplacementsForLine(line *shellCommandLine) []shellWordReplacement {
@@ -130,7 +130,7 @@ func (e *Engine) commandTreeReplacementsForLine(line *shellCommandLine) []shellW
 	return replacements
 }
 
-func (e *Engine) matchCommandTreeRoot(token string) (*commands.CommandTree, string, bool) {
+func (e *Engine) matchCommandTreeRoot(token string) (*itypes.CommandTree, string, bool) {
 	if e.commandTrees == nil || token == "" {
 		return nil, "", false
 	}
@@ -147,7 +147,7 @@ func (e *Engine) matchCommandTreeRoot(token string) (*commands.CommandTree, stri
 	}
 
 	best := commandTreeTokenCandidate{distance: 999, similarity: -1}
-	var bestTree *commands.CommandTree
+	var bestTree *itypes.CommandTree
 	matchCfg := e.distanceMatchConfig()
 
 	for _, tree := range e.commandTrees.Trees() {
@@ -194,7 +194,7 @@ func (e *Engine) findCommandTreeRootForArgs(token string, args []string) string 
 	return replacement
 }
 
-func (e *Engine) matchCommandTreeTokens(tokens []string, node *commands.CommandTreeNode) ([]string, int) {
+func (e *Engine) matchCommandTreeTokens(tokens []string, node *itypes.CommandTreeNode) ([]string, int) {
 	if len(tokens) == 0 || node == nil {
 		return nil, 0
 	}
@@ -221,7 +221,7 @@ func (e *Engine) matchCommandTreeTokens(tokens []string, node *commands.CommandT
 	return matchedTokens, matchedChildren
 }
 
-func (e *Engine) matchCommandTreeChild(token string, node *commands.CommandTreeNode) (string, *commands.CommandTreeNode, bool) {
+func (e *Engine) matchCommandTreeChild(token string, node *itypes.CommandTreeNode) (string, *itypes.CommandTreeNode, bool) {
 	if node == nil || token == "" {
 		return "", nil, false
 	}
@@ -255,7 +255,7 @@ func (e *Engine) matchCommandTreeChild(token string, node *commands.CommandTreeN
 	return best.token, best.node, true
 }
 
-func newCommandTreeTokenCandidate(original, candidate string, node *commands.CommandTreeNode, cfg distanceMatchConfig, keyboard KeyboardWeights) (commandTreeTokenCandidate, bool) {
+func newCommandTreeTokenCandidate(original, candidate string, node *itypes.CommandTreeNode, cfg distanceMatchConfig, keyboard KeyboardWeights) (commandTreeTokenCandidate, bool) {
 	distance := Distance(original, candidate, keyboard)
 	if !isGoodCommandTreeTokenMatch(original, candidate, distance, cfg, keyboard) {
 		return commandTreeTokenCandidate{}, false

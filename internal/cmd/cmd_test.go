@@ -12,6 +12,7 @@ import (
 
 	"github.com/yuluo-yx/typo/internal/config"
 	"github.com/yuluo-yx/typo/internal/engine"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func TestMain(m *testing.M) {
@@ -355,14 +356,14 @@ func TestShouldRecordHistory(t *testing.T) {
 	tests := []struct {
 		name     string
 		original string
-		result   engine.FixResult
+		result   itypes.FixResult
 		want     bool
 	}{
-		{name: "not fixed", original: "git status", result: engine.FixResult{Fixed: false}, want: false},
-		{name: "unchanged command", original: "git status", result: engine.FixResult{Fixed: true, Command: "git status"}, want: false},
-		{name: "permission sudo parser", original: "mkdir 1", result: engine.FixResult{Fixed: true, Command: "sudo mkdir 1", Kind: "permission_sudo"}, want: false},
-		{name: "parser assisted fix", original: "git remove -v", result: engine.FixResult{Fixed: true, Command: "git remote -v", UsedParser: true}, want: false},
-		{name: "normal accepted fix", original: "gut status", result: engine.FixResult{Fixed: true, Command: "git status"}, want: true},
+		{name: "not fixed", original: "git status", result: itypes.FixResult{Fixed: false}, want: false},
+		{name: "unchanged command", original: "git status", result: itypes.FixResult{Fixed: true, Command: "git status"}, want: false},
+		{name: "permission sudo parser", original: "mkdir 1", result: itypes.FixResult{Fixed: true, Command: "sudo mkdir 1", Kind: "permission_sudo"}, want: false},
+		{name: "parser assisted fix", original: "git remove -v", result: itypes.FixResult{Fixed: true, Command: "git remote -v", UsedParser: true}, want: false},
+		{name: "normal accepted fix", original: "gut status", result: itypes.FixResult{Fixed: true, Command: "git status"}, want: true},
 	}
 
 	for _, tt := range tests {
@@ -1165,7 +1166,7 @@ func TestRulesEnableDisableSupportsUnknownPresentScope(t *testing.T) {
 	}
 
 	cfg := config.Load()
-	cfg.User.Rules["rust"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["rust"] = itypes.RuleSetConfig{Enabled: false}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
@@ -2636,7 +2637,7 @@ func TestDoctorPrintsCustomConfig(t *testing.T) {
 	cfg := config.Load()
 	cfg.User.Keyboard = "dvorak"
 	cfg.User.History.Enabled = false
-	cfg.User.Rules["docker"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["docker"] = itypes.RuleSetConfig{Enabled: false}
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
@@ -3978,7 +3979,7 @@ func TestCreateEngineAppliesDisabledRuleScopes(t *testing.T) {
 		ConfigDir: t.TempDir(),
 		User:      config.DefaultUserConfig(),
 	}
-	cfg.User.Rules["git"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["git"] = itypes.RuleSetConfig{Enabled: false}
 
 	eng := createEngine(cfg)
 	if got := eng.Fix("grt status", ""); got.Command == "git status" {
@@ -3992,9 +3993,9 @@ func TestDisabledCommandsFromConfig(t *testing.T) {
 	}
 
 	cfg := &config.Config{User: config.DefaultUserConfig()}
-	cfg.User.Rules["python"] = config.RuleSetConfig{Enabled: false}
-	cfg.User.Rules["git"] = config.RuleSetConfig{Enabled: false}
-	cfg.User.Rules["system"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["python"] = itypes.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["git"] = itypes.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["system"] = itypes.RuleSetConfig{Enabled: false}
 
 	got := disabledCommandsFromConfig(cfg)
 	wantSet := map[string]bool{
@@ -4017,8 +4018,8 @@ func TestDisabledCommandsFromConfig(t *testing.T) {
 
 func TestDisabledCommandsFromConfigIgnoresUnknownScopesWithWarning(t *testing.T) {
 	cfg := &config.Config{User: config.DefaultUserConfig()}
-	cfg.User.Rules["git"] = config.RuleSetConfig{Enabled: false}
-	cfg.User.Rules["rust"] = config.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["git"] = itypes.RuleSetConfig{Enabled: false}
+	cfg.User.Rules["rust"] = itypes.RuleSetConfig{Enabled: false}
 
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
