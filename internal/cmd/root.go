@@ -232,7 +232,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		keyboard = engine.DefaultKeyboard
 	}
 
-	subcmdRegistry := commands.NewSubcommandRegistry(cfg.ConfigDir)
+	toolTreeRegistry := commands.NewToolTreeRegistry(cfg.ConfigDir)
 	commandTreeRegistry := commands.NewCommandTreeRegistry()
 
 	return engine.NewEngine(
@@ -248,7 +248,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithCommandLoader(func() []string {
 			return discoverCommandsWithinTimeout(commands.Discover, CommandDiscoveryTimeout)
 		}),
-		engine.WithSubcommands(subcmdRegistry),
+		engine.WithToolTrees(toolTreeRegistry),
 		engine.WithCommandTrees(commandTreeRegistry),
 	)
 }

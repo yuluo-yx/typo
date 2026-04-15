@@ -179,12 +179,12 @@ func TestEngine_FixWithParser(t *testing.T) {
 
 func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
 	tmpDir := t.TempDir()
-	subcommands := commands.NewSubcommandRegistry(tmpDir)
+	subcommands := commands.NewToolTreeRegistry(tmpDir)
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git", "docker"}),
-		WithSubcommands(subcommands),
+		WithToolTrees(subcommands),
 	)
 
 	result := eng.FixWithContext(parser.Context{
@@ -385,14 +385,14 @@ func TestEngine_Fix_DoesNotReportNoopAsFix(t *testing.T) {
 
 func TestEngine_Fix_WithWrapperPrefixes(t *testing.T) {
 	tmpDir := t.TempDir()
-	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry := commands.NewToolTreeRegistry(tmpDir)
 	subcmdRegistry.Get("git")
 
 	eng := NewEngine(
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git", "sudo", "env"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(subcmdRegistry),
+		WithToolTrees(subcmdRegistry),
 	)
 
 	tests := []struct {
@@ -449,14 +449,14 @@ func TestEngine_Fix_PreservesQuotedArguments(t *testing.T) {
 
 func TestEngine_Fix_PreservesCompoundCommands(t *testing.T) {
 	tmpDir := t.TempDir()
-	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry := commands.NewToolTreeRegistry(tmpDir)
 	subcmdRegistry.Get("git")
 
 	eng := NewEngine(
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git", "sudo"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(subcmdRegistry),
+		WithToolTrees(subcmdRegistry),
 	)
 
 	tests := []struct {
@@ -491,7 +491,7 @@ func TestEngine_Fix_PreservesCompoundCommands(t *testing.T) {
 
 func TestEngine_Fix_CanCorrectMultipleTyposInOneCommand(t *testing.T) {
 	tmpDir := t.TempDir()
-	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry := commands.NewToolTreeRegistry(tmpDir)
 	subcmdRegistry.Get("git")
 	subcmdRegistry.Get("docker")
 
@@ -499,7 +499,7 @@ func TestEngine_Fix_CanCorrectMultipleTyposInOneCommand(t *testing.T) {
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git", "docker", "sudo"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(subcmdRegistry),
+		WithToolTrees(subcmdRegistry),
 	)
 
 	tests := []struct {
@@ -863,14 +863,14 @@ func TestEngine_FixSubcommand_SimilarityBoundary(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry := commands.NewToolTreeRegistry(tmpDir)
 	subcmdRegistry.Get("git")
 
 	eng := NewEngine(
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(subcmdRegistry),
+		WithToolTrees(subcmdRegistry),
 	)
 
 	tests := []struct {
@@ -925,14 +925,14 @@ func TestEngine_GitCommands_CommonTypos(t *testing.T) {
 	// Comprehensive test for common git command typos
 
 	tmpDir := t.TempDir()
-	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry := commands.NewToolTreeRegistry(tmpDir)
 	subcmdRegistry.Get("git")
 
 	eng := NewEngine(
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(subcmdRegistry),
+		WithToolTrees(subcmdRegistry),
 	)
 
 	tests := []struct {
@@ -1038,71 +1038,68 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-	cache := []commands.SubcommandCache{
-		{
-			Tool:        "git",
-			Subcommands: []string{"status", "remote", "rev-parse", "ls-files"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "docker",
-			Subcommands: []string{"build", "run", "ps", "images", "logs", "compose"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "npm",
-			Subcommands: []string{"install", "run", "test", "publish", "ci"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "cargo",
-			Subcommands: []string{"bench", "build", "check", "fmt", "run", "test"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "kubectl",
-			Subcommands: []string{"get", "describe", "apply", "delete", "logs"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "brew",
-			Subcommands: []string{"install", "update", "upgrade", "list", "search"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "terraform",
-			Subcommands: []string{"init", "plan", "apply", "destroy", "validate"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "helm",
-			Subcommands: []string{"install", "upgrade", "template", "repo", "lint", "list"},
-			UpdatedAt:   time.Now(),
-		},
-		{
-			Tool:        "aws",
-			Subcommands: []string{"s3", "ec2", "configure"},
-			Children: map[string][]string{
-				"s3": {"cp", "ls", "mb", "mv", "rm", "sync"},
-			},
-			UpdatedAt: time.Now(),
-		},
-		{
-			Tool:        "gcloud",
-			Subcommands: []string{"auth", "compute", "config"},
-			Children: map[string][]string{
-				"compute":           {"instances"},
-				"compute instances": {"describe", "list"},
-			},
-			UpdatedAt: time.Now(),
-		},
-		{
-			Tool:        "az",
-			Subcommands: []string{"account", "group", "login"},
-			Children: map[string][]string{
-				"group": {"create", "delete", "list", "show"},
-			},
-			UpdatedAt: time.Now(),
+	cache := struct {
+		SchemaVersion int                       `json:"schema_version"`
+		Tools         []*commands.ToolTreeCache `json:"tools"`
+	}{
+		SchemaVersion: 2,
+		Tools: []*commands.ToolTreeCache{
+			toolTreeCache("git", map[string]*commands.TreeNode{
+				"status": {}, "remote": {}, "rev-parse": {}, "ls-files": {},
+			}),
+			toolTreeCache("docker", map[string]*commands.TreeNode{
+				"build": {}, "run": {}, "ps": {}, "images": {}, "logs": {}, "compose": {},
+			}),
+			toolTreeCache("npm", map[string]*commands.TreeNode{
+				"install": {}, "run": {}, "test": {}, "publish": {}, "ci": {},
+			}),
+			toolTreeCache("cargo", map[string]*commands.TreeNode{
+				"bench": {}, "build": {}, "check": {}, "fmt": {}, "run": {}, "test": {},
+			}),
+			toolTreeCache("kubectl", map[string]*commands.TreeNode{
+				"get": {}, "describe": {}, "apply": {}, "delete": {}, "logs": {},
+			}),
+			toolTreeCache("brew", map[string]*commands.TreeNode{
+				"install": {}, "update": {}, "upgrade": {}, "list": {}, "search": {},
+			}),
+			toolTreeCache("terraform", map[string]*commands.TreeNode{
+				"init": {}, "plan": {}, "apply": {}, "destroy": {}, "validate": {},
+			}),
+			toolTreeCache("helm", map[string]*commands.TreeNode{
+				"install": {}, "upgrade": {}, "template": {}, "repo": {}, "lint": {}, "list": {},
+			}),
+			toolTreeCache("aws", map[string]*commands.TreeNode{
+				"s3": {
+					Children: map[string]*commands.TreeNode{
+						"cp": {}, "ls": {}, "mb": {}, "mv": {}, "rm": {}, "sync": {},
+					},
+				},
+				"ec2":       {},
+				"configure": {},
+			}),
+			toolTreeCache("gcloud", map[string]*commands.TreeNode{
+				"auth": {},
+				"compute": {
+					Children: map[string]*commands.TreeNode{
+						"instances": {
+							Children: map[string]*commands.TreeNode{
+								"describe": {},
+								"list":     {},
+							},
+						},
+					},
+				},
+				"config": {},
+			}),
+			toolTreeCache("az", map[string]*commands.TreeNode{
+				"account": {},
+				"group": {
+					Children: map[string]*commands.TreeNode{
+						"create": {}, "delete": {}, "list": {}, "show": {},
+					},
+				},
+				"login": {},
+			}),
 		},
 	}
 
@@ -1116,15 +1113,23 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 		t.Fatalf("Failed to write subcommand cache: %v", err)
 	}
 
-	subcmdRegistry := commands.NewSubcommandRegistry(tmpDir)
+	subcmdRegistry := commands.NewToolTreeRegistry(tmpDir)
 
 	return NewEngine(
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git", "docker", "npm", "cargo", "kubectl", "brew", "terraform", "helm", "typo", "aws", "gcloud", "az"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(subcmdRegistry),
+		WithToolTrees(subcmdRegistry),
 		WithCommandTrees(commands.NewCommandTreeRegistry()),
 	)
+}
+
+func toolTreeCache(tool string, children map[string]*commands.TreeNode) *commands.ToolTreeCache {
+	return &commands.ToolTreeCache{
+		Tool:      tool,
+		Tree:      &commands.TreeNode{Children: children},
+		UpdatedAt: time.Now(),
+	}
 }
 
 func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {

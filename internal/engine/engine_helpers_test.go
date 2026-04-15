@@ -131,10 +131,10 @@ func TestEngine_CommandPriority(t *testing.T) {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
-	subcommands := commands.NewSubcommandRegistry(tmpDir)
+	subcommands := commands.NewToolTreeRegistry(tmpDir)
 	eng := NewEngine(
 		WithRules(rules),
-		WithSubcommands(subcommands),
+		WithToolTrees(subcommands),
 	)
 
 	dockerPriority := eng.commandPriority("docker")
@@ -748,12 +748,47 @@ func TestEngine_TrySubcommandFix_MultiLevelCloudCommands(t *testing.T) {
 	}
 }
 
+func TestEngine_TrySubcommandFix_BuiltinNestedToolTrees(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{name: "git first level", cmd: "git stsh save", wantCmd: "git stash save"},
+		{name: "git second level", cmd: "git stash sve", wantCmd: "git stash save"},
+		{name: "docker first level", cmd: "docker imge ls", wantCmd: "docker image ls"},
+		{name: "docker second level", cmd: "docker container stp", wantCmd: "docker container stop"},
+		{name: "kubectl resource", cmd: "kubectl get pds", wantCmd: "kubectl get pods"},
+		{name: "kubectl alias canonicalization", cmd: "kubectl get po", wantCmd: "kubectl get pods"},
+		{name: "git option before nested command", cmd: "git -C repo stash sve", wantCmd: "git -C repo stash save"},
+		{name: "docker option before nested command", cmd: "docker --context prod imge ls", wantCmd: "docker --context prod image ls"},
+		{name: "kubectl option after resource", cmd: "kubectl get pds -n prod", wantCmd: "kubectl get pods -n prod"},
+		{name: "sudo wrapper", cmd: "sudo git stsh save", wantCmd: "sudo git stash save"},
+		{name: "compound command", cmd: "git stsh save && git stsh list", wantCmd: "git stash save && git stash list"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+		})
+	}
+
+	if got := eng.Fix("git commit somefile", ""); got.Fixed {
+		t.Fatalf("Expected passthrough argument to stay untouched, got %+v", got)
+	}
+}
+
 func TestEngine_TrySubcommandFix_EmptyDynamicSubcommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	eng := NewEngine(
 		WithCommands([]string{"composer"}),
 		WithKeyboard(NewQWERTYKeyboard()),
-		WithSubcommands(commands.NewSubcommandRegistry(tmpDir)),
+		WithToolTrees(commands.NewToolTreeRegistry(tmpDir)),
 	)
 
 	if got := eng.trySubcommandFix("composer isntall"); got.Fixed {

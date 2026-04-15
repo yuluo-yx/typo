@@ -32,7 +32,7 @@ Every public interface falls into one of two tiers:
 | `config.json` | Runtime settings managed by `typo config` |
 | `rules.json` | Learned and user-defined rules |
 | `usage_history.json` | Accepted correction history |
-| `subcommands.json` | Cached discovered subcommands |
+| `subcommands.json` | Cached discovered subcommand trees |
 
 New files may be added to `~/.typo/` in minor releases, but existing files will
 not be renamed, moved, or have their purpose changed.

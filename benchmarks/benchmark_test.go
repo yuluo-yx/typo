@@ -2,7 +2,6 @@ package benchmarks
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -12,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/yuluo-yx/typo/internal/commands"
 )
 
 type cliBenchmarkEnv struct {
@@ -186,17 +183,7 @@ func (e *cliBenchmarkEnv) seedSubcommands(b *testing.B, tools map[string][]strin
 		b.Fatalf("failed to create config directory: %v", err)
 	}
 
-	now := time.Now()
-	caches := make([]commands.SubcommandCache, 0, len(tools))
-	for tool, subcommands := range tools {
-		caches = append(caches, commands.SubcommandCache{
-			Tool:        tool,
-			Subcommands: subcommands,
-			UpdatedAt:   now,
-		})
-	}
-
-	data, err := json.MarshalIndent(caches, "", "  ")
+	data, err := marshalBenchmarkToolTreeCache(tools, time.Now())
 	if err != nil {
 		b.Fatalf("failed to marshal subcommand cache: %v", err)
 	}

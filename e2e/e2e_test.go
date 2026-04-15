@@ -106,41 +106,38 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		"chmod", "chown", "ssh", "scp", "wget", "rsync", "zip", "unzip", "su", "gzip", "ps", "kill", "ln", "du", "df", "date", "open",
 		"clear", "man", "whoami", "uname", "basename", "dirname", "file", "stat",
 	)
-	env.seedSubcommandCaches(t, []commands.SubcommandCache{
-		{Tool: "git", Subcommands: []string{"status", "remote", "commit", "checkout", "branch", "pull", "push"}},
-		{Tool: "docker", Subcommands: []string{"build", "ps", "images", "run", "logs", "compose"}},
-		{Tool: "npm", Subcommands: []string{"install", "list", "run", "test", "ci"}},
-		{Tool: "yarn", Subcommands: []string{"add", "install", "init", "test", "run"}},
-		{Tool: "kubectl", Subcommands: []string{"apply", "describe", "get", "logs"}},
-		{Tool: "cargo", Subcommands: []string{"build", "check", "run", "test", "fmt"}},
-		{Tool: "go", Subcommands: []string{"build", "test", "fmt", "mod", "env"}},
-		{Tool: "pip", Subcommands: []string{"install", "uninstall", "list", "show", "freeze"}},
-		{Tool: "pip3", Subcommands: []string{"install", "uninstall", "list", "show", "freeze"}},
-		{Tool: "brew", Subcommands: []string{"install", "update", "upgrade", "list", "search"}},
-		{Tool: "terraform", Subcommands: []string{"init", "plan", "apply", "destroy", "validate"}},
-		{Tool: "helm", Subcommands: []string{"install", "upgrade", "template", "repo", "lint", "list"}},
-		{
-			Tool:        "aws",
-			Subcommands: []string{"s3", "ec2", "configure"},
-			Children: map[string][]string{
-				"s3": {"cp", "ls", "mb", "mv", "rm", "sync"},
+	env.seedSubcommandCaches(t, []*commands.ToolTreeCache{
+		e2eToolTreeCache("git", flatTree("status", "remote", "commit", "checkout", "branch", "pull", "push")),
+		e2eToolTreeCache("docker", flatTree("build", "ps", "images", "run", "logs", "compose")),
+		e2eToolTreeCache("npm", flatTree("install", "list", "run", "test", "ci")),
+		e2eToolTreeCache("yarn", flatTree("add", "install", "init", "test", "run")),
+		e2eToolTreeCache("kubectl", flatTree("apply", "describe", "get", "logs")),
+		e2eToolTreeCache("cargo", flatTree("build", "check", "run", "test", "fmt")),
+		e2eToolTreeCache("go", flatTree("build", "test", "fmt", "mod", "env")),
+		e2eToolTreeCache("pip", flatTree("install", "uninstall", "list", "show", "freeze")),
+		e2eToolTreeCache("pip3", flatTree("install", "uninstall", "list", "show", "freeze")),
+		e2eToolTreeCache("brew", flatTree("install", "update", "upgrade", "list", "search")),
+		e2eToolTreeCache("terraform", flatTree("init", "plan", "apply", "destroy", "validate")),
+		e2eToolTreeCache("helm", flatTree("install", "upgrade", "template", "repo", "lint", "list")),
+		e2eToolTreeCache("aws", map[string]*commands.TreeNode{
+			"s3":        {Children: flatTree("cp", "ls", "mb", "mv", "rm", "sync")},
+			"ec2":       {},
+			"configure": {},
+		}),
+		e2eToolTreeCache("gcloud", map[string]*commands.TreeNode{
+			"auth": {},
+			"compute": {
+				Children: map[string]*commands.TreeNode{
+					"instances": {Children: flatTree("describe", "list")},
+				},
 			},
-		},
-		{
-			Tool:        "gcloud",
-			Subcommands: []string{"auth", "compute", "config"},
-			Children: map[string][]string{
-				"compute":           {"instances"},
-				"compute instances": {"describe", "list"},
-			},
-		},
-		{
-			Tool:        "az",
-			Subcommands: []string{"account", "group", "login"},
-			Children: map[string][]string{
-				"group": {"create", "delete", "list", "show"},
-			},
-		},
+			"config": {},
+		}),
+		e2eToolTreeCache("az", map[string]*commands.TreeNode{
+			"account": {},
+			"group":   {Children: flatTree("create", "delete", "list", "show")},
+			"login":   {},
+		}),
 	})
 
 	return env
@@ -273,7 +270,7 @@ func (e *e2eEnv) commandEnv(extra ...string) []string {
 	return filtered
 }
 
-func (e *e2eEnv) seedSubcommandCaches(t *testing.T, caches []commands.SubcommandCache) {
+func (e *e2eEnv) seedSubcommandCaches(t *testing.T, caches []*commands.ToolTreeCache) {
 	t.Helper()
 
 	if err := os.MkdirAll(e.configDir(), 0755); err != nil {
@@ -281,15 +278,25 @@ func (e *e2eEnv) seedSubcommandCaches(t *testing.T, caches []commands.Subcommand
 	}
 
 	now := time.Now()
-	normalized := make([]commands.SubcommandCache, 0, len(caches))
+	normalized := make([]*commands.ToolTreeCache, 0, len(caches))
 	for _, cache := range caches {
+		if cache == nil {
+			continue
+		}
 		if cache.UpdatedAt.IsZero() {
 			cache.UpdatedAt = now
 		}
 		normalized = append(normalized, cache)
 	}
 
-	data, err := json.MarshalIndent(normalized, "", "  ")
+	wrapper := struct {
+		SchemaVersion int                       `json:"schema_version"`
+		Tools         []*commands.ToolTreeCache `json:"tools"`
+	}{
+		SchemaVersion: 2,
+		Tools:         normalized,
+	}
+	data, err := json.MarshalIndent(wrapper, "", "  ")
 	if err != nil {
 		t.Fatalf("failed to marshal subcommand cache: %v", err)
 	}
@@ -298,6 +305,21 @@ func (e *e2eEnv) seedSubcommandCaches(t *testing.T, caches []commands.Subcommand
 	if err := os.WriteFile(cacheFile, data, 0600); err != nil {
 		t.Fatalf("failed to write subcommand cache: %v", err)
 	}
+}
+
+func e2eToolTreeCache(tool string, children map[string]*commands.TreeNode) *commands.ToolTreeCache {
+	return &commands.ToolTreeCache{
+		Tool: tool,
+		Tree: &commands.TreeNode{Children: children},
+	}
+}
+
+func flatTree(tokens ...string) map[string]*commands.TreeNode {
+	children := make(map[string]*commands.TreeNode, len(tokens))
+	for _, token := range tokens {
+		children[token] = &commands.TreeNode{}
+	}
+	return children
 }
 
 func (e *e2eEnv) run(t *testing.T, args ...string) e2eResult {

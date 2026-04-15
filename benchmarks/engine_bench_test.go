@@ -64,7 +64,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 	history := engine.NewHistory("")
 	commandList := []string{"git", "docker", "npm", "go", "python", "kubectl", "make", "ls", "cd", "grep", "sudo", "env", "echo", "true"}
 	parserRegistry := parser.NewRegistry()
-	subcommands := newBenchmarkSubcommandRegistry(b, map[string][]string{
+	subcommands := newBenchmarkToolTreeRegistry(b, map[string][]string{
 		"git":     {"status", "remote", "commit", "checkout", "branch", "pull", "push"},
 		"docker":  {"build", "ps", "images", "run", "logs", "compose"},
 		"npm":     {"install", "list", "run", "test", "ci"},
@@ -79,7 +79,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithHistory(history),
 			engine.WithCommands(commandList),
 			engine.WithParser(parserRegistry),
-			engine.WithSubcommands(subcommands),
+			engine.WithToolTrees(subcommands),
 		)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -94,7 +94,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithHistory(history),
 			engine.WithCommands(commandList),
 			engine.WithParser(parserRegistry),
-			engine.WithSubcommands(subcommands),
+			engine.WithToolTrees(subcommands),
 		)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -109,7 +109,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithHistory(history),
 			engine.WithCommands(commandList),
 			engine.WithParser(parserRegistry),
-			engine.WithSubcommands(subcommands),
+			engine.WithToolTrees(subcommands),
 		)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -124,7 +124,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithHistory(history),
 			engine.WithCommands(commandList),
 			engine.WithParser(parserRegistry),
-			engine.WithSubcommands(subcommands),
+			engine.WithToolTrees(subcommands),
 		)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -139,7 +139,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithHistory(history),
 			engine.WithCommands(commandList),
 			engine.WithParser(parserRegistry),
-			engine.WithSubcommands(subcommands),
+			engine.WithToolTrees(subcommands),
 		)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -154,7 +154,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithHistory(history),
 			engine.WithCommands(commandList),
 			engine.WithParser(parserRegistry),
-			engine.WithSubcommands(subcommands),
+			engine.WithToolTrees(subcommands),
 		)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -169,7 +169,7 @@ func BenchmarkEngine_Fix(b *testing.B) {
 			engine.WithHistory(history),
 			engine.WithCommands(commandList),
 			engine.WithParser(parserRegistry),
-			engine.WithSubcommands(subcommands),
+			engine.WithToolTrees(subcommands),
 		)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -246,22 +246,11 @@ func BenchmarkEngine_Fix_WithCommands(b *testing.B) {
 	})
 }
 
-func newBenchmarkSubcommandRegistry(b *testing.B, tools map[string][]string) *commands.SubcommandRegistry {
+func newBenchmarkToolTreeRegistry(b *testing.B, tools map[string][]string) *commands.ToolTreeRegistry {
 	b.Helper()
 
 	cacheDir := b.TempDir()
-	caches := make([]commands.SubcommandCache, 0, len(tools))
-	now := time.Now()
-
-	for tool, subcommands := range tools {
-		caches = append(caches, commands.SubcommandCache{
-			Tool:        tool,
-			Subcommands: subcommands,
-			UpdatedAt:   now,
-		})
-	}
-
-	data, err := json.MarshalIndent(caches, "", "  ")
+	data, err := marshalBenchmarkToolTreeCache(tools, time.Now())
 	if err != nil {
 		b.Fatalf("failed to marshal benchmark subcommands: %v", err)
 	}
@@ -271,5 +260,29 @@ func newBenchmarkSubcommandRegistry(b *testing.B, tools map[string][]string) *co
 		b.Fatalf("failed to write benchmark subcommand cache: %v", err)
 	}
 
-	return commands.NewSubcommandRegistry(cacheDir)
+	return commands.NewToolTreeRegistry(cacheDir)
+}
+
+func marshalBenchmarkToolTreeCache(tools map[string][]string, updatedAt time.Time) ([]byte, error) {
+	wrapper := struct {
+		SchemaVersion int                       `json:"schema_version"`
+		Tools         []*commands.ToolTreeCache `json:"tools"`
+	}{
+		SchemaVersion: 2,
+		Tools:         make([]*commands.ToolTreeCache, 0, len(tools)),
+	}
+
+	for tool, subcommands := range tools {
+		children := make(map[string]*commands.TreeNode, len(subcommands))
+		for _, subcommand := range subcommands {
+			children[subcommand] = &commands.TreeNode{}
+		}
+		wrapper.Tools = append(wrapper.Tools, &commands.ToolTreeCache{
+			Tool:      tool,
+			Tree:      &commands.TreeNode{Children: children},
+			UpdatedAt: updatedAt,
+		})
+	}
+
+	return json.MarshalIndent(wrapper, "", "  ")
 }

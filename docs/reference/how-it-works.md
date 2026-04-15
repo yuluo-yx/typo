@@ -51,9 +51,10 @@ Common supported tools include:
 Notes:
 
 - Built-in command candidates cover common cloud tools even before PATH discovery runs.
-- Built-in subcommands cover common tools even before dynamic discovery runs.
-- Typo caches discovered subcommands in `~/.typo/subcommands.json`.
-- Hierarchical subcommand discovery is supported for `aws`, `gcloud`, and `az`.
+- Built-in tree-shaped subcommands cover common `git`, `docker`, and `kubectl` nested commands even before dynamic discovery runs.
+- Typo caches discovered subcommands in `~/.typo/subcommands.json` using `schema_version: 2`.
+- Hierarchical subcommand discovery is supported for `git`, `docker`, `aws`, `gcloud`, and `az`; `kubectl` resource correction uses a conservative built-in resource tree.
+- Older subcommand cache files without `schema_version: 2` are moved aside automatically and regenerated.
 
 ## Local files
 
@@ -72,7 +73,7 @@ File roles:
 - `config.json`: runtime settings managed by `typo config`
 - `rules.json`: learned and user-defined rules
 - `usage_history.json`: accepted correction history
-- `subcommands.json`: cached discovered subcommands
+- `subcommands.json`: cached discovered subcommand trees
 
 ## Configuration model
 

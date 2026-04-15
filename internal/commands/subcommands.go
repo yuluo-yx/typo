@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,34 +18,97 @@ import (
 	"github.com/yuluo-yx/typo/internal/storage"
 )
 
-// SubcommandCache represents cached subcommands for a tool.
-type SubcommandCache struct {
-	Tool        string              `json:"tool"`
-	Subcommands []string            `json:"subcommands"`
-	Children    map[string][]string `json:"children,omitempty"`
-	UpdatedAt   time.Time           `json:"updated_at"`
+// CacheHeader 用于识别子命令缓存结构版本。
+type CacheHeader struct {
+	SchemaVersion int `json:"schema_version"`
 }
 
-// SubcommandRegistry manages subcommands for various tools.
-type SubcommandRegistry struct {
+// ToolTreeCache 表示单个工具的树形子命令缓存。
+type ToolTreeCache struct {
+	Tool      string    `json:"tool"`
+	Tree      *TreeNode `json:"tree"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TreeNode 是 v2 子命令缓存使用的 JSON 树节点。
+type TreeNode struct {
+	Children    map[string]*TreeNode `json:"children,omitempty"`
+	Terminal    bool                 `json:"terminal,omitempty"`
+	Passthrough bool                 `json:"passthrough,omitempty"`
+	Alias       string               `json:"alias,omitempty"`
+}
+
+// ToCommandTreeNode 将缓存中的 JSON 树节点转换为引擎命令树节点。
+func (n *TreeNode) ToCommandTreeNode() *CommandTreeNode {
+	if n == nil {
+		return nil
+	}
+
+	node := &CommandTreeNode{
+		StopAfterMatch: n.Terminal && !n.Passthrough,
+		Alias:          n.Alias,
+	}
+	if len(n.Children) > 0 {
+		node.Children = make(map[string]*CommandTreeNode, len(n.Children))
+		for name, child := range n.Children {
+			node.Children[name] = child.ToCommandTreeNode()
+		}
+	}
+	return node
+}
+
+func (n *TreeNode) clone() *TreeNode {
+	if n == nil {
+		return nil
+	}
+
+	cloned := &TreeNode{
+		Terminal:    n.Terminal,
+		Passthrough: n.Passthrough,
+		Alias:       n.Alias,
+	}
+	if len(n.Children) > 0 {
+		cloned.Children = make(map[string]*TreeNode, len(n.Children))
+		for name, child := range n.Children {
+			cloned.Children[name] = child.clone()
+		}
+	}
+	return cloned
+}
+
+func (n *TreeNode) childTokens() []string {
+	if n == nil || len(n.Children) == 0 {
+		return nil
+	}
+
+	tokens := make([]string, 0, len(n.Children))
+	for token := range n.Children {
+		tokens = append(tokens, token)
+	}
+	sort.Strings(tokens)
+	return tokens
+}
+
+// ToolTreeRegistry 管理外部工具的树形子命令。
+type ToolTreeRegistry struct {
 	mu          sync.RWMutex
 	saveMu      sync.Mutex
-	cache       map[string]*SubcommandCache
+	trees       map[string]*ToolTreeCache
 	cacheDir    string
 	cacheExpiry time.Duration
 	helpTimeout time.Duration
 }
 
 const (
+	subcommandCacheSchemaVersion   = 2
 	defaultHelpTimeout             = 1000 * time.Millisecond
 	maxHierarchicalSubcommandDepth = 3
-	rootSubcommandPath             = ""
 )
 
-// NewSubcommandRegistry creates a new subcommand registry.
-func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+// NewToolTreeRegistry 创建并加载 v2 树形子命令缓存。
+func NewToolTreeRegistry(cacheDir string) *ToolTreeRegistry {
+	r := &ToolTreeRegistry{
+		trees:       make(map[string]*ToolTreeCache),
 		cacheDir:    cacheDir,
 		cacheExpiry: 7 * 24 * time.Hour, // 7 days
 		helpTimeout: defaultHelpTimeout,
@@ -53,47 +117,204 @@ func NewSubcommandRegistry(cacheDir string) *SubcommandRegistry {
 	return r
 }
 
-// Get returns subcommands for a tool, fetching from cache or dynamically.
-func (r *SubcommandRegistry) Get(tool string) []string {
+// Get 返回工具的根级子命令，必要时执行动态发现。
+func (r *ToolTreeRegistry) Get(tool string) []string {
 	return r.GetChildren(tool, nil)
 }
 
-// GetChildren returns subcommands for a tool under the given prefix path.
-func (r *SubcommandRegistry) GetChildren(tool string, prefix []string) []string {
-	pathKey := subcommandPathKey(prefix)
-	builtin := builtinSubcommandsForPath(tool, prefix)
-
-	r.mu.RLock()
-	if cached, ok := r.cache[tool]; ok && time.Since(cached.UpdatedAt) < r.cacheExpiry {
-		if children, found := cached.childrenFor(pathKey); found {
-			r.mu.RUnlock()
-			return mergeUniqueStrings(children, builtin...)
-		}
-	}
-	r.mu.RUnlock()
-
-	subcommands := mergeUniqueStrings(r.fetchSubcommands(tool, prefix...), builtin...)
-	if len(subcommands) == 0 {
+// GetChildren 返回指定前缀路径下的子命令。
+func (r *ToolTreeRegistry) GetChildren(tool string, prefix []string) []string {
+	if tool == "" {
 		return nil
 	}
 
-	r.mu.Lock()
-	cache := r.cache[tool]
-	if cache == nil {
-		cache = &SubcommandCache{Tool: tool}
-		r.cache[tool] = cache
+	if r.pathStopsAtTerminal(tool, prefix) {
+		return nil
 	}
-	cache.setChildren(pathKey, subcommands)
-	cache.UpdatedAt = time.Now()
-	r.mu.Unlock()
-	r.saveCache()
 
-	return append([]string(nil), subcommands...)
+	if cached := r.cachedChildren(tool, prefix); len(cached) > 0 {
+		return cached
+	}
+
+	fetched := r.fetchSubcommands(tool, prefix...)
+	children := mergeUniqueStrings(fetched, builtinSubcommandsForPath(tool, prefix)...)
+	if len(children) == 0 {
+		return nil
+	}
+
+	r.storeChildren(tool, prefix, children)
+	return append([]string(nil), children...)
 }
 
-// fetchSubcommands dynamically fetches subcommands for a tool.
-// Results are cached to ~/.typo/subcommands.json
-func (r *SubcommandRegistry) fetchSubcommands(tool string, prefix ...string) []string {
+// ResolveChild 返回精确匹配子节点的规范名称。
+func (r *ToolTreeRegistry) ResolveChild(tool string, prefix []string, token string) (string, bool) {
+	if tool == "" || token == "" {
+		return "", false
+	}
+
+	if node := r.cachedNode(tool, prefix); node != nil {
+		if canonical, ok := resolveTreeChild(node, token); ok {
+			return canonical, true
+		}
+	}
+	if node := builtinNodeForPath(tool, prefix); node != nil {
+		if canonical, ok := resolveTreeChild(node, token); ok {
+			return canonical, true
+		}
+	}
+	return "", false
+}
+
+func resolveTreeChild(node *TreeNode, token string) (string, bool) {
+	if node == nil || len(node.Children) == 0 {
+		return "", false
+	}
+
+	child, ok := node.Children[token]
+	if !ok {
+		return "", false
+	}
+	if child != nil && child.Alias != "" {
+		return child.Alias, true
+	}
+	return token, true
+}
+
+func (r *ToolTreeRegistry) ensureTrees() {
+	if r.trees != nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.trees == nil {
+		r.trees = make(map[string]*ToolTreeCache)
+	}
+}
+
+func (r *ToolTreeRegistry) expiry() time.Duration {
+	if r == nil || r.cacheExpiry <= 0 {
+		return 7 * 24 * time.Hour
+	}
+	return r.cacheExpiry
+}
+
+func (r *ToolTreeRegistry) cachedChildren(tool string, prefix []string) []string {
+	node := r.cachedNode(tool, prefix)
+	if node == nil || len(node.Children) == 0 {
+		return nil
+	}
+	return mergeUniqueStrings(node.childTokens(), builtinSubcommandsForPath(tool, prefix)...)
+}
+
+func (r *ToolTreeRegistry) cachedNode(tool string, prefix []string) *TreeNode {
+	if r == nil {
+		return nil
+	}
+
+	r.ensureTrees()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	cache := r.trees[tool]
+	if cache == nil || cache.Tree == nil {
+		return nil
+	}
+	if !cache.UpdatedAt.IsZero() && time.Since(cache.UpdatedAt) >= r.expiry() {
+		return nil
+	}
+
+	node, ok := treeNodeForPath(cache.Tree, prefix)
+	if !ok {
+		return nil
+	}
+	return node.clone()
+}
+
+func (r *ToolTreeRegistry) pathStopsAtTerminal(tool string, prefix []string) bool {
+	if len(prefix) == 0 {
+		return false
+	}
+
+	if node := r.cachedNode(tool, prefix); isTerminalLeaf(node) {
+		return true
+	}
+	return isTerminalLeaf(builtinNodeForPath(tool, prefix))
+}
+
+func isTerminalLeaf(node *TreeNode) bool {
+	return node != nil && len(node.Children) == 0 && (node.Terminal || node.Passthrough)
+}
+
+func (r *ToolTreeRegistry) storeChildren(tool string, prefix []string, children []string) {
+	if r == nil || tool == "" || len(children) == 0 {
+		return
+	}
+
+	r.ensureTrees()
+	now := time.Now()
+
+	r.mu.Lock()
+	cache := r.trees[tool]
+	if cache == nil {
+		cache = &ToolTreeCache{
+			Tool: tool,
+			Tree: builtinTreeForTool(tool).clone(),
+		}
+		if cache.Tree == nil {
+			cache.Tree = &TreeNode{}
+		}
+		r.trees[tool] = cache
+	}
+	if cache.Tree == nil {
+		cache.Tree = &TreeNode{}
+	}
+
+	node := ensureTreePath(cache.Tree, tool, prefix)
+	if node.Children == nil {
+		node.Children = make(map[string]*TreeNode, len(children))
+	}
+	for _, child := range children {
+		if child == "" {
+			continue
+		}
+		if node.Children[child] != nil {
+			continue
+		}
+		if builtin := builtinNodeForPath(tool, appendPath(prefix, child)); builtin != nil {
+			node.Children[child] = builtin.clone()
+			continue
+		}
+		node.Children[child] = &TreeNode{}
+	}
+	cache.UpdatedAt = now
+	r.mu.Unlock()
+
+	r.saveCache()
+}
+
+func ensureTreePath(root *TreeNode, tool string, prefix []string) *TreeNode {
+	node := root
+	for i, token := range prefix {
+		if node.Children == nil {
+			node.Children = make(map[string]*TreeNode)
+		}
+		child := node.Children[token]
+		if child == nil {
+			if builtin := builtinNodeForPath(tool, prefix[:i+1]); builtin != nil {
+				child = builtin.clone()
+			} else {
+				child = &TreeNode{}
+			}
+			node.Children[token] = child
+		}
+		node = child
+	}
+	return node
+}
+
+// fetchSubcommands 动态获取工具子命令，结果会缓存到 ~/.typo/subcommands.json。
+func (r *ToolTreeRegistry) fetchSubcommands(tool string, prefix ...string) []string {
 	// Check if tool exists in PATH
 	if GetPath(tool) == "" {
 		return nil
@@ -111,6 +332,9 @@ func (r *SubcommandRegistry) fetchSubcommands(tool string, prefix ...string) []s
 func parseToolHelp(tool string, prefix []string, helpOutput string) []string {
 	switch tool {
 	case "git":
+		if len(prefix) > 0 {
+			return parseGitNestedHelp(helpOutput)
+		}
 		return parseGitHelp(helpOutput)
 	case "docker":
 		return parseDockerHelp(helpOutput)
@@ -137,14 +361,14 @@ func parseToolHelp(tool string, prefix []string, helpOutput string) []string {
 	}
 }
 
-func (r *SubcommandRegistry) getHelpOutputAtPath(tool string, prefix ...string) (string, error) {
+func (r *ToolTreeRegistry) getHelpOutputAtPath(tool string, prefix ...string) (string, error) {
 	if len(prefix) > 0 {
 		return r.getNestedHelpOutput(tool, prefix)
 	}
 	return r.getHelpOutput(tool)
 }
 
-func (r *SubcommandRegistry) getHelpOutput(tool string) (string, error) {
+func (r *ToolTreeRegistry) getHelpOutput(tool string) (string, error) {
 	// Special handling for git - use 'help -a' for all commands
 	if tool == "git" {
 		output, err := r.runHelpCommand("git", "help", "-a")
@@ -182,12 +406,22 @@ func (r *SubcommandRegistry) getHelpOutput(tool string) (string, error) {
 	return output, nil
 }
 
-func (r *SubcommandRegistry) getNestedHelpOutput(tool string, prefix []string) (string, error) {
+func (r *ToolTreeRegistry) getNestedHelpOutput(tool string, prefix []string) (string, error) {
 	if len(prefix) == 0 || len(prefix) > maxHierarchicalSubcommandDepth || !supportsHierarchicalDiscovery(tool) {
 		return "", nil
 	}
 
 	switch tool {
+	case "git":
+		if len(prefix) != 1 {
+			return "", nil
+		}
+		return r.runHelpCommand(tool, append(append([]string(nil), prefix...), "-h")...)
+	case "docker":
+		if len(prefix) != 1 {
+			return "", nil
+		}
+		return r.runHelpCommand(tool, append(append([]string(nil), prefix...), "--help")...)
 	case "aws":
 		return r.runHelpCommand(tool, append(append([]string(nil), prefix...), "help")...)
 	case "gcloud", "az":
@@ -197,7 +431,7 @@ func (r *SubcommandRegistry) getNestedHelpOutput(tool string, prefix []string) (
 	}
 }
 
-func (r *SubcommandRegistry) runHelpCommand(tool string, args ...string) (string, error) {
+func (r *ToolTreeRegistry) runHelpCommand(tool string, args ...string) (string, error) {
 	timeout := r.helpTimeout
 	if timeout <= 0 {
 		timeout = defaultHelpTimeout
@@ -232,7 +466,7 @@ func (r *SubcommandRegistry) runHelpCommand(tool string, args ...string) (string
 	}
 }
 
-func (r *SubcommandRegistry) loadCache() {
+func (r *ToolTreeRegistry) loadCache() {
 	if r.cacheDir == "" {
 		return
 	}
@@ -243,20 +477,41 @@ func (r *SubcommandRegistry) loadCache() {
 		return
 	}
 
-	var caches []SubcommandCache
-	if err := json.Unmarshal(data, &caches); err != nil {
+	var header CacheHeader
+	if err := json.Unmarshal(data, &header); err != nil {
 		storage.QuarantineInvalidJSON(cacheFile, err)
 		return
 	}
+	if header.SchemaVersion != subcommandCacheSchemaVersion {
+		storage.QuarantineInvalidJSON(cacheFile, errors.New("unsupported subcommands cache schema version"))
+		return
+	}
 
+	var wrapper struct {
+		SchemaVersion int              `json:"schema_version"`
+		Tools         []*ToolTreeCache `json:"tools"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err != nil {
+		storage.QuarantineInvalidJSON(cacheFile, err)
+		return
+	}
+	if wrapper.SchemaVersion != subcommandCacheSchemaVersion {
+		storage.QuarantineInvalidJSON(cacheFile, errors.New("unsupported subcommands cache schema version"))
+		return
+	}
+
+	r.ensureTrees()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for i := range caches {
-		r.cache[caches[i].Tool] = &caches[i]
+	for _, cache := range wrapper.Tools {
+		if cache == nil || cache.Tool == "" || cache.Tree == nil {
+			continue
+		}
+		r.trees[cache.Tool] = cache
 	}
 }
 
-func (r *SubcommandRegistry) saveCache() {
+func (r *ToolTreeRegistry) saveCache() {
 	if r.cacheDir == "" {
 		return
 	}
@@ -264,25 +519,36 @@ func (r *SubcommandRegistry) saveCache() {
 	r.saveMu.Lock()
 	defer r.saveMu.Unlock()
 
+	r.ensureTrees()
 	r.mu.RLock()
-	caches := make([]SubcommandCache, 0, len(r.cache))
-	for _, c := range r.cache {
-		cache := SubcommandCache{
-			Tool:        c.Tool,
-			Subcommands: append([]string(nil), c.Subcommands...),
-			UpdatedAt:   c.UpdatedAt,
+	tools := make([]*ToolTreeCache, 0, len(r.trees))
+	toolNames := make([]string, 0, len(r.trees))
+	for tool := range r.trees {
+		toolNames = append(toolNames, tool)
+	}
+	sort.Strings(toolNames)
+	for _, tool := range toolNames {
+		cache := r.trees[tool]
+		if cache == nil || cache.Tool == "" || cache.Tree == nil {
+			continue
 		}
-		if len(c.Children) > 0 {
-			cache.Children = make(map[string][]string, len(c.Children))
-			for key, values := range c.Children {
-				cache.Children[key] = append([]string(nil), values...)
-			}
-		}
-		caches = append(caches, cache)
+		tools = append(tools, &ToolTreeCache{
+			Tool:      cache.Tool,
+			Tree:      cache.Tree.clone(),
+			UpdatedAt: cache.UpdatedAt,
+		})
 	}
 	r.mu.RUnlock()
 
-	data, err := json.MarshalIndent(caches, "", "  ")
+	wrapper := struct {
+		SchemaVersion int              `json:"schema_version"`
+		Tools         []*ToolTreeCache `json:"tools"`
+	}{
+		SchemaVersion: subcommandCacheSchemaVersion,
+		Tools:         tools,
+	}
+
+	data, err := json.MarshalIndent(wrapper, "", "  ")
 	if err != nil {
 		return
 	}
@@ -292,7 +558,7 @@ func (r *SubcommandRegistry) saveCache() {
 	_ = storage.WriteFileAtomic(cacheFile, data, 0600)
 }
 
-// Parser functions for different tools
+// 各工具帮助输出解析函数。
 
 func parseGitHelp(output string) []string {
 	// Git help format:
@@ -305,6 +571,43 @@ func parseGitHelp(output string) []string {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+			subcommands = append(subcommands, matches[1])
+		}
+	}
+
+	return subcommands
+}
+
+func parseGitNestedHelp(output string) []string {
+	subcommands := parseGitHelp(output)
+	if len(subcommands) > 0 {
+		return subcommands
+	}
+
+	seen := make(map[string]bool)
+	repeatedUsage := regexp.MustCompile(`\bgit\s+[\w-]+\s+([a-z][a-z0-9-]+)\b`)
+	groupedUsage := regexp.MustCompile(`\bgit\s+[\w-]+\s+\(([^)]+)\)`)
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		line := scanner.Text()
+		for _, matches := range groupedUsage.FindAllStringSubmatch(line, -1) {
+			if len(matches) <= 1 {
+				continue
+			}
+			for _, part := range strings.Split(matches[1], "|") {
+				cmd := strings.TrimSpace(part)
+				if cmd != "" && !seen[cmd] {
+					seen[cmd] = true
+					subcommands = append(subcommands, cmd)
+				}
+			}
+		}
+		for _, matches := range repeatedUsage.FindAllStringSubmatch(line, -1) {
+			if len(matches) <= 1 || seen[matches[1]] {
+				continue
+			}
+			seen[matches[1]] = true
 			subcommands = append(subcommands, matches[1])
 		}
 	}
@@ -594,36 +897,37 @@ func normalizeHelpSection(value string) string {
 	return strings.ToUpper(trimmed)
 }
 
-// HasSubcommands checks if a tool is known to have subcommands.
-func (r *SubcommandRegistry) HasSubcommands(tool string) bool {
-	knownTools := map[string]bool{
-		"git":       true,
-		"docker":    true,
-		"npm":       true,
-		"yarn":      true,
-		"kubectl":   true,
-		"cargo":     true,
-		"go":        true,
-		"pip":       true,
-		"pip3":      true,
-		"composer":  true,
-		"ansible":   true,
-		"terraform": true,
-		"helm":      true,
-		"brew":      true,
-		"aws":       true,
-		"gcloud":    true,
-		"az":        true,
-	}
-	return knownTools[tool]
+// HasSubcommands 检查工具是否属于已知子命令工具。
+func (r *ToolTreeRegistry) HasSubcommands(tool string) bool {
+	return knownSubcommandTools[tool]
+}
+
+var knownSubcommandTools = map[string]bool{
+	"git":       true,
+	"docker":    true,
+	"npm":       true,
+	"yarn":      true,
+	"kubectl":   true,
+	"cargo":     true,
+	"go":        true,
+	"pip":       true,
+	"pip3":      true,
+	"composer":  true,
+	"ansible":   true,
+	"terraform": true,
+	"helm":      true,
+	"brew":      true,
+	"aws":       true,
+	"gcloud":    true,
+	"az":        true,
 }
 
 var builtinSubcommands = map[string][]string{
-	"git":       {"add", "branch", "checkout", "clone", "commit", "diff", "fetch", "init", "log", "merge", "pull", "push", "rebase", "remote", "restore", "status", "switch"},
-	"docker":    {"build", "compose", "exec", "images", "logs", "ps", "pull", "push", "rm", "run", "start", "stop"},
+	"git":       {"add", "branch", "checkout", "clone", "commit", "diff", "fetch", "init", "log", "merge", "pull", "push", "rebase", "remote", "restore", "status", "stash", "submodule", "switch"},
+	"docker":    {"build", "compose", "container", "exec", "image", "images", "inspect", "logs", "network", "ps", "pull", "push", "rm", "run", "start", "stop", "volume"},
 	"npm":       {"ci", "install", "list", "login", "publish", "run", "test", "uninstall", "update"},
 	"yarn":      {"add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade"},
-	"kubectl":   {"api-resources", "apply", "config", "create", "delete", "describe", "exec", "get", "logs", "patch", "rollout"},
+	"kubectl":   {"api-resources", "apply", "config", "create", "delete", "describe", "edit", "exec", "get", "logs", "patch", "rollout"},
 	"cargo":     {"bench", "build", "check", "clean", "doc", "fmt", "help", "run", "test", "update"},
 	"go":        {"build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool"},
 	"brew":      {"cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"},
@@ -634,9 +938,12 @@ var builtinSubcommands = map[string][]string{
 	"az":        {"account", "aks", "functionapp", "group", "network", "storage", "vm", "webapp"},
 }
 
-var builtinSubcommandSet = buildBuiltinSubcommandSet()
+var (
+	builtinSubcommandSet = buildBuiltinSubcommandSet()
+	builtinToolTrees     = buildBuiltinToolTrees()
+)
 
-// HasBuiltinSubcommand reports whether a tool's builtin subcommand set contains the given subcommand.
+// HasBuiltinSubcommand 判断工具的内置根级子命令集合是否包含指定子命令。
 func HasBuiltinSubcommand(tool, subcommand string) bool {
 	if tool == "" || subcommand == "" {
 		return false
@@ -658,16 +965,252 @@ func buildBuiltinSubcommandSet() map[string]map[string]bool {
 	return result
 }
 
-func builtinSubcommandsForTool(tool string) []string {
-	return append([]string(nil), builtinSubcommands[tool]...)
+func buildBuiltinToolTrees() map[string]*TreeNode {
+	trees := make(map[string]*TreeNode, len(builtinSubcommands))
+	for tool, subcommands := range builtinSubcommands {
+		children := make(map[string]*TreeNode, len(subcommands))
+		for _, subcommand := range subcommands {
+			children[subcommand] = &TreeNode{}
+		}
+		trees[tool] = treeBranch(children)
+	}
+
+	trees["git"] = gitBuiltinTree()
+	trees["docker"] = dockerBuiltinTree()
+	trees["kubectl"] = kubectlBuiltinTree()
+	return trees
+}
+
+func builtinTreeForTool(tool string) *TreeNode {
+	return builtinToolTrees[tool]
+}
+
+func builtinNodeForPath(tool string, prefix []string) *TreeNode {
+	root := builtinTreeForTool(tool)
+	if root == nil {
+		return nil
+	}
+	node, ok := treeNodeForPath(root, prefix)
+	if !ok {
+		return nil
+	}
+	return node
 }
 
 func builtinSubcommandsForPath(tool string, prefix []string) []string {
-	if len(prefix) > 0 {
+	node := builtinNodeForPath(tool, prefix)
+	if node == nil {
 		return nil
 	}
+	return node.childTokens()
+}
 
-	return builtinSubcommandsForTool(tool)
+func treeNodeForPath(root *TreeNode, prefix []string) (*TreeNode, bool) {
+	if root == nil {
+		return nil, false
+	}
+
+	node := root
+	for _, token := range prefix {
+		if node == nil || len(node.Children) == 0 {
+			return nil, false
+		}
+		child, ok := node.Children[token]
+		if !ok {
+			return nil, false
+		}
+		node = child
+	}
+	return node, true
+}
+
+func appendPath(prefix []string, token string) []string {
+	path := make([]string, 0, len(prefix)+1)
+	path = append(path, prefix...)
+	path = append(path, token)
+	return path
+}
+
+func treeBranch(children map[string]*TreeNode) *TreeNode {
+	return &TreeNode{Children: children}
+}
+
+func treeLeaf() *TreeNode {
+	return &TreeNode{Terminal: true}
+}
+
+func treeLeafPassthrough() *TreeNode {
+	return &TreeNode{Terminal: true, Passthrough: true}
+}
+
+func treeLeafAlias(target string) *TreeNode {
+	return &TreeNode{Terminal: true, Alias: target}
+}
+
+func gitBuiltinTree() *TreeNode {
+	return treeBranch(map[string]*TreeNode{
+		"add":      treeLeafPassthrough(),
+		"branch":   treeLeafPassthrough(),
+		"checkout": treeLeafPassthrough(),
+		"clone":    treeLeafPassthrough(),
+		"commit":   treeLeafPassthrough(),
+		"diff":     treeLeafPassthrough(),
+		"fetch":    treeLeafPassthrough(),
+		"init":     treeLeaf(),
+		"log":      treeLeafPassthrough(),
+		"merge":    treeLeafPassthrough(),
+		"pull":     treeLeafPassthrough(),
+		"push":     treeLeafPassthrough(),
+		"rebase":   treeLeafPassthrough(),
+		"remote": treeBranch(map[string]*TreeNode{
+			"add":     treeLeaf(),
+			"remove":  treeLeaf(),
+			"rename":  treeLeaf(),
+			"set-url": treeLeaf(),
+			"show":    treeLeaf(),
+			"prune":   treeLeaf(),
+		}),
+		"restore": treeLeafPassthrough(),
+		"stash": treeBranch(map[string]*TreeNode{
+			"save":  treeLeaf(),
+			"list":  treeLeaf(),
+			"pop":   treeLeaf(),
+			"push":  treeLeaf(),
+			"show":  treeLeaf(),
+			"drop":  treeLeaf(),
+			"clear": treeLeaf(),
+			"apply": treeLeaf(),
+		}),
+		"status": treeLeaf(),
+		"submodule": treeBranch(map[string]*TreeNode{
+			"add":    treeLeaf(),
+			"update": treeLeaf(),
+			"init":   treeLeaf(),
+			"deinit": treeLeaf(),
+			"status": treeLeaf(),
+			"sync":   treeLeaf(),
+		}),
+		"switch": treeLeafPassthrough(),
+	})
+}
+
+func dockerBuiltinTree() *TreeNode {
+	return treeBranch(map[string]*TreeNode{
+		"build":   treeLeafPassthrough(),
+		"compose": treeLeafPassthrough(),
+		"container": treeBranch(map[string]*TreeNode{
+			"create":  treeLeaf(),
+			"start":   treeLeaf(),
+			"stop":    treeLeaf(),
+			"rm":      treeLeaf(),
+			"exec":    treeLeafPassthrough(),
+			"logs":    treeLeafPassthrough(),
+			"ls":      treeLeaf(),
+			"inspect": treeLeaf(),
+			"kill":    treeLeaf(),
+			"pause":   treeLeaf(),
+			"unpause": treeLeaf(),
+			"rename":  treeLeaf(),
+			"restart": treeLeaf(),
+			"run":     treeLeafPassthrough(),
+			"top":     treeLeaf(),
+			"update":  treeLeaf(),
+			"wait":    treeLeaf(),
+		}),
+		"exec":    treeLeafPassthrough(),
+		"image":   dockerImageTree(),
+		"images":  treeLeaf(),
+		"inspect": treeLeaf(),
+		"logs":    treeLeafPassthrough(),
+		"network": treeBranch(map[string]*TreeNode{
+			"connect":    treeLeaf(),
+			"create":     treeLeaf(),
+			"disconnect": treeLeaf(),
+			"inspect":    treeLeaf(),
+			"ls":         treeLeaf(),
+			"prune":      treeLeaf(),
+			"rm":         treeLeaf(),
+		}),
+		"ps":    treeLeaf(),
+		"pull":  treeLeaf(),
+		"push":  treeLeaf(),
+		"rm":    treeLeaf(),
+		"run":   treeLeafPassthrough(),
+		"start": treeLeaf(),
+		"stop":  treeLeaf(),
+		"volume": treeBranch(map[string]*TreeNode{
+			"create":  treeLeaf(),
+			"inspect": treeLeaf(),
+			"ls":      treeLeaf(),
+			"prune":   treeLeaf(),
+			"rm":      treeLeaf(),
+		}),
+	})
+}
+
+func dockerImageTree() *TreeNode {
+	return treeBranch(map[string]*TreeNode{
+		"build":   treeLeaf(),
+		"history": treeLeaf(),
+		"ls":      treeLeaf(),
+		"load":    treeLeaf(),
+		"prune":   treeLeaf(),
+		"pull":    treeLeaf(),
+		"push":    treeLeaf(),
+		"rm":      treeLeaf(),
+		"save":    treeLeaf(),
+		"tag":     treeLeaf(),
+	})
+}
+
+func kubectlBuiltinTree() *TreeNode {
+	resourceTree := kubectlResourceTree()
+	return treeBranch(map[string]*TreeNode{
+		"api-resources": treeLeaf(),
+		"apply":         treeLeafPassthrough(),
+		"config": treeBranch(map[string]*TreeNode{
+			"view":        treeLeaf(),
+			"set":         treeLeaf(),
+			"use-context": treeLeaf(),
+		}),
+		"create":   treeLeafPassthrough(),
+		"delete":   resourceTree.clone(),
+		"describe": resourceTree.clone(),
+		"edit":     treeLeafPassthrough(),
+		"exec":     treeLeafPassthrough(),
+		"get":      resourceTree,
+		"logs":     treeLeafPassthrough(),
+		"patch":    treeLeafPassthrough(),
+		"rollout": treeBranch(map[string]*TreeNode{
+			"status":  treeLeaf(),
+			"undo":    treeLeaf(),
+			"restart": treeLeaf(),
+		}),
+	})
+}
+
+func kubectlResourceTree() *TreeNode {
+	return treeBranch(map[string]*TreeNode{
+		"pods":        treeLeaf(),
+		"po":          treeLeafAlias("pods"),
+		"deployments": treeLeaf(),
+		"deploy":      treeLeafAlias("deployments"),
+		"services":    treeLeaf(),
+		"svc":         treeLeafAlias("services"),
+		"nodes":       treeLeaf(),
+		"no":          treeLeafAlias("nodes"),
+		"configmaps":  treeLeaf(),
+		"cm":          treeLeafAlias("configmaps"),
+		"secrets":     treeLeaf(),
+		"namespaces":  treeLeaf(),
+		"ns":          treeLeafAlias("namespaces"),
+		"ingresses":   treeLeaf(),
+		"ing":         treeLeafAlias("ingresses"),
+		"jobs":        treeLeaf(),
+		"cronjobs":    treeLeaf(),
+		"pv":          treeLeaf(),
+		"pvc":         treeLeaf(),
+	})
 }
 
 func mergeUniqueStrings(base []string, extra ...string) []string {
@@ -690,55 +1233,15 @@ func mergeUniqueStrings(base []string, extra ...string) []string {
 
 func supportsHierarchicalDiscovery(tool string) bool {
 	switch tool {
-	case "aws", "gcloud", "az":
+	case "git", "docker", "aws", "gcloud", "az":
 		return true
 	default:
 		return false
 	}
 }
 
-func subcommandPathKey(prefix []string) string {
-	if len(prefix) == 0 {
-		return rootSubcommandPath
-	}
-	return strings.Join(prefix, " ")
-}
-
-func (c *SubcommandCache) childrenFor(pathKey string) ([]string, bool) {
-	if pathKey == rootSubcommandPath {
-		if len(c.Subcommands) == 0 {
-			return nil, false
-		}
-		return append([]string(nil), c.Subcommands...), true
-	}
-
-	if len(c.Children) == 0 {
-		return nil, false
-	}
-
-	children, ok := c.Children[pathKey]
-	if !ok {
-		return nil, false
-	}
-
-	return append([]string(nil), children...), true
-}
-
-func (c *SubcommandCache) setChildren(pathKey string, children []string) {
-	cloned := append([]string(nil), children...)
-	if pathKey == rootSubcommandPath {
-		c.Subcommands = cloned
-		return
-	}
-
-	if c.Children == nil {
-		c.Children = make(map[string][]string)
-	}
-	c.Children[pathKey] = cloned
-}
-
-// PreFetch prefetches subcommands for common tools.
-func (r *SubcommandRegistry) PreFetch() {
+// PreFetch 预取常见工具的子命令。
+func (r *ToolTreeRegistry) PreFetch() {
 	tools := []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "go", "aws", "gcloud", "az"}
 
 	var wg sync.WaitGroup

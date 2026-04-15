@@ -9,26 +9,26 @@ import (
 	"time"
 )
 
-func TestNewSubcommandRegistry(t *testing.T) {
+func TestNewToolTreeRegistry(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	r := NewSubcommandRegistry(tmpDir)
+	r := NewToolTreeRegistry(tmpDir)
 	if r == nil {
 		t.Fatal("Expected non-nil registry")
 	}
 	if r.cacheDir != tmpDir {
 		t.Errorf("Expected cacheDir %s, got %s", tmpDir, r.cacheDir)
 	}
-	if r.cache == nil {
-		t.Error("Expected initialized cache map")
+	if r.trees == nil {
+		t.Error("Expected initialized tree map")
 	}
 	if r.cacheExpiry != 7*24*time.Hour {
 		t.Errorf("Expected cacheExpiry 7 days, got %v", r.cacheExpiry)
 	}
 }
 
-func TestNewSubcommandRegistry_EmptyCacheDir(t *testing.T) {
-	r := NewSubcommandRegistry("")
+func TestNewToolTreeRegistry_EmptyCacheDir(t *testing.T) {
+	r := NewToolTreeRegistry("")
 	if r == nil {
 		t.Fatal("Expected non-nil registry")
 	}
@@ -52,13 +52,16 @@ func TestHasBuiltinSubcommand(t *testing.T) {
 	}
 }
 
-func TestSubcommandRegistry_GetMergesBuiltinSubcommands(t *testing.T) {
-	r := &SubcommandRegistry{
-		cache: map[string]*SubcommandCache{
+func TestToolTreeRegistry_GetMergesBuiltinSubcommands(t *testing.T) {
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
 			"cargo": {
-				Tool:        "cargo",
-				Subcommands: []string{"build", "check"},
-				UpdatedAt:   time.Now(),
+				Tool: "cargo",
+				Tree: treeBranch(map[string]*TreeNode{
+					"build": {},
+					"check": {},
+				}),
+				UpdatedAt: time.Now(),
 			},
 		},
 		cacheExpiry: 7 * 24 * time.Hour,
@@ -82,48 +85,63 @@ func TestLoadCache(t *testing.T) {
 		tmpDir := t.TempDir()
 		cacheFile := filepath.Join(tmpDir, "subcommands.json")
 
-		caches := []SubcommandCache{
-			{Tool: "git", Subcommands: []string{"add", "commit"}, UpdatedAt: time.Now()},
-			{
-				Tool:        "gcloud",
-				Subcommands: []string{"compute", "auth"},
-				Children: map[string][]string{
-					"compute": {"instances"},
+		wrapper := struct {
+			SchemaVersion int              `json:"schema_version"`
+			Tools         []*ToolTreeCache `json:"tools"`
+		}{
+			SchemaVersion: subcommandCacheSchemaVersion,
+			Tools: []*ToolTreeCache{
+				{
+					Tool: "git",
+					Tree: treeBranch(map[string]*TreeNode{
+						"add":    {},
+						"commit": {},
+					}),
+					UpdatedAt: time.Now(),
 				},
-				UpdatedAt: time.Now(),
+				{
+					Tool: "gcloud",
+					Tree: treeBranch(map[string]*TreeNode{
+						"auth": {},
+						"compute": treeBranch(map[string]*TreeNode{
+							"instances": {},
+						}),
+					}),
+					UpdatedAt: time.Now(),
+				},
 			},
 		}
-		data, _ := json.MarshalIndent(caches, "", "  ")
+		data, _ := json.MarshalIndent(wrapper, "", "  ")
 		if err := os.WriteFile(cacheFile, data, 0644); err != nil {
 			t.Fatalf("Failed to write cache file: %v", err)
 		}
 
-		r := &SubcommandRegistry{
-			cache:    make(map[string]*SubcommandCache),
+		r := &ToolTreeRegistry{
+			trees:    make(map[string]*ToolTreeCache),
 			cacheDir: tmpDir,
 		}
 		r.loadCache()
 
-		if len(r.cache) != 2 {
-			t.Errorf("Expected 2 cached tools, got %d", len(r.cache))
+		if len(r.trees) != 2 {
+			t.Errorf("Expected 2 cached tools, got %d", len(r.trees))
 		}
-		if r.cache["git"] == nil || len(r.cache["git"].Subcommands) != 2 {
+		if got := r.Get("git"); !hasString(got, "add") || !hasString(got, "commit") {
 			t.Error("Expected git cache with 2 subcommands")
 		}
-		if r.cache["gcloud"] == nil || len(r.cache["gcloud"].Children["compute"]) != 1 {
+		if got := r.GetChildren("gcloud", []string{"compute"}); len(got) != 1 || got[0] != "instances" {
 			t.Error("Expected gcloud cache with nested children")
 		}
 	})
 
 	t.Run("handles nonexistent cache file", func(t *testing.T) {
-		r := &SubcommandRegistry{
-			cache:    make(map[string]*SubcommandCache),
+		r := &ToolTreeRegistry{
+			trees:    make(map[string]*ToolTreeCache),
 			cacheDir: t.TempDir(),
 		}
 		r.loadCache()
 
-		if len(r.cache) != 0 {
-			t.Errorf("Expected empty cache, got %d", len(r.cache))
+		if len(r.trees) != 0 {
+			t.Errorf("Expected empty cache, got %d", len(r.trees))
 		}
 	})
 
@@ -134,14 +152,14 @@ func TestLoadCache(t *testing.T) {
 			t.Fatalf("Failed to write cache file: %v", err)
 		}
 
-		r := &SubcommandRegistry{
-			cache:    make(map[string]*SubcommandCache),
+		r := &ToolTreeRegistry{
+			trees:    make(map[string]*ToolTreeCache),
 			cacheDir: tmpDir,
 		}
 		r.loadCache()
 
-		if len(r.cache) != 0 {
-			t.Fatalf("Expected invalid JSON load to keep explicit cache empty, got %d", len(r.cache))
+		if len(r.trees) != 0 {
+			t.Fatalf("Expected invalid JSON load to keep explicit cache empty, got %d", len(r.trees))
 		}
 
 		matches, err := filepath.Glob(cacheFile + ".corrupt-*")
@@ -154,25 +172,73 @@ func TestLoadCache(t *testing.T) {
 	})
 
 	t.Run("handles empty cacheDir", func(t *testing.T) {
-		r := &SubcommandRegistry{
-			cache:    make(map[string]*SubcommandCache),
+		r := &ToolTreeRegistry{
+			trees:    make(map[string]*ToolTreeCache),
 			cacheDir: "",
 		}
 		r.loadCache()
 
-		if len(r.cache) != 0 {
-			t.Errorf("Expected empty cache, got %d", len(r.cache))
+		if len(r.trees) != 0 {
+			t.Errorf("Expected empty cache, got %d", len(r.trees))
 		}
 	})
+
+	t.Run("quarantines legacy array cache", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		cacheFile := filepath.Join(tmpDir, "subcommands.json")
+		if err := os.WriteFile(cacheFile, []byte(`[{"tool":"git","subcommands":["status"]}]`), 0644); err != nil {
+			t.Fatalf("Failed to write legacy cache file: %v", err)
+		}
+
+		r := &ToolTreeRegistry{
+			trees:    make(map[string]*ToolTreeCache),
+			cacheDir: tmpDir,
+		}
+		r.loadCache()
+
+		if len(r.trees) != 0 {
+			t.Fatalf("Expected legacy cache load to keep tree cache empty, got %d", len(r.trees))
+		}
+		matches, err := filepath.Glob(cacheFile + ".corrupt-*")
+		if err != nil {
+			t.Fatalf("Glob failed: %v", err)
+		}
+		if len(matches) != 1 {
+			t.Fatalf("Expected one quarantined legacy cache file, got %v", matches)
+		}
+	})
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSaveCache(t *testing.T) {
 	t.Run("saves cache to file", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		r := &SubcommandRegistry{
-			cache: map[string]*SubcommandCache{
-				"git":    {Tool: "git", Subcommands: []string{"add", "commit"}, UpdatedAt: time.Now()},
-				"docker": {Tool: "docker", Subcommands: []string{"build", "run"}, UpdatedAt: time.Now()},
+		r := &ToolTreeRegistry{
+			trees: map[string]*ToolTreeCache{
+				"git": {
+					Tool: "git",
+					Tree: treeBranch(map[string]*TreeNode{
+						"add":    {},
+						"commit": {},
+					}),
+					UpdatedAt: time.Now(),
+				},
+				"docker": {
+					Tool: "docker",
+					Tree: treeBranch(map[string]*TreeNode{
+						"build": {},
+						"run":   {},
+					}),
+					UpdatedAt: time.Now(),
+				},
 			},
 			cacheDir: tmpDir,
 		}
@@ -185,20 +251,30 @@ func TestSaveCache(t *testing.T) {
 			t.Fatalf("Failed to read cache file: %v", err)
 		}
 
-		var caches []SubcommandCache
-		if err := json.Unmarshal(data, &caches); err != nil {
+		var wrapper struct {
+			SchemaVersion int              `json:"schema_version"`
+			Tools         []*ToolTreeCache `json:"tools"`
+		}
+		if err := json.Unmarshal(data, &wrapper); err != nil {
 			t.Fatalf("Failed to unmarshal cache: %v", err)
 		}
 
-		if len(caches) != 2 {
-			t.Errorf("Expected 2 cached tools, got %d", len(caches))
+		if wrapper.SchemaVersion != subcommandCacheSchemaVersion {
+			t.Fatalf("Expected schema version %d, got %d", subcommandCacheSchemaVersion, wrapper.SchemaVersion)
+		}
+		if len(wrapper.Tools) != 2 {
+			t.Errorf("Expected 2 cached tools, got %d", len(wrapper.Tools))
 		}
 	})
 
 	t.Run("handles empty cacheDir", func(t *testing.T) {
-		r := &SubcommandRegistry{
-			cache: map[string]*SubcommandCache{
-				"git": {Tool: "git", Subcommands: []string{"add"}, UpdatedAt: time.Now()},
+		r := &ToolTreeRegistry{
+			trees: map[string]*ToolTreeCache{
+				"git": {
+					Tool:      "git",
+					Tree:      treeBranch(map[string]*TreeNode{"add": {}}),
+					UpdatedAt: time.Now(),
+				},
 			},
 			cacheDir: "",
 		}
@@ -209,12 +285,16 @@ func TestSaveCache(t *testing.T) {
 
 func TestGet_Cached(t *testing.T) {
 	tmpDir := t.TempDir()
-	r := &SubcommandRegistry{
-		cache: map[string]*SubcommandCache{
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
 			"git": {
-				Tool:        "git",
-				Subcommands: []string{"add", "commit", "push"},
-				UpdatedAt:   time.Now(),
+				Tool: "git",
+				Tree: treeBranch(map[string]*TreeNode{
+					"add":    {},
+					"commit": {},
+					"push":   {},
+				}),
+				UpdatedAt: time.Now(),
 			},
 		},
 		cacheDir:    tmpDir,
@@ -237,15 +317,18 @@ func TestGet_Cached(t *testing.T) {
 }
 
 func TestGetChildren_CachedNested(t *testing.T) {
-	r := &SubcommandRegistry{
-		cache: map[string]*SubcommandCache{
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
 			"gcloud": {
-				Tool:        "gcloud",
-				Subcommands: []string{"compute"},
-				Children: map[string][]string{
-					"compute":           {"instances"},
-					"compute instances": {"list", "describe"},
-				},
+				Tool: "gcloud",
+				Tree: treeBranch(map[string]*TreeNode{
+					"compute": treeBranch(map[string]*TreeNode{
+						"instances": treeBranch(map[string]*TreeNode{
+							"describe": {},
+							"list":     {},
+						}),
+					}),
+				}),
 				UpdatedAt: time.Now(),
 			},
 		},
@@ -258,19 +341,22 @@ func TestGetChildren_CachedNested(t *testing.T) {
 	}
 
 	grandChildren := r.GetChildren("gcloud", []string{"compute", "instances"})
-	if len(grandChildren) != 2 || grandChildren[0] != "list" || grandChildren[1] != "describe" {
+	if len(grandChildren) != 2 || !hasString(grandChildren, "list") || !hasString(grandChildren, "describe") {
 		t.Fatalf("Expected cached grand-children, got %v", grandChildren)
 	}
 }
 
 func TestGet_ExpiredCache(t *testing.T) {
 	tmpDir := t.TempDir()
-	r := &SubcommandRegistry{
-		cache: map[string]*SubcommandCache{
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
 			"git": {
-				Tool:        "git",
-				Subcommands: []string{"add", "commit"},
-				UpdatedAt:   time.Now().Add(-8 * 24 * time.Hour),
+				Tool: "git",
+				Tree: treeBranch(map[string]*TreeNode{
+					"add":    {},
+					"commit": {},
+				}),
+				UpdatedAt: time.Now().Add(-8 * 24 * time.Hour),
 			},
 		},
 		cacheDir:    tmpDir,
@@ -283,7 +369,7 @@ func TestGet_ExpiredCache(t *testing.T) {
 
 func TestGet_NonexistentTool(t *testing.T) {
 	tmpDir := t.TempDir()
-	r := NewSubcommandRegistry(tmpDir)
+	r := NewToolTreeRegistry(tmpDir)
 
 	subcommands := r.Get("nonexistenttool12345")
 	if subcommands != nil {
@@ -292,8 +378,7 @@ func TestGet_NonexistentTool(t *testing.T) {
 }
 
 func TestFetchSubcommands_NonexistentTool(t *testing.T) {
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -681,7 +766,7 @@ func TestParseGenericHelp_Empty(t *testing.T) {
 }
 
 func TestHasSubcommands(t *testing.T) {
-	r := &SubcommandRegistry{}
+	r := &ToolTreeRegistry{}
 
 	tests := []struct {
 		tool     string
@@ -719,14 +804,13 @@ func TestHasSubcommands(t *testing.T) {
 
 func TestPreFetch(t *testing.T) {
 	tmpDir := t.TempDir()
-	r := NewSubcommandRegistry(tmpDir)
+	r := NewToolTreeRegistry(tmpDir)
 
 	r.PreFetch()
 }
 
 func TestFetchSubcommands_ToolNotInPath(t *testing.T) {
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -738,8 +822,7 @@ func TestFetchSubcommands_ToolNotInPath(t *testing.T) {
 }
 
 func TestFetchSubcommands_DefaultParser(t *testing.T) {
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -750,19 +833,19 @@ func TestFetchSubcommands_DefaultParser(t *testing.T) {
 
 func TestGet_WithFetch(t *testing.T) {
 	tmpDir := t.TempDir()
-	r := NewSubcommandRegistry(tmpDir)
+	r := NewToolTreeRegistry(tmpDir)
 
 	_ = r.Get("ls")
 }
 
 func TestGet_CacheExpiredAndRefetch(t *testing.T) {
 	tmpDir := t.TempDir()
-	r := &SubcommandRegistry{
-		cache: map[string]*SubcommandCache{
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
 			"ls": {
-				Tool:        "ls",
-				Subcommands: []string{"old"},
-				UpdatedAt:   time.Now().Add(-10 * 24 * time.Hour),
+				Tool:      "ls",
+				Tree:      treeBranch(map[string]*TreeNode{"old": {}}),
+				UpdatedAt: time.Now().Add(-10 * 24 * time.Hour),
 			},
 		},
 		cacheDir:    tmpDir,
@@ -777,9 +860,13 @@ func TestSaveCache_CreateDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	cacheDir := filepath.Join(tmpDir, "nested", "cache")
 
-	r := &SubcommandRegistry{
-		cache: map[string]*SubcommandCache{
-			"git": {Tool: "git", Subcommands: []string{"add"}, UpdatedAt: time.Now()},
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
+			"git": {
+				Tool:      "git",
+				Tree:      treeBranch(map[string]*TreeNode{"add": {}}),
+				UpdatedAt: time.Now(),
+			},
 		},
 		cacheDir: cacheDir,
 	}
@@ -795,8 +882,7 @@ func TestFetchSubcommands_Git(t *testing.T) {
 	if GetPath("git") == "" {
 		t.Skip("git not found in PATH")
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -810,8 +896,7 @@ func TestFetchSubcommands_Docker(t *testing.T) {
 	if GetPath("docker") == "" {
 		t.Skip("docker not found in PATH")
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -834,8 +919,7 @@ func TestFetchSubcommands_Npm(t *testing.T) {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
 
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 		helpTimeout: 10 * time.Second,
@@ -861,8 +945,7 @@ func TestFetchSubcommands_Go(t *testing.T) {
 	if GetPath("go") == "" {
 		t.Skip("go not found in PATH")
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -874,8 +957,7 @@ func TestFetchSubcommands_Kubectl(t *testing.T) {
 	if GetPath("kubectl") == "" {
 		t.Skip("kubectl not found in PATH")
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -887,8 +969,7 @@ func TestFetchSubcommands_Cargo(t *testing.T) {
 	if GetPath("cargo") == "" {
 		t.Skip("cargo not found in PATH")
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -900,8 +981,7 @@ func TestFetchSubcommands_Yarn(t *testing.T) {
 	if GetPath("yarn") == "" {
 		t.Skip("yarn not found in PATH")
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 	}
@@ -927,7 +1007,7 @@ func TestGetHelpOutput_GitPrefersHelpA(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	r := &ToolTreeRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("git")
 	if err != nil {
 		t.Fatalf("getHelpOutput failed: %v", err)
@@ -955,7 +1035,7 @@ func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	r := &ToolTreeRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("mytool")
 	if err != nil {
 		t.Fatalf("getHelpOutput failed: %v", err)
@@ -989,7 +1069,7 @@ func TestGetHelpOutputAtPath_CloudCommands(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	r := &ToolTreeRegistry{helpTimeout: 10 * time.Second}
 
 	tests := []struct {
 		tool   string
@@ -1030,7 +1110,7 @@ func TestGetHelpOutput_BrewUsesCommands(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	r := &ToolTreeRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("brew")
 	if err != nil {
 		t.Fatalf("getHelpOutput failed: %v", err)
@@ -1058,7 +1138,7 @@ func TestGetHelpOutput_GitFallsBackToHelp(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	r := &ToolTreeRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("git")
 	if err != nil {
 		t.Fatalf("getHelpOutput fallback failed: %v", err)
@@ -1086,7 +1166,7 @@ func TestGetHelpOutput_BrewFallsBackToHelp(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 10 * time.Second}
+	r := &ToolTreeRegistry{helpTimeout: 10 * time.Second}
 	output, err := r.getHelpOutput("brew")
 	if err != nil {
 		t.Fatalf("getHelpOutput brew fallback failed: %v", err)
@@ -1114,7 +1194,7 @@ func TestGetHelpOutput_Timeout(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
+	r := &ToolTreeRegistry{helpTimeout: 50 * time.Millisecond}
 
 	start := time.Now()
 	output, err := r.getHelpOutput("slowtool")
@@ -1149,7 +1229,7 @@ func TestGetHelpOutput_GitTimeoutStopsFallback(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
+	r := &ToolTreeRegistry{helpTimeout: 50 * time.Millisecond}
 	output, err := r.getHelpOutput("git")
 	if err == nil {
 		t.Fatal("Expected git help timeout to return an error")
@@ -1177,7 +1257,7 @@ func TestGetHelpOutput_BrewTimeoutStopsFallback(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{helpTimeout: 50 * time.Millisecond}
+	r := &ToolTreeRegistry{helpTimeout: 50 * time.Millisecond}
 	output, err := r.getHelpOutput("brew")
 	if err == nil {
 		t.Fatal("Expected brew commands timeout to return an error")
@@ -1205,8 +1285,7 @@ func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 		helpTimeout: 10 * time.Second,
@@ -1250,8 +1329,7 @@ exit 1
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 		helpTimeout: 10 * time.Second,
@@ -1291,8 +1369,7 @@ func TestFetchSubcommands_EmptyHelpOutput(t *testing.T) {
 	if err := os.Setenv("PATH", tmpDir); err != nil {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
-	r := &SubcommandRegistry{
-		cache:       make(map[string]*SubcommandCache),
+	r := &ToolTreeRegistry{
 		cacheDir:    "",
 		cacheExpiry: 7 * 24 * time.Hour,
 		helpTimeout: 10 * time.Second,

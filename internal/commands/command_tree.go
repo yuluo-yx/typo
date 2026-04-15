@@ -6,6 +6,7 @@ import "sort"
 type CommandTreeNode struct {
 	Children       map[string]*CommandTreeNode
 	StopAfterMatch bool
+	Alias          string
 }
 
 // ChildTokens returns the canonical child tokens in deterministic order.
