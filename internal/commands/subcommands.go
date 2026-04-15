@@ -17,6 +17,7 @@ import (
 
 	"github.com/yuluo-yx/typo/internal/storage"
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 // CacheHeader identifies the subcommand cache schema version.
@@ -138,7 +139,7 @@ func (r *ToolTreeRegistry) GetChildren(tool string, prefix []string) []string {
 	}
 
 	fetched := r.fetchSubcommands(tool, prefix...)
-	children := mergeUniqueStrings(fetched, builtinSubcommandsForPath(tool, prefix)...)
+	children := utils.MergeUniqueStrings(fetched, builtinSubcommandsForPath(tool, prefix)...)
 	if len(children) == 0 {
 		return nil
 	}
@@ -205,7 +206,7 @@ func (r *ToolTreeRegistry) cachedChildren(tool string, prefix []string) []string
 	if node == nil || len(node.Children) == 0 {
 		return nil
 	}
-	return mergeUniqueStrings(node.childTokens(), builtinSubcommandsForPath(tool, prefix)...)
+	return utils.MergeUniqueStrings(node.childTokens(), builtinSubcommandsForPath(tool, prefix)...)
 }
 
 func (r *ToolTreeRegistry) cachedNode(tool string, prefix []string) *TreeNode {
@@ -1212,24 +1213,6 @@ func kubectlResourceTree() *TreeNode {
 		"pv":          treeLeaf(),
 		"pvc":         treeLeaf(),
 	})
-}
-
-func mergeUniqueStrings(base []string, extra ...string) []string {
-	result := append([]string(nil), base...)
-	seen := make(map[string]bool, len(result)+len(extra))
-	for _, item := range result {
-		seen[item] = true
-	}
-
-	for _, item := range extra {
-		if item == "" || seen[item] {
-			continue
-		}
-		seen[item] = true
-		result = append(result, item)
-	}
-
-	return result
 }
 
 func supportsHierarchicalDiscovery(tool string) bool {

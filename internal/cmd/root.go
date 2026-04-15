@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -265,64 +263,4 @@ func SortedConfigRuleScopes(cfg *config.Config) []string {
 	}
 	sort.Strings(scopes)
 	return scopes
-}
-
-// SameDir checks if two paths point to the same directory.
-func SameDir(a, b string) bool {
-	if a == "" || b == "" {
-		return false
-	}
-	cleanA := filepath.Clean(a)
-	cleanB := filepath.Clean(b)
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(cleanA, cleanB)
-	}
-	return cleanA == cleanB
-}
-
-// PathWithinDir checks if path is within dir.
-func PathWithinDir(path, dir string) bool {
-	if path == "" || dir == "" {
-		return false
-	}
-
-	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
-	if err != nil {
-		return false
-	}
-	if rel == "." {
-		return true
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
-}
-
-// PathContainsDir checks if pathValue contains dir.
-func PathContainsDir(pathValue, dir string) bool {
-	for _, item := range filepath.SplitList(pathValue) {
-		if SameDir(item, dir) {
-			return true
-		}
-	}
-	return false
-}
-
-func sameDir(a, b string) bool {
-	if a == "" || b == "" {
-		return false
-	}
-	cleanA := filepath.Clean(a)
-	cleanB := filepath.Clean(b)
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(cleanA, cleanB)
-	}
-	return cleanA == cleanB
-}
-
-func pathContainsDir(pathValue, dir string) bool {
-	for _, item := range filepath.SplitList(pathValue) {
-		if sameDir(item, dir) {
-			return true
-		}
-	}
-	return false
 }

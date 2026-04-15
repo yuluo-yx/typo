@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yuluo-yx/typo/internal/config"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 func cmdDoctor() int {
@@ -142,7 +143,7 @@ func checkDoctorGoBinPath(shellName, shellRC, typoPath string) bool {
 	goBinDir := getGoBinDir()
 	typoInGoBin := false
 	if typoPath != "" {
-		typoInGoBin = SameDir(filepath.Dir(typoPath), goBinDir)
+		typoInGoBin = utils.SameDir(filepath.Dir(typoPath), goBinDir)
 	}
 
 	if !typoInGoBin {
@@ -153,7 +154,7 @@ func checkDoctorGoBinPath(shellName, shellRC, typoPath string) bool {
 		fmt.Println("⊘ Go not installed or GOPATH not set")
 		return false
 	}
-	if PathContainsDir(os.Getenv("PATH"), goBinDir) {
+	if utils.PathContainsDir(os.Getenv("PATH"), goBinDir) {
 		fmt.Println("✓ configured")
 		return false
 	}
@@ -268,7 +269,7 @@ func detectDoctorInstallMethod(typoPath string) doctorInstallMethod {
 
 func doctorInstallCandidatePaths(typoPath string) []string {
 	candidates := []string{filepath.Clean(typoPath)}
-	if resolved, err := filepath.EvalSymlinks(typoPath); err == nil && !SameDir(resolved, typoPath) {
+	if resolved, err := filepath.EvalSymlinks(typoPath); err == nil && !utils.SameDir(resolved, typoPath) {
 		candidates = append(candidates, filepath.Clean(resolved))
 	}
 	return candidates

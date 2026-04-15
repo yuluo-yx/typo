@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 // Engine is the main correction engine.
@@ -171,7 +173,7 @@ func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 
 		currentCmd = result.Command
 		lastSource = result.Source
-		if result.Message != "" && !containsString(messages, result.Message) {
+		if result.Message != "" && !slices.Contains(messages, result.Message) {
 			messages = append(messages, result.Message)
 		}
 		if resultKind == "" && result.Kind != "" {
@@ -1017,7 +1019,7 @@ func shouldTreatNextTokenAsOptionValue(nextToken, nextNextToken string, subcomma
 }
 
 func isSubcommandCandidate(token string, subcommands []string, cfg distanceMatchConfig) bool {
-	if containsString(subcommands, token) {
+	if slices.Contains(subcommands, token) {
 		return true
 	}
 
@@ -1148,7 +1150,7 @@ func (e *Engine) loadCommands() {
 			return
 		}
 
-		e.commands = mergeUniqueStrings(e.commands, e.filterDisabledCommands(e.commandLoader())...)
+		e.commands = utils.MergeUniqueStrings(e.commands, e.filterDisabledCommands(e.commandLoader())...)
 		e.refreshAvailableCommands()
 		e.commandsFullyLoad = true
 	})
@@ -1187,33 +1189,6 @@ func (e *Engine) filterDisabledCommands(commands []string) []string {
 
 func (e *Engine) isProtectedCommandWord(cmd string) bool {
 	return e.rules.IsTarget(cmd) || e.history.IsTarget(cmd)
-}
-
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func mergeUniqueStrings(base []string, extra ...string) []string {
-	result := append([]string(nil), base...)
-	seen := make(map[string]bool, len(result)+len(extra))
-	for _, item := range result {
-		seen[item] = true
-	}
-
-	for _, item := range extra {
-		if item == "" || seen[item] {
-			continue
-		}
-		seen[item] = true
-		result = append(result, item)
-	}
-
-	return result
 }
 
 func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) itypes.FixResult {

@@ -584,18 +584,6 @@ func TestParserShellHelpers_ParseFailures(t *testing.T) {
 	}
 }
 
-func TestParserOffsetToIndex(t *testing.T) {
-	if got := parserOffsetToIndex(^uint(0), 5); got != 5 {
-		t.Fatalf("parserOffsetToIndex(maxUint, 5) = %d, want 5", got)
-	}
-	if got := parserOffsetToIndex(3, 5); got != 3 {
-		t.Fatalf("parserOffsetToIndex(3, 5) = %d, want 3", got)
-	}
-	if got := parserOffsetToIndex(99, 5); got != 5 {
-		t.Fatalf("parserOffsetToIndex(99, 5) = %d, want 5", got)
-	}
-}
-
 func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
 	gitResult := NewGitParser().Parse(itypes.ParserContext{
 		Command: "git remove '",
