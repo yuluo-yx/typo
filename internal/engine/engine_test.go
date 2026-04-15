@@ -9,6 +9,7 @@ import (
 
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func TestEngine_Fix(t *testing.T) {
@@ -187,7 +188,7 @@ func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
 		WithToolTrees(subcommands),
 	)
 
-	result := eng.FixWithContext(parser.Context{
+	result := eng.FixWithContext(itypes.ParserContext{
 		Command: "git remove -v && dcoker ps",
 		Stderr:  "git: 'remove' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
 	})
@@ -207,7 +208,7 @@ func TestEngine_FixWithParser_NoUpstreamTargetsPullOnly(t *testing.T) {
 		WithParser(parser.NewRegistry()),
 	)
 
-	result := eng.FixWithContext(parser.Context{
+	result := eng.FixWithContext(itypes.ParserContext{
 		Command: "git remove -v && git pull",
 		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
 	})
@@ -235,7 +236,7 @@ func TestEngine_FixWithPermissionParser(t *testing.T) {
 		WithParser(parser.NewRegistry()),
 	)
 
-	result := eng.FixWithContext(parser.Context{
+	result := eng.FixWithContext(itypes.ParserContext{
 		Command:  "mkdir 1",
 		Stderr:   "mkdir: 1: Permission denied\n",
 		ExitCode: 1,
@@ -279,7 +280,7 @@ func TestEngine_FixWithPermissionParserAndHistory_DoesNotEscalateRepeatedly(t *t
 		t.Fatalf("RecordHistory failed: %v", err)
 	}
 
-	result := eng.FixWithContext(parser.Context{
+	result := eng.FixWithContext(itypes.ParserContext{
 		Command:  "mkdir 1",
 		Stderr:   "mkdir: 1: Permission denied\n",
 		ExitCode: 1,
@@ -297,7 +298,7 @@ func TestEngine_FixWithPermissionParser_SkipsRedirection(t *testing.T) {
 		WithParser(parser.NewRegistry()),
 	)
 
-	result := eng.FixWithContext(parser.Context{
+	result := eng.FixWithContext(itypes.ParserContext{
 		Command:  "echo ok > /root/out",
 		Stderr:   "zsh: permission denied: /root/out\n",
 		ExitCode: 1,
@@ -312,7 +313,7 @@ func TestEngine_FixWithPermissionParser_SkipsRemoteAuthFailure(t *testing.T) {
 		WithParser(parser.NewRegistry()),
 	)
 
-	result := eng.FixWithContext(parser.Context{
+	result := eng.FixWithContext(itypes.ParserContext{
 		Command:  "git push origin main",
 		Stderr:   "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n",
 		ExitCode: 128,

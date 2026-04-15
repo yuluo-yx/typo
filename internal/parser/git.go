@@ -3,6 +3,8 @@ package parser
 import (
 	"regexp"
 	"strings"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // GitParser parses git command errors.
@@ -29,13 +31,13 @@ func (p *GitParser) Name() string {
 }
 
 // Parse parses git error output.
-func (p *GitParser) Parse(ctx Context) Result {
+func (p *GitParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	cmd := ctx.Command
 	stderr := ctx.Stderr
 
 	// Check if it's a git command
 	if !isGitCommand(cmd) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	// Try to parse "did you mean" errors
@@ -48,13 +50,13 @@ func (p *GitParser) Parse(ctx Context) Result {
 		return result
 	}
 
-	return Result{Fixed: false}
+	return itypes.ParserResult{Fixed: false}
 }
 
-func (p *GitParser) parseDidYouMean(cmd, stderr string) Result {
+func (p *GitParser) parseDidYouMean(cmd, stderr string) itypes.ParserResult {
 	matches := p.didYouMeanRegex.FindStringSubmatch(stderr)
 	if len(matches) < 3 {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	wrongCmd := matches[1]
@@ -64,7 +66,7 @@ func (p *GitParser) parseDidYouMean(cmd, stderr string) Result {
 	call, err := parseShellCall(cmd)
 	if err != nil {
 		fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
-		return Result{
+		return itypes.ParserResult{
 			Fixed:   true,
 			Command: fixed,
 			Message: "git suggested: " + suggested,
@@ -73,24 +75,24 @@ func (p *GitParser) parseDidYouMean(cmd, stderr string) Result {
 
 	fixed, ok := call.replaceSubcommand("git", wrongCmd, suggested, gitParserOptionsWithValues)
 	if !ok {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
-	return Result{
+	return itypes.ParserResult{
 		Fixed:   true,
 		Command: fixed,
 		Message: "git suggested: " + suggested,
 	}
 }
 
-func (p *GitParser) parseNoUpstream(cmd, stderr string) Result {
+func (p *GitParser) parseNoUpstream(cmd, stderr string) itypes.ParserResult {
 	if gitSubcommand(cmd) != "pull" || gitCommandHasUpstreamFlag(cmd) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	matches := p.noUpstreamRegex.FindStringSubmatch(stderr)
 	if len(matches) < 3 {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	remote := matches[1]
@@ -105,11 +107,11 @@ func (p *GitParser) parseNoUpstream(cmd, stderr string) Result {
 		branch = localBranch
 	}
 	if p.placeholderRegex.MatchString(branch) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	// Add --set-upstream flag to the command
-	return Result{
+	return itypes.ParserResult{
 		Fixed:   true,
 		Command: cmd + " --set-upstream " + remote + " " + branch,
 		Message: "adding upstream tracking: " + remote + "/" + branch,

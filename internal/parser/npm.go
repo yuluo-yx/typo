@@ -3,6 +3,8 @@ package parser
 import (
 	"regexp"
 	"strings"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // NpmParser parses npm command errors.
@@ -25,12 +27,12 @@ func (p *NpmParser) Name() string {
 }
 
 // Parse parses npm error output.
-func (p *NpmParser) Parse(ctx Context) Result {
+func (p *NpmParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	cmd := ctx.Command
 	stderr := ctx.Stderr
 
 	if !isNpmCommand(cmd) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	// Try "command not found" pattern
@@ -49,10 +51,10 @@ func (p *NpmParser) Parse(ctx Context) Result {
 				var ok bool
 				fixed, ok = call.replaceSubcommand("npm", wrongCmd, suggested, npmParserOptionsWithValues)
 				if !ok {
-					return Result{Fixed: false}
+					return itypes.ParserResult{Fixed: false}
 				}
 			}
-			return Result{
+			return itypes.ParserResult{
 				Fixed:   true,
 				Command: fixed,
 				Message: "npm suggested: " + suggested,
@@ -68,13 +70,13 @@ func (p *NpmParser) Parse(ctx Context) Result {
 		if err == nil {
 			fixed, ok := call.replaceSubcommand("npm", "", suggested, npmParserOptionsWithValues)
 			if ok {
-				return Result{
+				return itypes.ParserResult{
 					Fixed:   true,
 					Command: fixed,
 					Message: "npm suggested: " + suggested,
 				}
 			}
-			return Result{Fixed: false}
+			return itypes.ParserResult{Fixed: false}
 		}
 
 		// Fall back to the original permissive logic when shell parsing fails
@@ -85,7 +87,7 @@ func (p *NpmParser) Parse(ctx Context) Result {
 			if len(parts) > 2 {
 				fixed += " " + strings.Join(parts[2:], " ")
 			}
-			return Result{
+			return itypes.ParserResult{
 				Fixed:   true,
 				Command: fixed,
 				Message: "npm suggested: " + suggested,
@@ -93,7 +95,7 @@ func (p *NpmParser) Parse(ctx Context) Result {
 		}
 	}
 
-	return Result{Fixed: false}
+	return itypes.ParserResult{Fixed: false}
 }
 
 func isNpmCommand(cmd string) bool {

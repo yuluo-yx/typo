@@ -3,6 +3,8 @@ package parser
 import (
 	"regexp"
 	"strings"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // DockerParser parses docker command errors.
@@ -25,12 +27,12 @@ func (p *DockerParser) Name() string {
 }
 
 // Parse parses docker error output.
-func (p *DockerParser) Parse(ctx Context) Result {
+func (p *DockerParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	cmd := ctx.Command
 	stderr := ctx.Stderr
 
 	if !isDockerCommand(cmd) {
-		return Result{Fixed: false}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	// Try "did you mean" pattern
@@ -46,10 +48,10 @@ func (p *DockerParser) Parse(ctx Context) Result {
 			var ok bool
 			fixed, ok = call.replaceSubcommand("docker", wrongCmd, suggested, dockerParserOptionsWithValues)
 			if !ok {
-				return Result{Fixed: false}
+				return itypes.ParserResult{Fixed: false}
 			}
 		}
-		return Result{
+		return itypes.ParserResult{
 			Fixed:   true,
 			Command: fixed,
 			Message: "docker suggested: " + suggested,
@@ -69,17 +71,17 @@ func (p *DockerParser) Parse(ctx Context) Result {
 			var ok bool
 			fixed, ok = call.replaceSubcommand("docker", wrongCmd, suggested, dockerParserOptionsWithValues)
 			if !ok {
-				return Result{Fixed: false}
+				return itypes.ParserResult{Fixed: false}
 			}
 		}
-		return Result{
+		return itypes.ParserResult{
 			Fixed:   true,
 			Command: fixed,
 			Message: "docker suggested: " + suggested,
 		}
 	}
 
-	return Result{Fixed: false}
+	return itypes.ParserResult{Fixed: false}
 }
 
 func isDockerCommand(cmd string) bool {

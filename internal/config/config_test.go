@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func captureConfigStderr(t *testing.T, fn func()) string {
@@ -328,37 +330,37 @@ func assertResetConfig(t *testing.T, cfg *Config) {
 func TestUserConfigValidate(t *testing.T) {
 	cfg := DefaultUserConfig()
 	cfg.Keyboard = "unknown"
-	if err := cfg.Validate(); err == nil {
+	if err := ValidateUserConfig(cfg); err == nil {
 		t.Fatal("Validate should reject unknown keyboard")
 	}
 
 	cfg = DefaultUserConfig()
-	cfg.Rules["unknown"] = RuleSetConfig{Enabled: true}
-	if err := cfg.Validate(); err != nil {
+	cfg.Rules["unknown"] = itypes.RuleSetConfig{Enabled: true}
+	if err := ValidateUserConfig(cfg); err != nil {
 		t.Fatalf("Validate should allow unknown rule scope for forward compatibility: %v", err)
 	}
 
 	cfg = DefaultUserConfig()
 	cfg.SimilarityThreshold = -0.1
-	if err := cfg.Validate(); err == nil {
+	if err := ValidateUserConfig(cfg); err == nil {
 		t.Fatal("Validate should reject low threshold")
 	}
 
 	cfg = DefaultUserConfig()
 	cfg.SimilarityThreshold = 1.1
-	if err := cfg.Validate(); err == nil {
+	if err := ValidateUserConfig(cfg); err == nil {
 		t.Fatal("Validate should reject high threshold")
 	}
 
 	cfg = DefaultUserConfig()
 	cfg.MaxEditDistance = -1
-	if err := cfg.Validate(); err == nil {
+	if err := ValidateUserConfig(cfg); err == nil {
 		t.Fatal("Validate should reject negative max edit distance")
 	}
 
 	cfg = DefaultUserConfig()
 	cfg.MaxFixPasses = 0
-	if err := cfg.Validate(); err == nil {
+	if err := ValidateUserConfig(cfg); err == nil {
 		t.Fatal("Validate should reject zero max fix passes")
 	}
 }
@@ -622,7 +624,7 @@ func TestLoad_AllowsUnknownRuleScopesWithWarning(t *testing.T) {
 
 func TestConfigSavePreservesUnknownRuleScopes(t *testing.T) {
 	cfg := &Config{ConfigDir: t.TempDir(), User: DefaultUserConfig()}
-	cfg.User.Rules["rust"] = RuleSetConfig{Enabled: false}
+	cfg.User.Rules["rust"] = itypes.RuleSetConfig{Enabled: false}
 
 	if err := cfg.SetValue("keyboard", "colemak"); err != nil {
 		t.Fatalf("SetValue() failed: %v", err)
@@ -653,7 +655,7 @@ func TestConfigSavePreservesUnknownRuleScopes(t *testing.T) {
 
 func TestConfigGetAndSetValueSupportUnknownPresentRuleScope(t *testing.T) {
 	cfg := &Config{ConfigDir: t.TempDir(), User: DefaultUserConfig()}
-	cfg.User.Rules["rust"] = RuleSetConfig{Enabled: false}
+	cfg.User.Rules["rust"] = itypes.RuleSetConfig{Enabled: false}
 
 	value, err := cfg.Get("rules.rust.enabled")
 	if err != nil {
@@ -666,7 +668,7 @@ func TestConfigGetAndSetValueSupportUnknownPresentRuleScope(t *testing.T) {
 	if err := cfg.SetValue("rules.rust.enabled", "true"); err != nil {
 		t.Fatalf("SetValue(rules.rust.enabled) failed: %v", err)
 	}
-	if cfg.User.Rules["rust"] != (RuleSetConfig{Enabled: true}) {
+	if cfg.User.Rules["rust"] != (itypes.RuleSetConfig{Enabled: true}) {
 		t.Fatalf("rules.rust.enabled after SetValue = %+v, want enabled", cfg.User.Rules["rust"])
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/yuluo-yx/typo/internal/storage"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 const (
@@ -52,27 +53,7 @@ var (
 type Config struct {
 	ConfigDir string
 	Debug     bool
-	User      UserConfig
-}
-
-// UserConfig represents settings persisted in the user config file.
-type UserConfig struct {
-	SimilarityThreshold float64                  `json:"similarity_threshold"`
-	MaxEditDistance     int                      `json:"max_edit_distance"`
-	MaxFixPasses        int                      `json:"max_fix_passes"`
-	Keyboard            string                   `json:"keyboard"`
-	History             HistoryConfig            `json:"history"`
-	Rules               map[string]RuleSetConfig `json:"rules"`
-}
-
-// HistoryConfig controls persistence for correction history.
-type HistoryConfig struct {
-	Enabled bool `json:"enabled"`
-}
-
-// RuleSetConfig controls whether a single rule set is enabled.
-type RuleSetConfig struct {
-	Enabled bool `json:"enabled"`
+	User      itypes.UserConfig
 }
 
 // Setting represents one config item displayed by the CLI.
@@ -108,18 +89,18 @@ func DefaultConfigDir() string {
 }
 
 // DefaultUserConfig returns the built-in default user config.
-func DefaultUserConfig() UserConfig {
-	rules := make(map[string]RuleSetConfig, len(defaultRuleScopes))
+func DefaultUserConfig() itypes.UserConfig {
+	rules := make(map[string]itypes.RuleSetConfig, len(defaultRuleScopes))
 	for _, scope := range defaultRuleScopes {
-		rules[scope] = RuleSetConfig{Enabled: true}
+		rules[scope] = itypes.RuleSetConfig{Enabled: true}
 	}
 
-	return UserConfig{
+	return itypes.UserConfig{
 		SimilarityThreshold: defaultSimilarityThreshold,
 		MaxEditDistance:     defaultMaxEditDistance,
 		MaxFixPasses:        defaultMaxFixPasses,
 		Keyboard:            defaultKeyboardLayout,
-		History:             HistoryConfig{Enabled: true},
+		History:             itypes.HistoryConfig{Enabled: true},
 		Rules:               rules,
 	}
 }
@@ -258,64 +239,64 @@ func (c *Config) SetValue(key, value string) error {
 	return nil
 }
 
-func (c *Config) updatedUserConfig(key, value string) (UserConfig, error) {
+func (c *Config) updatedUserConfig(key, value string) (itypes.UserConfig, error) {
 	next := cloneUserConfig(c.User)
 
 	switch key {
 	case "similarity-threshold":
 		parsed, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return UserConfig{}, fmt.Errorf("invalid float value %q for %s", value, key)
+			return itypes.UserConfig{}, fmt.Errorf("invalid float value %q for %s", value, key)
 		}
 		next.SimilarityThreshold = parsed
 	case "max-edit-distance":
 		parsed, err := strconv.Atoi(value)
 		if err != nil {
-			return UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
+			return itypes.UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
 		}
 		next.MaxEditDistance = parsed
 	case "max-fix-passes":
 		parsed, err := strconv.Atoi(value)
 		if err != nil {
-			return UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
+			return itypes.UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
 		}
 		next.MaxFixPasses = parsed
 	case "keyboard":
 		normalized := strings.ToLower(strings.TrimSpace(value))
 		if !supportedKeyboardLayouts[normalized] {
-			return UserConfig{}, fmt.Errorf("unsupported keyboard layout: %s", normalized)
+			return itypes.UserConfig{}, fmt.Errorf("unsupported keyboard layout: %s", normalized)
 		}
 		next.Keyboard = normalized
 	case "history.enabled":
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
-			return UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
+			return itypes.UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
 		}
 		next.History.Enabled = parsed
 	default:
 		scope, ok := parseRuleScopeKey(key)
 		if !ok {
-			return UserConfig{}, fmt.Errorf("unknown config key: %s", key)
+			return itypes.UserConfig{}, fmt.Errorf("unknown config key: %s", key)
 		}
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
-			return UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
+			return itypes.UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
 		}
 		if _, exists := next.Rules[scope]; !exists {
-			return UserConfig{}, fmt.Errorf("unknown rule scope: %s", scope)
+			return itypes.UserConfig{}, fmt.Errorf("unknown rule scope: %s", scope)
 		}
-		next.Rules[scope] = RuleSetConfig{Enabled: parsed}
+		next.Rules[scope] = itypes.RuleSetConfig{Enabled: parsed}
 	}
 
-	if err := next.Validate(); err != nil {
-		return UserConfig{}, err
+	if err := ValidateUserConfig(next); err != nil {
+		return itypes.UserConfig{}, err
 	}
 
 	return next, nil
 }
 
-// Validate checks whether the user config matches allowed ranges and known enums.
-func (u UserConfig) Validate() error {
+// ValidateUserConfig checks whether the user config matches allowed ranges and known enums.
+func ValidateUserConfig(u itypes.UserConfig) error {
 	if u.SimilarityThreshold < minSimilarityThreshold || u.SimilarityThreshold > maxSimilarityThreshold {
 		return fmt.Errorf("similarity_threshold must be between %.1f and %.1f", minSimilarityThreshold, maxSimilarityThreshold)
 	}
@@ -353,7 +334,7 @@ func (c *Config) loadUserConfig() {
 
 	userCfg := DefaultUserConfig()
 	applyFileConfig(&userCfg, fileCfg)
-	if err := userCfg.Validate(); err != nil {
+	if err := ValidateUserConfig(userCfg); err != nil {
 		fmt.Fprintf(os.Stderr, "typo: invalid config file %s: %v\n", configFile, err)
 		return
 	}
@@ -369,7 +350,7 @@ func (c *Config) loadUserConfig() {
 	c.User = userCfg
 }
 
-func applyFileConfig(dst *UserConfig, src fileUserConfig) {
+func applyFileConfig(dst *itypes.UserConfig, src fileUserConfig) {
 	if src.SimilarityThreshold != nil {
 		dst.SimilarityThreshold = *src.SimilarityThreshold
 	}
@@ -389,12 +370,12 @@ func applyFileConfig(dst *UserConfig, src fileUserConfig) {
 		if rule.Enabled == nil {
 			continue
 		}
-		dst.Rules[scope] = RuleSetConfig{Enabled: *rule.Enabled}
+		dst.Rules[scope] = itypes.RuleSetConfig{Enabled: *rule.Enabled}
 	}
 }
 
-func (c *Config) saveUserConfig(user UserConfig) error {
-	if err := user.Validate(); err != nil {
+func (c *Config) saveUserConfig(user itypes.UserConfig) error {
+	if err := ValidateUserConfig(user); err != nil {
 		return err
 	}
 	if err := c.EnsureConfigDir(); err != nil {
@@ -413,18 +394,18 @@ func (c *Config) saveUserConfig(user UserConfig) error {
 	return storage.WriteFileAtomic(configFile, data, 0600)
 }
 
-func cloneUserConfig(src UserConfig) UserConfig {
+func cloneUserConfig(src itypes.UserConfig) itypes.UserConfig {
 	dst := src
 	dst.Rules = cloneRuleSetConfigs(src.Rules)
 	return dst
 }
 
-func cloneRuleSetConfigs(src map[string]RuleSetConfig) map[string]RuleSetConfig {
+func cloneRuleSetConfigs(src map[string]itypes.RuleSetConfig) map[string]itypes.RuleSetConfig {
 	if src == nil {
 		return nil
 	}
 
-	dst := make(map[string]RuleSetConfig, len(src))
+	dst := make(map[string]itypes.RuleSetConfig, len(src))
 	for scope, rule := range src {
 		dst[scope] = rule
 	}
@@ -451,7 +432,7 @@ func isKnownRuleScope(scope string) bool {
 	return false
 }
 
-func unknownRuleScopes(rules map[string]RuleSetConfig) []string {
+func unknownRuleScopes(rules map[string]itypes.RuleSetConfig) []string {
 	scopes := make([]string, 0)
 	for scope := range rules {
 		if !isKnownRuleScope(scope) {
@@ -462,7 +443,7 @@ func unknownRuleScopes(rules map[string]RuleSetConfig) []string {
 	return scopes
 }
 
-func sortedRuleScopes(rules map[string]RuleSetConfig) []string {
+func sortedRuleScopes(rules map[string]itypes.RuleSetConfig) []string {
 	scopes := make([]string, 0, len(rules))
 	for scope := range rules {
 		scopes = append(scopes, scope)

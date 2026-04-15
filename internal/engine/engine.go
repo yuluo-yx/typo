@@ -8,17 +8,8 @@ import (
 
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
-
-// FixResult represents the result of a fix attempt.
-type FixResult struct {
-	Fixed      bool   // Whether a fix was found
-	Command    string // The corrected command
-	Source     string // Where the fix came from (history, rule, parser, distance, subcommand)
-	Message    string // Optional message to display
-	Kind       string // Internal result tag used for extra handling.
-	UsedParser bool   // Whether parser context was consumed in the fix chain.
-}
 
 // Engine is the main correction engine.
 type Engine struct {
@@ -145,18 +136,18 @@ func NewEngine(opts ...Option) *Engine {
 
 // Fix attempts to fix the given command.
 // stderr is optional and used for error parsing.
-func (e *Engine) Fix(cmd, stderr string) FixResult {
-	return e.FixWithContext(parser.Context{
+func (e *Engine) Fix(cmd, stderr string) itypes.FixResult {
+	return e.FixWithContext(itypes.ParserContext{
 		Command: cmd,
 		Stderr:  stderr,
 	})
 }
 
 // FixWithContext attempts to fix the given command with parser context.
-func (e *Engine) FixWithContext(input parser.Context) FixResult {
+func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 	input.Command = strings.TrimSpace(input.Command)
 	if input.Command == "" {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	originalCmd := input.Command
@@ -195,7 +186,7 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 	}
 
 	if currentCmd != originalCmd {
-		return FixResult{
+		return itypes.FixResult{
 			Fixed:      true,
 			Command:    currentCmd,
 			Source:     lastSource,
@@ -205,10 +196,10 @@ func (e *Engine) FixWithContext(input parser.Context) FixResult {
 		}
 	}
 
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) fixOnePass(input parser.Context) FixResult {
+func (e *Engine) fixOnePass(input itypes.ParserContext) itypes.FixResult {
 	cmd := input.Command
 
 	// 1. Try error parser first (if stderr provided)
@@ -253,14 +244,14 @@ func (e *Engine) fixOnePass(input parser.Context) FixResult {
 		return result
 	}
 
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
 // FixCommand attempts to fix only the command word, preserving arguments.
-func (e *Engine) FixCommand(cmd string) FixResult {
+func (e *Engine) FixCommand(cmd string) itypes.FixResult {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	if result := e.fixCommandWordWithShell(cmd); result.Fixed {
@@ -270,7 +261,7 @@ func (e *Engine) FixCommand(cmd string) FixResult {
 	// Split into command and args
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	cmdWord := parts[0]
@@ -312,20 +303,20 @@ func (e *Engine) FixCommand(cmd string) FixResult {
 		}
 	}
 
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
+func (e *Engine) fixCommandWordWithShell(cmd string) itypes.FixResult {
 	lines, err := parseShellCommandLines(cmd)
 	if err != nil {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	for _, line := range lines {
 		cmdWord := line.commandWord()
 
 		if rule, ok := e.rules.MatchUser(cmdWord); ok {
-			result := FixResult{
+			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(rule.To),
 				Source:  "rule",
@@ -336,7 +327,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 		}
 
 		if entry, ok := e.history.Lookup(cmdWord); ok {
-			result := FixResult{
+			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(entry.To),
 				Source:  "history",
@@ -352,7 +343,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 		}
 
 		if replacement := e.findCommandTreeRootForArgs(cmdWord, args); replacement != "" {
-			result := FixResult{
+			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(replacement),
 				Source:  "tree",
@@ -363,7 +354,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 		}
 
 		if rule, ok := e.rules.MatchBuiltin(cmdWord); ok {
-			result := FixResult{
+			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(rule.To),
 				Source:  "rule",
@@ -374,7 +365,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 		}
 
 		if replacement := e.findClosestCommand(cmdWord); replacement != "" {
-			result := FixResult{
+			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(replacement),
 				Source:  "distance",
@@ -385,16 +376,16 @@ func (e *Engine) fixCommandWordWithShell(cmd string) FixResult {
 		}
 	}
 
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) tryParser(input parser.Context) FixResult {
+func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
 	lines, err := parseShellCommandLines(input.Command)
 	if err == nil {
 		hasMultipleCommands := len(lines) > 1
 
 		for _, line := range lines {
-			result := e.parser.Parse(parser.Context{
+			result := e.parser.Parse(itypes.ParserContext{
 				Command:             line.commandSuffixRaw(),
 				Stderr:              input.Stderr,
 				ExitCode:            input.ExitCode,
@@ -403,7 +394,7 @@ func (e *Engine) tryParser(input parser.Context) FixResult {
 				HasPrivilegeWrapper: line.hasWrapper("sudo"),
 			})
 			if result.Fixed {
-				return FixResult{
+				return itypes.FixResult{
 					Fixed:   true,
 					Command: line.replaceCommandSuffix(result.Command),
 					Source:  "parser",
@@ -413,10 +404,10 @@ func (e *Engine) tryParser(input parser.Context) FixResult {
 			}
 		}
 
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
-	result := e.parser.Parse(parser.Context{
+	result := e.parser.Parse(itypes.ParserContext{
 		Command:             input.Command,
 		Stderr:              input.Stderr,
 		ExitCode:            input.ExitCode,
@@ -424,7 +415,7 @@ func (e *Engine) tryParser(input parser.Context) FixResult {
 		ShellParseFailed:    true,
 	})
 	if result.Fixed {
-		return FixResult{
+		return itypes.FixResult{
 			Fixed:   true,
 			Command: result.Command,
 			Source:  "parser",
@@ -432,10 +423,10 @@ func (e *Engine) tryParser(input parser.Context) FixResult {
 			Kind:    result.Kind,
 		}
 	}
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) tryHistory(cmd string) FixResult {
+func (e *Engine) tryHistory(cmd string) itypes.FixResult {
 	result := e.tryMatchOnCommand(cmd, "history", func(s string) (string, bool) {
 		if e.shouldSkipHistoryLookup(s) {
 			return "", false
@@ -496,7 +487,7 @@ func (e *Engine) commonTranspositionCandidate(cmd string) string {
 	return ""
 }
 
-func (e *Engine) tryUserRules(cmd string) FixResult {
+func (e *Engine) tryUserRules(cmd string) itypes.FixResult {
 	result := e.tryMatchOnCommand(cmd, "rule", func(s string) (string, bool) {
 		rule, ok := e.rules.MatchUser(s)
 		if ok {
@@ -513,7 +504,7 @@ func (e *Engine) tryUserRules(cmd string) FixResult {
 	return result
 }
 
-func (e *Engine) tryBuiltinRules(cmd string) FixResult {
+func (e *Engine) tryBuiltinRules(cmd string) itypes.FixResult {
 	result := e.tryMatchOnCommand(cmd, "rule", func(s string) (string, bool) {
 		rule, ok := e.rules.MatchBuiltin(s)
 		if ok {
@@ -530,7 +521,7 @@ func (e *Engine) tryBuiltinRules(cmd string) FixResult {
 	return result
 }
 
-func (e *Engine) fixSubcommandInResult(result FixResult) FixResult {
+func (e *Engine) fixSubcommandInResult(result itypes.FixResult) itypes.FixResult {
 	if fixed := e.trySubcommandFixWithSource(result.Command, result.Source); fixed.Fixed {
 		return fixed
 	}
@@ -539,10 +530,10 @@ func (e *Engine) fixSubcommandInResult(result FixResult) FixResult {
 
 type matchFunc func(string) (string, bool)
 
-func tryMatch(cmd, source string, match matchFunc) FixResult {
+func tryMatch(cmd, source string, match matchFunc) itypes.FixResult {
 	// Try full command first
 	if replacement, ok := match(cmd); ok {
-		return FixResult{
+		return itypes.FixResult{
 			Fixed:   true,
 			Command: replacement,
 			Source:  source,
@@ -553,7 +544,7 @@ func tryMatch(cmd, source string, match matchFunc) FixResult {
 	parts := strings.Fields(cmd)
 	if len(parts) > 1 {
 		if replacement, ok := match(parts[0]); ok {
-			return FixResult{
+			return itypes.FixResult{
 				Fixed:   true,
 				Command: replacement + " " + strings.Join(parts[1:], " "),
 				Source:  source,
@@ -561,15 +552,15 @@ func tryMatch(cmd, source string, match matchFunc) FixResult {
 		}
 	}
 
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) tryMatchOnCommand(cmd, source string, match matchFunc) FixResult {
+func (e *Engine) tryMatchOnCommand(cmd, source string, match matchFunc) itypes.FixResult {
 	lines, err := parseShellCommandLines(cmd)
 	if err == nil {
 		for _, line := range lines {
 			if replacement, ok := match(line.commandSuffixRaw()); ok {
-				return FixResult{
+				return itypes.FixResult{
 					Fixed:   true,
 					Command: line.replaceCommandSuffixDedup(replacement),
 					Source:  source,
@@ -577,7 +568,7 @@ func (e *Engine) tryMatchOnCommand(cmd, source string, match matchFunc) FixResul
 			}
 
 			if replacement, ok := match(line.commandWord()); ok {
-				return FixResult{
+				return itypes.FixResult{
 					Fixed:   true,
 					Command: line.replaceCommandWord(replacement),
 					Source:  source,
@@ -585,25 +576,25 @@ func (e *Engine) tryMatchOnCommand(cmd, source string, match matchFunc) FixResul
 			}
 		}
 
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	return tryMatch(cmd, source, match)
 }
 
-func (e *Engine) tryDistance(cmd string) FixResult {
+func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 	if result, parsed := e.tryDistanceWithShell(cmd); parsed {
 		return result
 	}
 
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	cmdWord := parts[0]
 	if e.isProtectedCommandWord(cmdWord) {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	// Find best match from known commands
@@ -612,7 +603,7 @@ func (e *Engine) tryDistance(cmd string) FixResult {
 	// Check if match is good enough
 	// Threshold: distance <= 2 and similarity > 60%
 	if bestMatch != "" && bestMatch != cmdWord && isGoodCommandDistanceMatch(cmdWord, bestMatch, bestDistance, e.distanceMatchConfig()) {
-		result := FixResult{
+		result := itypes.FixResult{
 			Fixed:   true,
 			Command: bestMatch,
 			Source:  "distance",
@@ -631,13 +622,13 @@ func (e *Engine) tryDistance(cmd string) FixResult {
 		return result
 	}
 
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) tryDistanceWithShell(cmd string) (FixResult, bool) {
+func (e *Engine) tryDistanceWithShell(cmd string) (itypes.FixResult, bool) {
 	lines, err := parseShellCommandLines(cmd)
 	if err != nil {
-		return FixResult{Fixed: false}, false
+		return itypes.FixResult{Fixed: false}, false
 	}
 
 	matchCfg := e.distanceMatchConfig()
@@ -655,7 +646,7 @@ func (e *Engine) tryDistanceWithShell(cmd string) (FixResult, bool) {
 			continue
 		}
 
-		result := FixResult{
+		result := itypes.FixResult{
 			Fixed:   true,
 			Command: line.replaceCommandWord(bestMatch),
 			Source:  "distance",
@@ -668,10 +659,10 @@ func (e *Engine) tryDistanceWithShell(cmd string) (FixResult, bool) {
 		return result, true
 	}
 
-	return FixResult{Fixed: false}, true
+	return itypes.FixResult{Fixed: false}, true
 }
 
-func (e *Engine) tryToolOptionFix(cmd string) FixResult {
+func (e *Engine) tryToolOptionFix(cmd string) itypes.FixResult {
 	if result, parsed := e.tryToolOptionFixWithShell(cmd); parsed {
 		return result
 	}
@@ -680,14 +671,14 @@ func (e *Engine) tryToolOptionFix(cmd string) FixResult {
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	mainCmd := parts[0]
 	if !e.isAvailableCommand(mainCmd) {
 		resolved := e.findClosestCommand(mainCmd)
 		if resolved == "" {
-			return FixResult{Fixed: false}
+			return itypes.FixResult{Fixed: false}
 		}
 		mainCmd = resolved
 		parts[0] = resolved
@@ -723,7 +714,7 @@ func (e *Engine) tryToolOptionFix(cmd string) FixResult {
 		}
 
 		parts[i] = replacement + suffix
-		return FixResult{
+		return itypes.FixResult{
 			Fixed:   true,
 			Command: strings.Join(parts, " "),
 			Source:  "option",
@@ -731,13 +722,13 @@ func (e *Engine) tryToolOptionFix(cmd string) FixResult {
 		}
 	}
 
-	return FixResult{Fixed: false}
+	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) tryToolOptionFixWithShell(cmd string) (FixResult, bool) {
+func (e *Engine) tryToolOptionFixWithShell(cmd string) (itypes.FixResult, bool) {
 	lines, err := parseShellCommandLines(cmd)
 	if err != nil {
-		return FixResult{Fixed: false}, false
+		return itypes.FixResult{Fixed: false}, false
 	}
 
 	matchCfg := e.distanceMatchConfig()
@@ -782,7 +773,7 @@ func (e *Engine) tryToolOptionFixWithShell(cmd string) (FixResult, bool) {
 				replacements = append(replacements, shellWordReplacement{index: line.commandIdx, value: resolvedCmd})
 			}
 
-			return FixResult{
+			return itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceWords(replacements...),
 				Source:  "option",
@@ -791,12 +782,12 @@ func (e *Engine) tryToolOptionFixWithShell(cmd string) (FixResult, bool) {
 		}
 	}
 
-	return FixResult{Fixed: false}, true
+	return itypes.FixResult{Fixed: false}, true
 }
 
-func (e *Engine) trySubcommandFix(cmd string) FixResult {
+func (e *Engine) trySubcommandFix(cmd string) itypes.FixResult {
 	if e.toolTrees == nil {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	if result, parsed := e.trySubcommandFixWithShell(cmd); parsed {
@@ -805,7 +796,7 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	mainCmd := parts[0]
@@ -814,7 +805,7 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	if !e.isAvailableCommand(mainCmd) {
 		resolved := e.findClosestCommand(mainCmd)
 		if resolved == "" {
-			return FixResult{Fixed: false}
+			return itypes.FixResult{Fixed: false}
 		}
 		mainCmd = resolved
 	}
@@ -822,17 +813,17 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	// Get subcommands for this tool
 	subcmdIdx := findSubcommandIndex(mainCmd, parts)
 	if subcmdIdx == -1 {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	fixedParts, changed := e.fixSubcommandParts(mainCmd, parts, subcmdIdx)
 	if !changed {
-		return FixResult{Fixed: false}
+		return itypes.FixResult{Fixed: false}
 	}
 
 	fixedParts[0] = mainCmd
 	fixedCommand := strings.Join(fixedParts, " ")
-	return FixResult{
+	return itypes.FixResult{
 		Fixed:   true,
 		Command: fixedCommand,
 		Source:  "subcommand",
@@ -840,10 +831,10 @@ func (e *Engine) trySubcommandFix(cmd string) FixResult {
 	}
 }
 
-func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
+func (e *Engine) trySubcommandFixWithShell(cmd string) (itypes.FixResult, bool) {
 	lines, err := parseShellCommandLines(cmd)
 	if err != nil {
-		return FixResult{Fixed: false}, false
+		return itypes.FixResult{Fixed: false}, false
 	}
 
 	for _, line := range lines {
@@ -867,7 +858,7 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 		}
 
 		fixedCommand := line.replaceWords(replacements...)
-		return FixResult{
+		return itypes.FixResult{
 			Fixed:   true,
 			Command: fixedCommand,
 			Source:  "subcommand",
@@ -875,10 +866,10 @@ func (e *Engine) trySubcommandFixWithShell(cmd string) (FixResult, bool) {
 		}, true
 	}
 
-	return FixResult{Fixed: false}, true
+	return itypes.FixResult{Fixed: false}, true
 }
 
-func (e *Engine) trySubcommandFixWithSource(cmd, source string) FixResult {
+func (e *Engine) trySubcommandFixWithSource(cmd, source string) itypes.FixResult {
 	result := e.trySubcommandFix(cmd)
 	if result.Fixed && source != "" {
 		result.Source = source
@@ -1225,8 +1216,8 @@ func mergeUniqueStrings(base []string, extra ...string) []string {
 	return result
 }
 
-func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) FixResult {
-	result := FixResult{
+func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) itypes.FixResult {
+	result := itypes.FixResult{
 		Fixed:   true,
 		Command: cmdWord,
 		Source:  source,
@@ -1296,7 +1287,7 @@ func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg di
 	return isSingleAdjacentTransposition(original, candidate)
 }
 
-func isMeaningfulFix(original string, result FixResult) bool {
+func isMeaningfulFix(original string, result itypes.FixResult) bool {
 	if !result.Fixed {
 		return false
 	}
