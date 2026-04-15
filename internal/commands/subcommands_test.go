@@ -41,6 +41,12 @@ func TestHasBuiltinSubcommand(t *testing.T) {
 	if !HasBuiltinSubcommand("git", "status") {
 		t.Fatal("Expected builtin git subcommand lookup to find status")
 	}
+	if !HasBuiltinSubcommand("docker", "image") {
+		t.Fatal("Expected builtin docker subcommand lookup to find image")
+	}
+	if HasBuiltinSubcommand("pip", "install") {
+		t.Fatal("Expected dynamic-only pip lookup to have no builtin fallback")
+	}
 	if HasBuiltinSubcommand("git", "nonexistent-subcommand") {
 		t.Fatal("Expected unknown git subcommand lookup to fail")
 	}

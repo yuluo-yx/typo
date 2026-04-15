@@ -139,7 +139,7 @@ func (r *ToolTreeRegistry) GetChildren(tool string, prefix []string) []string {
 	}
 
 	fetched := r.fetchSubcommands(tool, prefix...)
-	children := utils.MergeUniqueStrings(fetched, builtinSubcommandsForPath(tool, prefix)...)
+	children := utils.MergeUniqueStrings(fetched, builtinChildrenForPath(tool, prefix)...)
 	if len(children) == 0 {
 		return nil
 	}
@@ -206,7 +206,7 @@ func (r *ToolTreeRegistry) cachedChildren(tool string, prefix []string) []string
 	if node == nil || len(node.Children) == 0 {
 		return nil
 	}
-	return utils.MergeUniqueStrings(node.childTokens(), builtinSubcommandsForPath(tool, prefix)...)
+	return utils.MergeUniqueStrings(node.childTokens(), builtinChildrenForPath(tool, prefix)...)
 }
 
 func (r *ToolTreeRegistry) cachedNode(tool string, prefix []string) *TreeNode {
@@ -901,48 +901,8 @@ func normalizeHelpSection(value string) string {
 
 // HasSubcommands checks whether the tool is known to have subcommands.
 func (r *ToolTreeRegistry) HasSubcommands(tool string) bool {
-	return knownSubcommandTools[tool]
+	return isKnownSubcommandTool(tool)
 }
-
-var knownSubcommandTools = map[string]bool{
-	"git":       true,
-	"docker":    true,
-	"npm":       true,
-	"yarn":      true,
-	"kubectl":   true,
-	"cargo":     true,
-	"go":        true,
-	"pip":       true,
-	"pip3":      true,
-	"composer":  true,
-	"ansible":   true,
-	"terraform": true,
-	"helm":      true,
-	"brew":      true,
-	"aws":       true,
-	"gcloud":    true,
-	"az":        true,
-}
-
-var builtinSubcommands = map[string][]string{
-	"git":       {"add", "branch", "checkout", "clone", "commit", "diff", "fetch", "init", "log", "merge", "pull", "push", "rebase", "remote", "restore", "status", "stash", "submodule", "switch"},
-	"docker":    {"build", "compose", "container", "exec", "image", "images", "inspect", "logs", "network", "ps", "pull", "push", "rm", "run", "start", "stop", "volume"},
-	"npm":       {"ci", "install", "list", "login", "publish", "run", "test", "uninstall", "update"},
-	"yarn":      {"add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade"},
-	"kubectl":   {"api-resources", "apply", "config", "create", "delete", "describe", "edit", "exec", "get", "logs", "patch", "rollout"},
-	"cargo":     {"bench", "build", "check", "clean", "doc", "fmt", "help", "run", "test", "update"},
-	"go":        {"build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool"},
-	"brew":      {"cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"},
-	"terraform": {"apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"},
-	"helm":      {"dependency", "get", "install", "lint", "list", "package", "pull", "repo", "search", "template", "upgrade"},
-	"aws":       {"cloudwatch", "configure", "dynamodb", "ec2", "iam", "lambda", "rds", "s3", "sns", "sqs", "sts"},
-	"gcloud":    {"bigquery", "compute", "config", "functions", "iam", "kubernetes", "pubsub", "services", "storage"},
-	"az":        {"account", "aks", "functionapp", "group", "network", "storage", "vm", "webapp"},
-}
-
-var (
-	builtinSubcommandSet = buildBuiltinSubcommandSet()
-)
 
 // HasBuiltinSubcommand reports whether a tool's builtin root-level subcommands contain the given subcommand.
 func HasBuiltinSubcommand(tool, subcommand string) bool {
@@ -950,20 +910,12 @@ func HasBuiltinSubcommand(tool, subcommand string) bool {
 		return false
 	}
 
-	toolSet, ok := builtinSubcommandSet[tool]
-	return ok && toolSet[subcommand]
-}
-
-func buildBuiltinSubcommandSet() map[string]map[string]bool {
-	result := make(map[string]map[string]bool, len(builtinSubcommands))
-	for tool, subcommands := range builtinSubcommands {
-		set := make(map[string]bool, len(subcommands))
-		for _, subcommand := range subcommands {
-			set[subcommand] = true
-		}
-		result[tool] = set
+	node := builtinNodeForPath(tool, nil)
+	if node == nil || len(node.Children) == 0 {
+		return false
 	}
-	return result
+	_, ok := node.Children[subcommand]
+	return ok
 }
 
 func appendPath(prefix []string, token string) []string {
@@ -984,10 +936,8 @@ func supportsHierarchicalDiscovery(tool string) bool {
 
 // PreFetch prefetches common tool subcommands.
 func (r *ToolTreeRegistry) PreFetch() {
-	tools := []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "go", "aws", "gcloud", "az"}
-
 	var wg sync.WaitGroup
-	for _, tool := range tools {
+	for _, tool := range prefetchSubcommandToolNames() {
 		wg.Add(1)
 		go func(t string) {
 			defer wg.Done()

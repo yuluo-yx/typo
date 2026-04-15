@@ -96,23 +96,45 @@ var builtinCommandTrees = []*itypes.CommandTree{
 var builtinToolTrees = buildBuiltinToolTrees()
 
 func buildBuiltinToolTrees() map[string]*TreeNode {
-	trees := make(map[string]*TreeNode, len(builtinSubcommands))
-	for tool, subcommands := range builtinSubcommands {
-		children := make(map[string]*TreeNode, len(subcommands))
-		for _, subcommand := range subcommands {
-			children[subcommand] = &TreeNode{}
-		}
-		trees[tool] = treeBranch(children)
+	return map[string]*TreeNode{
+		"git":       gitBuiltinTree(),
+		"docker":    dockerBuiltinTree(),
+		"npm":       flatToolTree("ci", "install", "list", "login", "publish", "run", "test", "uninstall", "update"),
+		"yarn":      flatToolTree("add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade"),
+		"kubectl":   kubectlBuiltinTree(),
+		"cargo":     flatToolTree("bench", "build", "check", "clean", "doc", "fmt", "help", "run", "test", "update"),
+		"go":        flatToolTree("build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool"),
+		"brew":      flatToolTree("cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"),
+		"terraform": flatToolTree("apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"),
+		"helm":      flatToolTree("dependency", "get", "install", "lint", "list", "package", "pull", "repo", "search", "template", "upgrade"),
+		"aws":       flatToolTree("cloudwatch", "configure", "dynamodb", "ec2", "iam", "lambda", "rds", "s3", "sns", "sqs", "sts"),
+		"gcloud":    flatToolTree("bigquery", "compute", "config", "functions", "iam", "kubernetes", "pubsub", "services", "storage"),
+		"az":        flatToolTree("account", "aks", "functionapp", "group", "network", "storage", "vm", "webapp"),
 	}
-
-	trees["git"] = gitBuiltinTree()
-	trees["docker"] = dockerBuiltinTree()
-	trees["kubectl"] = kubectlBuiltinTree()
-	return trees
 }
+
+var dynamicOnlySubcommandTools = map[string]bool{
+	"pip":      true,
+	"pip3":     true,
+	"composer": true,
+	"ansible":  true,
+}
+
+var prefetchSubcommandTools = []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "go", "aws", "gcloud", "az"}
 
 func builtinTreeForTool(tool string) *TreeNode {
 	return builtinToolTrees[tool]
+}
+
+func isKnownSubcommandTool(tool string) bool {
+	if tool == "" {
+		return false
+	}
+	return builtinTreeForTool(tool) != nil || dynamicOnlySubcommandTools[tool]
+}
+
+func prefetchSubcommandToolNames() []string {
+	return append([]string(nil), prefetchSubcommandTools...)
 }
 
 func builtinNodeForPath(tool string, prefix []string) *TreeNode {
@@ -127,7 +149,7 @@ func builtinNodeForPath(tool string, prefix []string) *TreeNode {
 	return node
 }
 
-func builtinSubcommandsForPath(tool string, prefix []string) []string {
+func builtinChildrenForPath(tool string, prefix []string) []string {
 	node := builtinNodeForPath(tool, prefix)
 	if node == nil {
 		return nil
@@ -168,6 +190,17 @@ func treeLeafPassthrough() *TreeNode {
 
 func treeLeafAlias(target string) *TreeNode {
 	return &TreeNode{Terminal: true, Alias: target}
+}
+
+func flatToolTree(subcommands ...string) *TreeNode {
+	children := make(map[string]*TreeNode, len(subcommands))
+	for _, subcommand := range subcommands {
+		if subcommand == "" {
+			continue
+		}
+		children[subcommand] = &TreeNode{}
+	}
+	return treeBranch(children)
 }
 
 func gitBuiltinTree() *TreeNode {
