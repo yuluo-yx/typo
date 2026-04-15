@@ -2,9 +2,9 @@ package parser
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
+	"github.com/yuluo-yx/typo/internal/utils"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -53,19 +53,7 @@ func (c *shellCall) replaceSubcommand(command, expected, replacement string, opt
 }
 
 func parserWordRange(word *syntax.Word, rawLen int) (int, int) {
-	return parserOffsetToIndex(word.Pos().Offset(), rawLen), parserOffsetToIndex(word.End().Offset(), rawLen)
-}
-
-func parserOffsetToIndex(offset uint, rawLen int) int {
-	if offset > uint(math.MaxInt) {
-		return rawLen
-	}
-
-	index := int(offset)
-	if index > rawLen {
-		return rawLen
-	}
-	return index
+	return utils.OffsetToIndex(word.Pos().Offset(), rawLen), utils.OffsetToIndex(word.End().Offset(), rawLen)
 }
 
 func findShellSubcommandIndex(args []*syntax.Word, command string, optionsWithValues map[string]bool) int {

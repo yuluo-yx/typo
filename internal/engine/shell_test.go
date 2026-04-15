@@ -221,18 +221,6 @@ func TestSkipEnvWrapperArgs(t *testing.T) {
 	}
 }
 
-func TestOffsetToIndex(t *testing.T) {
-	if got := offsetToIndex(3, 10); got != 3 {
-		t.Fatalf("offsetToIndex(3, 10) = %d, want 3", got)
-	}
-	if got := offsetToIndex(99, 10); got != 10 {
-		t.Fatalf("offsetToIndex(99, 10) = %d, want 10", got)
-	}
-	if got := offsetToIndex(^uint(0), 10); got != 10 {
-		t.Fatalf("offsetToIndex(maxUint, 10) = %d, want 10", got)
-	}
-}
-
 func TestShellCommandLineReplacementHelpers(t *testing.T) {
 	lines, err := parseShellCommandLines("sudo git status")
 	if err != nil {

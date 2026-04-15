@@ -2,10 +2,10 @@ package engine
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 
+	"github.com/yuluo-yx/typo/internal/utils"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -146,19 +146,7 @@ func (c *shellCommandLine) hasWrapper(name string) bool {
 }
 
 func wordRange(word *syntax.Word, rawLen int) (int, int) {
-	return offsetToIndex(word.Pos().Offset(), rawLen), offsetToIndex(word.End().Offset(), rawLen)
-}
-
-func offsetToIndex(offset uint, rawLen int) int {
-	if offset > uint(math.MaxInt) {
-		return rawLen
-	}
-
-	idx := int(offset)
-	if idx > rawLen {
-		return rawLen
-	}
-	return idx
+	return utils.OffsetToIndex(word.Pos().Offset(), rawLen), utils.OffsetToIndex(word.End().Offset(), rawLen)
 }
 
 func trimShellWordPrefix(raw string, prefixWords []string) string {

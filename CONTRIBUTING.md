@@ -69,6 +69,7 @@ Run `make ci` before pushing any changes.
 - Keep functions focused and cyclomatic complexity under 15.
 - Export only what needs to be exported.
 - Use `internal/types` only for stable data contracts shared across packages; keep package-owned behavior, storage, validation, discovery, and lifecycle details in their owning packages.
+- Only pure functional general-purpose capabilities that are unrelated to specific business logic, command flow, and state, and need to be reused by multiple internal packages, are suitable for being placed in `internal/utils`.
 
 ## Testing Standards
 

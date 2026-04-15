@@ -1884,21 +1884,6 @@ func TestCheckGoBinTypo_EmptyGoBinDir(t *testing.T) {
 	}
 }
 
-func TestSameDirAndPathContainsDir(t *testing.T) {
-	if !sameDir("/tmp/dir", "/tmp/dir/") {
-		t.Fatal("Expected directories with trailing slash to match")
-	}
-	if sameDir("", "/tmp/dir") {
-		t.Fatal("Expected empty dir to not match")
-	}
-	if !pathContainsDir("/usr/bin:/tmp/dir:/bin", "/tmp/dir") {
-		t.Fatal("Expected path to contain directory")
-	}
-	if pathContainsDir("/usr/bin:/bin", "/tmp/dir") {
-		t.Fatal("Expected path to not contain directory")
-	}
-}
-
 func TestDoctor(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
