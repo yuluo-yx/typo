@@ -761,6 +761,7 @@ func TestEngine_TrySubcommandFix_BuiltinNestedToolTrees(t *testing.T) {
 		{name: "git second level", cmd: "git stash sve", wantCmd: "git stash save"},
 		{name: "docker first level", cmd: "docker imge ls", wantCmd: "docker image ls"},
 		{name: "docker second level", cmd: "docker container stp", wantCmd: "docker container stop"},
+		{name: "docker image list alias typo", cmd: "docker image listt", wantCmd: "docker image list"},
 		{name: "kubectl resource", cmd: "kubectl get pds", wantCmd: "kubectl get pods"},
 		{name: "kubectl alias canonicalization", cmd: "kubectl get po", wantCmd: "kubectl get pods"},
 		{name: "git option before nested command", cmd: "git -C repo stash sve", wantCmd: "git -C repo stash save"},

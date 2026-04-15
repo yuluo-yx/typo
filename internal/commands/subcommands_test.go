@@ -386,7 +386,7 @@ func TestToolTreeRegistry_BuiltinNestedSemantics(t *testing.T) {
 	}{
 		{name: "git stash", tool: "git", prefix: []string{"stash"}, want: []string{"save", "list", "pop", "clear"}},
 		{name: "docker container", tool: "docker", prefix: []string{"container"}, want: []string{"start", "stop", "logs", "exec"}},
-		{name: "docker image", tool: "docker", prefix: []string{"image"}, want: []string{"build", "ls", "pull", "push"}},
+		{name: "docker image", tool: "docker", prefix: []string{"image"}, want: []string{"build", "list", "ls", "pull", "push"}},
 		{name: "kubectl get resources", tool: "kubectl", prefix: []string{"get"}, want: []string{"pods", "po", "deployments", "svc", "namespaces", "ns"}},
 	}
 
@@ -403,6 +403,9 @@ func TestToolTreeRegistry_BuiltinNestedSemantics(t *testing.T) {
 
 	if canonical, ok := r.ResolveChild("kubectl", []string{"get"}, "po"); !ok || canonical != "pods" {
 		t.Fatalf("Expected kubectl get po to resolve to pods, got %q ok=%v", canonical, ok)
+	}
+	if canonical, ok := r.ResolveChild("docker", []string{"image"}, "list"); !ok || canonical != "list" {
+		t.Fatalf("Expected docker image list to stay valid, got %q ok=%v", canonical, ok)
 	}
 	if got := r.GetChildren("git", []string{"commit"}); len(got) != 0 {
 		t.Fatalf("Expected passthrough git commit to have no child candidates, got %v", got)
