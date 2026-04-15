@@ -933,8 +933,8 @@ var builtinSubcommands = map[string][]string{
 	"brew":      {"cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"},
 	"terraform": {"apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"},
 	"helm":      {"dependency", "get", "install", "lint", "list", "package", "pull", "repo", "search", "template", "upgrade"},
-	"aws":       {"cloudwatch", "dynamodb", "ec2", "iam", "lambda", "rds", "s3", "sns", "sqs", "sts"},
-	"gcloud":    {"bigquery", "compute", "functions", "iam", "kubernetes", "pubsub", "services", "storage"},
+	"aws":       {"cloudwatch", "configure", "dynamodb", "ec2", "iam", "lambda", "rds", "s3", "sns", "sqs", "sts"},
+	"gcloud":    {"bigquery", "compute", "config", "functions", "iam", "kubernetes", "pubsub", "services", "storage"},
 	"az":        {"account", "aks", "functionapp", "group", "network", "storage", "vm", "webapp"},
 }
 

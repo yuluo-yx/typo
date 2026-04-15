@@ -346,6 +346,244 @@ func TestGetChildren_CachedNested(t *testing.T) {
 	}
 }
 
+func TestToolTreeRegistry_BuiltinRootCoverageForCommonTools(t *testing.T) {
+	r := &ToolTreeRegistry{cacheExpiry: 7 * 24 * time.Hour}
+
+	tests := []struct {
+		tool string
+		want []string
+	}{
+		{tool: "npm", want: []string{"install", "run", "test", "ci"}},
+		{tool: "yarn", want: []string{"add", "install", "run", "test"}},
+		{tool: "cargo", want: []string{"build", "check", "fmt", "test"}},
+		{tool: "go", want: []string{"build", "mod", "test", "tool"}},
+		{tool: "brew", want: []string{"install", "search", "update", "upgrade"}},
+		{tool: "terraform", want: []string{"init", "plan", "apply", "validate"}},
+		{tool: "helm", want: []string{"install", "repo", "template", "upgrade"}},
+		{tool: "aws", want: []string{"s3", "ec2", "lambda", "sts"}},
+		{tool: "gcloud", want: []string{"compute", "config", "storage"}},
+		{tool: "az", want: []string{"account", "group", "storage", "vm"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.tool, func(t *testing.T) {
+			got := r.GetChildren(tt.tool, nil)
+			for _, want := range tt.want {
+				if !hasString(got, want) {
+					t.Fatalf("GetChildren(%q) missing %q in %v", tt.tool, want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestToolTreeRegistry_BuiltinNestedSemantics(t *testing.T) {
+	r := &ToolTreeRegistry{cacheExpiry: 7 * 24 * time.Hour}
+
+	tests := []struct {
+		name   string
+		tool   string
+		prefix []string
+		want   []string
+	}{
+		{name: "git stash", tool: "git", prefix: []string{"stash"}, want: []string{"save", "list", "pop", "clear"}},
+		{name: "docker container", tool: "docker", prefix: []string{"container"}, want: []string{"start", "stop", "logs", "exec"}},
+		{name: "docker image", tool: "docker", prefix: []string{"image"}, want: []string{"build", "ls", "pull", "push"}},
+		{name: "kubectl get resources", tool: "kubectl", prefix: []string{"get"}, want: []string{"pods", "po", "deployments", "svc", "namespaces", "ns"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := r.GetChildren(tt.tool, tt.prefix)
+			for _, want := range tt.want {
+				if !hasString(got, want) {
+					t.Fatalf("GetChildren(%q, %v) missing %q in %v", tt.tool, tt.prefix, want, got)
+				}
+			}
+		})
+	}
+
+	if canonical, ok := r.ResolveChild("kubectl", []string{"get"}, "po"); !ok || canonical != "pods" {
+		t.Fatalf("Expected kubectl get po to resolve to pods, got %q ok=%v", canonical, ok)
+	}
+	if got := r.GetChildren("git", []string{"commit"}); len(got) != 0 {
+		t.Fatalf("Expected passthrough git commit to have no child candidates, got %v", got)
+	}
+}
+
+func TestToolTreeRegistry_CachedNestedCoverageForAdditionalTools(t *testing.T) {
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
+			"pip": {
+				Tool: "pip",
+				Tree: treeBranch(map[string]*TreeNode{
+					"cache": treeBranch(map[string]*TreeNode{
+						"dir":    {},
+						"info":   {},
+						"list":   {},
+						"purge":  {},
+						"remove": {},
+					}),
+					"install":   {},
+					"uninstall": {},
+				}),
+				UpdatedAt: time.Now(),
+			},
+			"composer": {
+				Tool: "composer",
+				Tree: treeBranch(map[string]*TreeNode{
+					"config": treeBranch(map[string]*TreeNode{
+						"allow-plugins": {},
+						"cache-dir":     {},
+						"repositories":  {},
+					}),
+					"install": {},
+					"require": {},
+				}),
+				UpdatedAt: time.Now(),
+			},
+			"brew": {
+				Tool: "brew",
+				Tree: treeBranch(map[string]*TreeNode{
+					"services": treeBranch(map[string]*TreeNode{
+						"list":    {},
+						"restart": {},
+						"start":   {},
+						"stop":    {},
+					}),
+				}),
+				UpdatedAt: time.Now(),
+			},
+			"terraform": {
+				Tool: "terraform",
+				Tree: treeBranch(map[string]*TreeNode{
+					"state": treeBranch(map[string]*TreeNode{
+						"list": {},
+						"mv":   {},
+						"rm":   {},
+						"show": {},
+					}),
+				}),
+				UpdatedAt: time.Now(),
+			},
+			"helm": {
+				Tool: "helm",
+				Tree: treeBranch(map[string]*TreeNode{
+					"repo": treeBranch(map[string]*TreeNode{
+						"add":    {},
+						"list":   {},
+						"remove": {},
+						"update": {},
+					}),
+				}),
+				UpdatedAt: time.Now(),
+			},
+		},
+		cacheExpiry: 7 * 24 * time.Hour,
+	}
+
+	tests := []struct {
+		name   string
+		tool   string
+		prefix []string
+		want   []string
+	}{
+		{name: "pip cache", tool: "pip", prefix: []string{"cache"}, want: []string{"dir", "info", "list", "purge", "remove"}},
+		{name: "composer config", tool: "composer", prefix: []string{"config"}, want: []string{"allow-plugins", "cache-dir", "repositories"}},
+		{name: "brew services", tool: "brew", prefix: []string{"services"}, want: []string{"list", "restart", "start", "stop"}},
+		{name: "terraform state", tool: "terraform", prefix: []string{"state"}, want: []string{"list", "mv", "rm", "show"}},
+		{name: "helm repo", tool: "helm", prefix: []string{"repo"}, want: []string{"add", "list", "remove", "update"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := r.GetChildren(tt.tool, tt.prefix)
+			for _, want := range tt.want {
+				if !hasString(got, want) {
+					t.Fatalf("GetChildren(%q, %v) missing %q in %v", tt.tool, tt.prefix, want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestToolTreeRegistry_CachedThreeLevelCloudCoverage(t *testing.T) {
+	r := &ToolTreeRegistry{
+		trees: map[string]*ToolTreeCache{
+			"aws": {
+				Tool: "aws",
+				Tree: treeBranch(map[string]*TreeNode{
+					"cloudformation": treeBranch(map[string]*TreeNode{
+						"wait": treeBranch(map[string]*TreeNode{
+							"stack-create-complete": {},
+							"stack-update-complete": {},
+						}),
+					}),
+				}),
+				UpdatedAt: time.Now(),
+			},
+			"gcloud": {
+				Tool: "gcloud",
+				Tree: treeBranch(map[string]*TreeNode{
+					"container": treeBranch(map[string]*TreeNode{
+						"clusters": treeBranch(map[string]*TreeNode{
+							"get-credentials": {},
+							"list":            {},
+						}),
+					}),
+				}),
+				UpdatedAt: time.Now(),
+			},
+			"az": {
+				Tool: "az",
+				Tree: treeBranch(map[string]*TreeNode{
+					"storage": treeBranch(map[string]*TreeNode{
+						"account": treeBranch(map[string]*TreeNode{
+							"list": {},
+							"show": {},
+						}),
+					}),
+					"network": treeBranch(map[string]*TreeNode{
+						"vnet": treeBranch(map[string]*TreeNode{
+							"list": {},
+							"subnet": treeBranch(map[string]*TreeNode{
+								"create": {},
+								"list":   {},
+							}),
+						}),
+					}),
+				}),
+				UpdatedAt: time.Now(),
+			},
+		},
+		cacheExpiry: 7 * 24 * time.Hour,
+	}
+
+	tests := []struct {
+		name   string
+		tool   string
+		prefix []string
+		want   []string
+	}{
+		{name: "aws cloudformation wait", tool: "aws", prefix: []string{"cloudformation", "wait"}, want: []string{"stack-create-complete", "stack-update-complete"}},
+		{name: "gcloud container clusters", tool: "gcloud", prefix: []string{"container", "clusters"}, want: []string{"get-credentials", "list"}},
+		{name: "az storage account", tool: "az", prefix: []string{"storage", "account"}, want: []string{"list", "show"}},
+		{name: "az network vnet", tool: "az", prefix: []string{"network", "vnet"}, want: []string{"list", "subnet"}},
+		{name: "az network vnet subnet", tool: "az", prefix: []string{"network", "vnet", "subnet"}, want: []string{"create", "list"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := r.GetChildren(tt.tool, tt.prefix)
+			for _, want := range tt.want {
+				if !hasString(got, want) {
+					t.Fatalf("GetChildren(%q, %v) missing %q in %v", tt.tool, tt.prefix, want, got)
+				}
+			}
+		})
+	}
+}
+
 func TestGet_ExpiredCache(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := &ToolTreeRegistry{

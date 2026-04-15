@@ -56,6 +56,48 @@ Notes:
 - Hierarchical subcommand discovery is supported for `git`, `docker`, `aws`, `gcloud`, and `az`; `kubectl` resource correction uses a conservative built-in resource tree.
 - Older subcommand cache files without `schema_version: 2` are moved aside automatically and regenerated.
 
+### Subcommand cache version 2
+
+`subcommands.json` uses a versioned tree format:
+
+```json
+{
+  "schema_version": 2,
+  "tools": [
+    {
+      "tool": "git",
+      "tree": {
+        "children": {
+          "stash": {
+            "children": {
+              "save": {"terminal": true}
+            }
+          }
+        }
+      },
+      "updated_at": "2026-04-15T12:00:00Z"
+    }
+  ]
+}
+```
+
+Version 2 stores nested subcommands directly instead of keeping a flat root list
+plus path-specific child lists. This lets typo correct each command level
+independently, for example `gcloud container clusers lisr` to
+`gcloud container clusters list`.
+
+Node fields have these meanings:
+
+- `children`: valid child tokens below the current level
+- `terminal`: the token can end a command path
+- `passthrough`: arguments after this token are treated as user input, not subcommands
+- `alias`: canonical token to output when a short alias is used
+
+If typo finds an older cache format, it renames that file to
+`subcommands.json.corrupt-<timestamp>` and rebuilds a fresh version 2 cache on
+next use. The file only contains discovered command metadata, so no user rules,
+history, or configuration are lost.
+
 ## Local files
 
 Typo stores local state in `~/.typo/`:

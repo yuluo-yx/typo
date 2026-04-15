@@ -44,6 +44,11 @@ migrate the file automatically on first load and preserve a backup
 (`<file>.backup-<timestamp>`). Manual migration will never be required within
 v1.x.
 
+Cache files may use a different path. If `subcommands.json` changes format,
+typo may quarantine the old cache as `subcommands.json.corrupt-<timestamp>` and
+regenerate it instead of migrating it in place. This is allowed because
+`subcommands.json` contains only discovered command metadata.
+
 ## Config file format
 
 **Tier: Stable**

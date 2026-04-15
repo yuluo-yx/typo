@@ -1051,22 +1051,81 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 				"build": {}, "run": {}, "ps": {}, "images": {}, "logs": {}, "compose": {},
 			}),
 			toolTreeCache("npm", map[string]*commands.TreeNode{
-				"install": {}, "run": {}, "test": {}, "publish": {}, "ci": {},
+				"install": {},
+				"run":     {},
+				"test":    {},
+				"publish": {},
+				"ci":      {},
+				"config": {
+					Children: map[string]*commands.TreeNode{
+						"get":  {},
+						"set":  {},
+						"list": {},
+					},
+				},
+			}),
+			toolTreeCache("yarn", map[string]*commands.TreeNode{
+				"add": {}, "build": {}, "cache": {}, "init": {}, "install": {}, "remove": {}, "run": {}, "test": {},
 			}),
 			toolTreeCache("cargo", map[string]*commands.TreeNode{
 				"bench": {}, "build": {}, "check": {}, "fmt": {}, "run": {}, "test": {},
+			}),
+			toolTreeCache("go", map[string]*commands.TreeNode{
+				"build": {}, "env": {}, "fmt": {}, "generate": {}, "get": {}, "install": {}, "run": {}, "test": {},
+				"mod": {
+					Children: map[string]*commands.TreeNode{
+						"download": {},
+						"edit":     {},
+						"init":     {},
+						"tidy":     {},
+						"vendor":   {},
+					},
+				},
+			}),
+			toolTreeCache("pip", map[string]*commands.TreeNode{
+				"install": {}, "uninstall": {}, "list": {}, "show": {}, "freeze": {},
+			}),
+			toolTreeCache("pip3", map[string]*commands.TreeNode{
+				"install": {}, "uninstall": {}, "list": {}, "show": {}, "freeze": {},
+			}),
+			toolTreeCache("composer", map[string]*commands.TreeNode{
+				"install": {}, "update": {}, "require": {}, "remove": {}, "dump-autoload": {},
 			}),
 			toolTreeCache("kubectl", map[string]*commands.TreeNode{
 				"get": {}, "describe": {}, "apply": {}, "delete": {}, "logs": {},
 			}),
 			toolTreeCache("brew", map[string]*commands.TreeNode{
 				"install": {}, "update": {}, "upgrade": {}, "list": {}, "search": {},
+				"services": {
+					Children: map[string]*commands.TreeNode{
+						"start":   {},
+						"stop":    {},
+						"restart": {},
+						"list":    {},
+					},
+				},
 			}),
 			toolTreeCache("terraform", map[string]*commands.TreeNode{
 				"init": {}, "plan": {}, "apply": {}, "destroy": {}, "validate": {},
+				"state": {
+					Children: map[string]*commands.TreeNode{
+						"list": {},
+						"show": {},
+						"mv":   {},
+						"rm":   {},
+					},
+				},
 			}),
 			toolTreeCache("helm", map[string]*commands.TreeNode{
-				"install": {}, "upgrade": {}, "template": {}, "repo": {}, "lint": {}, "list": {},
+				"install": {}, "upgrade": {}, "template": {}, "lint": {}, "list": {},
+				"repo": {
+					Children: map[string]*commands.TreeNode{
+						"add":    {},
+						"list":   {},
+						"remove": {},
+						"update": {},
+					},
+				},
 			}),
 			toolTreeCache("aws", map[string]*commands.TreeNode{
 				"s3": {
@@ -1074,7 +1133,23 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 						"cp": {}, "ls": {}, "mb": {}, "mv": {}, "rm": {}, "sync": {},
 					},
 				},
-				"ec2":       {},
+				"ec2": {
+					Children: map[string]*commands.TreeNode{
+						"describe-instances": {},
+						"start-instances":    {},
+						"stop-instances":     {},
+					},
+				},
+				"cloudformation": {
+					Children: map[string]*commands.TreeNode{
+						"wait": {
+							Children: map[string]*commands.TreeNode{
+								"stack-create-complete": {},
+								"stack-update-complete": {},
+							},
+						},
+					},
+				},
 				"configure": {},
 			}),
 			toolTreeCache("gcloud", map[string]*commands.TreeNode{
@@ -1089,13 +1164,60 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 						},
 					},
 				},
-				"config": {},
+				"container": {
+					Children: map[string]*commands.TreeNode{
+						"clusters": {
+							Children: map[string]*commands.TreeNode{
+								"get-credentials": {},
+								"list":            {},
+							},
+						},
+					},
+				},
+				"config": {
+					Children: map[string]*commands.TreeNode{
+						"get-value": {},
+						"set":       {},
+						"list":      {},
+					},
+				},
 			}),
 			toolTreeCache("az", map[string]*commands.TreeNode{
-				"account": {},
+				"account": {
+					Children: map[string]*commands.TreeNode{
+						"list": {},
+						"set":  {},
+						"show": {},
+					},
+				},
+				"network": {
+					Children: map[string]*commands.TreeNode{
+						"vnet": {
+							Children: map[string]*commands.TreeNode{
+								"list": {},
+								"subnet": {
+									Children: map[string]*commands.TreeNode{
+										"create": {},
+										"list":   {},
+									},
+								},
+							},
+						},
+					},
+				},
 				"group": {
 					Children: map[string]*commands.TreeNode{
 						"create": {}, "delete": {}, "list": {}, "show": {},
+					},
+				},
+				"storage": {
+					Children: map[string]*commands.TreeNode{
+						"account": {
+							Children: map[string]*commands.TreeNode{
+								"list": {},
+								"show": {},
+							},
+						},
 					},
 				},
 				"login": {},
@@ -1117,7 +1239,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 
 	return NewEngine(
 		WithRules(NewRules(tmpDir)),
-		WithCommands([]string{"git", "docker", "npm", "cargo", "kubectl", "brew", "terraform", "helm", "typo", "aws", "gcloud", "az"}),
+		WithCommands([]string{"git", "docker", "npm", "yarn", "cargo", "go", "pip", "pip3", "composer", "kubectl", "brew", "terraform", "helm", "typo", "aws", "gcloud", "az"}),
 		WithKeyboard(NewQWERTYKeyboard()),
 		WithToolTrees(subcmdRegistry),
 		WithCommandTrees(commands.NewCommandTreeRegistry()),

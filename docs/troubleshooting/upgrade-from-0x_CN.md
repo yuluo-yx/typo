@@ -98,6 +98,14 @@ Invoke-Expression (& typo init powershell | Out-String)
 - `subcommands.json` 是缓存文件，删除是安全的 — 下次使用时会重新生成。
 - 目录权限应为 `0755`，文件权限应为 `0600`。
 
+### 子命令缓存格式
+
+当前 v1 版本写入的 `subcommands.json` 使用 `schema_version: 2`。该格式保存树形子命令，因此 Typo 可以修正 `aws cloudformation wait stack-create-complete`、`gcloud container clusters list` 这类多层命令路径。
+
+旧版本生成的缓存可能没有 `schema_version` 字段，也可能使用扁平列表格式。Typo 首次加载时会把这些旧缓存隔离为 `subcommands.json.corrupt-<时间戳>`，并在下一次执行子命令发现时重新生成缓存。
+
+不需要手动迁移。该缓存不保存用户规则、历史记录或配置。如果需要强制刷新，可以删除 `~/.typo/subcommands.json`，然后运行会触发子命令修正的命令。
+
 ### 规则作用域
 
 v1 引入了比 0.2.0 更多的内置规则作用域：
