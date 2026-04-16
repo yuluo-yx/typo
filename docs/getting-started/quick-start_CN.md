@@ -10,7 +10,7 @@ Homebrew 会安装 macOS 或 Linux 对应的预编译 Release 二进制。
 由于 tap 维护在当前仓库内，请先使用显式仓库 URL 添加 tap。
 
 ```bash
-brew tap yuluo-yx/typo
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
 brew install typo
 ```
 
@@ -28,7 +28,7 @@ brew uninstall typo
 brew untap yuluo-yx/typo
 ```
 
-安装完成后，请继续参考 README 中的 `运行` 部分配置 shell 集成。
+安装完成后，请继续参考 README 中的 `Shell 集成` 部分配置 shell 集成。
 
 ### macOS / Linux 脚本安装
 
@@ -129,7 +129,7 @@ shasum -a 256 -c typo-darwin-arm64.checksums
 
 ## 下一步
 
-- shell 接入方式请看 [README](../../README_CN.md) 中的 `Shell 集成` 和 `运行`。
+- shell 接入方式请看 [README](../../README_CN.md) 中的 `Shell 集成`。
 - 命令说明请看 [命令参考](../reference/commands_CN.md)。
 - 典型修正场景请看 [使用示例](../example/use_CN.md)。
 - v1.x 稳定性承诺请看 [稳定性契约](../reference/stability_CN.md)。
