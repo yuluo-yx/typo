@@ -132,8 +132,15 @@ v1 supports these install methods (all verified by `typo doctor`):
 
 - `curl` install script (macOS / Linux)
 - Windows PowerShell quick-install script
-- Homebrew (planned)
+- Homebrew
 - Manual GitHub Release binary
+
+If you installed with Homebrew, upgrade through Homebrew:
+
+```bash
+brew update
+brew upgrade typo
+```
 
 If you used the install script, re-run it to get the latest version:
 

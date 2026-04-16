@@ -53,15 +53,18 @@ regenerate it instead of migrating it in place. This is allowed because
 
 **Tier: Stable**
 
-The following `config.json` keys are stable and will not be renamed or removed
-during v1.x:
+The following `config.json` field names are stable and will not be renamed or
+removed during v1.x:
 
-- `similarity-threshold`
-- `max-edit-distance`
-- `max-fix-passes`
+- `similarity_threshold`
+- `max_edit_distance`
+- `max_fix_passes`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`
+
+The `typo config` CLI uses hyphenated key names for the top-level numeric
+settings; see [Command Reference](commands.md) for the CLI form.
 
 New keys may be added in minor releases. Unrecognized keys are ignored, so
 config files written by a newer v1.x release will still load in an older v1.x

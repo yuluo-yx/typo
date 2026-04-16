@@ -48,11 +48,11 @@
 - 如果同时启用 `ssh-terminfo,ssh-env`，Ghostty 会先尝试安装 `terminfo`，失败后再自动回退。
 - 在 macOS Sonoma 之前的系统上，系统自带 `infocmp` 版本过旧，可能无法生成可被新版 `tic` 正确读取的条目。此时需要先通过 Homebrew 安装 `ncurses`，再改用 `/opt/homebrew/opt/ncurses/bin/infocmp` 或 `/usr/local/opt/ncurses/bin/infocmp`。
 
-See: https://ghostty.org/docs/help/terminfo#ssh
+参考：https://ghostty.org/docs/help/terminfo#ssh
 
-## 3. Jetbraines 通过 Gateway 启动的 Remote IDE 终端里绑定 esc 键无效？
+## 3. JetBrains 通过 Gateway 启动的 Remote IDE 终端里绑定 `Esc` 键无效？
 
-确认是 Jetbrains IDE 的问题。将 shell 集成脚本（`typo init zsh`、`typo init bash`、`typo init fish` 或 `typo init powershell`）中的按键改为其他键即可生效。
+确认是 JetBrains IDE 的问题。将 shell 集成脚本（`typo init zsh`、`typo init bash`、`typo init fish` 或 `typo init powershell`）中的按键改为其他键即可生效。
 
 ```shell
 # zsh
@@ -210,7 +210,7 @@ Set-PSReadLineKeyHandler -Chord Ctrl+t -ScriptBlock { __typo_FixCommand }
 
 推荐处理方式：
 
-1. 检查终端是否拦截了 `Esc`。JetBrains IDE 请参考 [第 1 节](#1-在-idea-终端中按-esc-会退出终端) 和 [第 3 节](#3-jetbraines-通过-gateway-启动的-remote-ide-终端里绑定-esc-键无效)。
+1. 检查终端是否拦截了 `Esc`。JetBrains IDE 请参考 [第 1 节](#1-在-idea-终端中按-esc-会退出终端) 和 [第 3 节](#3-jetbrains-通过-gateway-启动的-remote-ide-终端里绑定-esc-键无效)。
 
 2. 如果 shell 使用 **vi 模式**，`Esc` 会被模式切换消费。改为绑定其他键：
 
@@ -293,7 +293,7 @@ Set-PSReadLineKeyHandler -Chord Ctrl+t -ScriptBlock { __typo_FixCommand }
 
 补充说明：
 
-- typo 的所有用户数据存储在 `~/.typo/` 下：`config.json`、`rules.json`、`history.json` 以及子命令缓存。
+- typo 的所有用户数据存储在 `~/.typo/` 下：`config.json`、`rules.json`、`usage_history.json` 以及子命令缓存。
 - 所有文件创建时使用 `0600` 权限，目录使用 `0755` 权限。
 - `typo uninstall` 会删除整个 `~/.typo/` 目录。
 

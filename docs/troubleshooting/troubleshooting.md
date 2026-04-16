@@ -292,7 +292,7 @@ Recommended fixes:
 
 Additional notes:
 
-- typo stores all user data under `~/.typo/`: `config.json`, `rules.json`, `history.json`, and subcommand caches.
+- typo stores all user data under `~/.typo/`: `config.json`, `rules.json`, `usage_history.json`, and subcommand caches.
 - All files are created with mode `0600` and the directory with mode `0755`.
 - `typo uninstall` removes the entire `~/.typo/` directory.
 

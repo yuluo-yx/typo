@@ -107,7 +107,7 @@ $ sudo mkdir test
 gti stash scave <Esc, Esc>
 ```
 
-太痛苦了！！！
+太痛苦了！！！Typo 可以一次性修正这条命令路径：
 
 ```shell
 gti stash save

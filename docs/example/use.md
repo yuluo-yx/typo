@@ -107,7 +107,7 @@ For example:
 gti stash scave <Esc, Esc>
 ```
 
-That is painful.
+That is painful!!!Typo can fix the command path in one step:
 
 ```shell
 gti stash save

@@ -124,8 +124,15 @@ v1 支持以下安装方式（均可通过 `typo doctor` 验证）：
 
 - `curl` 安装脚本（macOS / Linux）
 - Windows PowerShell 快速安装脚本
-- Homebrew（计划中）
+- Homebrew
 - 手动下载 GitHub Release 二进制文件
+
+如果使用 Homebrew 安装，请通过 Homebrew 升级：
+
+```bash
+brew update
+brew upgrade typo
+```
 
 如果使用安装脚本，重新运行即可获取最新版本：
 
@@ -167,4 +174,4 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 - [问题排查](troubleshooting_CN.md)
 - [命令参考](../reference/commands_CN.md)
 - [工作原理](../reference/how-it-works_CN.md)
-- [快速上手](../getting-started/quick-start_CN.md)
+- [快速开始](../getting-started/quick-start_CN.md)
