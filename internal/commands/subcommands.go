@@ -38,6 +38,8 @@ type TreeNode struct {
 	Terminal    bool                 `json:"terminal,omitempty"`
 	Passthrough bool                 `json:"passthrough,omitempty"`
 	Alias       string               `json:"alias,omitempty"`
+
+	childTokensCache []string `json:"-"`
 }
 
 // ToCommandTreeNode converts a cached JSON tree node into an engine command tree node.
@@ -75,6 +77,7 @@ func (n *TreeNode) clone() *TreeNode {
 			cloned.Children[name] = child.clone()
 		}
 	}
+	cloned.refreshChildTokens()
 	return cloned
 }
 
@@ -83,12 +86,35 @@ func (n *TreeNode) childTokens() []string {
 		return nil
 	}
 
+	if len(n.childTokensCache) == len(n.Children) {
+		return n.childTokensCache
+	}
+
 	tokens := make([]string, 0, len(n.Children))
 	for token := range n.Children {
 		tokens = append(tokens, token)
 	}
 	sort.Strings(tokens)
 	return tokens
+}
+
+func (n *TreeNode) refreshChildTokens() {
+	if n == nil {
+		return
+	}
+
+	if len(n.Children) == 0 {
+		n.childTokensCache = nil
+		return
+	}
+
+	tokens := make([]string, 0, len(n.Children))
+	for token, child := range n.Children {
+		tokens = append(tokens, token)
+		child.refreshChildTokens()
+	}
+	sort.Strings(tokens)
+	n.childTokensCache = tokens
 }
 
 // ToolTreeRegistry manages tree-shaped subcommands for external tools.
@@ -154,11 +180,17 @@ func (r *ToolTreeRegistry) ResolveChild(tool string, prefix []string, token stri
 		return "", false
 	}
 
-	if node := r.cachedNode(tool, prefix); node != nil {
+	if r != nil {
+		r.ensureTrees()
+		r.mu.RLock()
+		node := r.cachedNodeLocked(tool, prefix)
 		if canonical, ok := resolveTreeChild(node, token); ok {
+			r.mu.RUnlock()
 			return canonical, true
 		}
+		r.mu.RUnlock()
 	}
+
 	if node := builtinNodeForPath(tool, prefix); node != nil {
 		if canonical, ok := resolveTreeChild(node, token); ok {
 			return canonical, true
@@ -202,21 +234,27 @@ func (r *ToolTreeRegistry) expiry() time.Duration {
 }
 
 func (r *ToolTreeRegistry) cachedChildren(tool string, prefix []string) []string {
-	node := r.cachedNode(tool, prefix)
-	if node == nil || len(node.Children) == 0 {
-		return nil
-	}
-	return utils.MergeUniqueStrings(node.childTokens(), builtinChildrenForPath(tool, prefix)...)
-}
-
-func (r *ToolTreeRegistry) cachedNode(tool string, prefix []string) *TreeNode {
 	if r == nil {
 		return nil
 	}
 
 	r.ensureTrees()
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	node := r.cachedNodeLocked(tool, prefix)
+	if node == nil || len(node.Children) == 0 {
+		r.mu.RUnlock()
+		return nil
+	}
+	children := mergeChildTokens(node, builtinNodeForPath(tool, prefix))
+	r.mu.RUnlock()
+	return children
+}
+
+// cachedNodeLocked returns a cache node while r.mu is held by the caller.
+func (r *ToolTreeRegistry) cachedNodeLocked(tool string, prefix []string) *TreeNode {
+	if r == nil {
+		return nil
+	}
 
 	cache := r.trees[tool]
 	if cache == nil || cache.Tree == nil {
@@ -230,7 +268,19 @@ func (r *ToolTreeRegistry) cachedNode(tool string, prefix []string) *TreeNode {
 	if !ok {
 		return nil
 	}
-	return node.clone()
+	return node
+}
+
+func mergeChildTokens(primary, fallback *TreeNode) []string {
+	primaryTokens := primary.childTokens()
+	fallbackTokens := fallback.childTokens()
+	if len(primaryTokens) == 0 {
+		return append([]string(nil), fallbackTokens...)
+	}
+	if len(fallbackTokens) == 0 {
+		return append([]string(nil), primaryTokens...)
+	}
+	return utils.MergeUniqueStrings(primaryTokens, fallbackTokens...)
 }
 
 func (r *ToolTreeRegistry) pathStopsAtTerminal(tool string, prefix []string) bool {
@@ -238,9 +288,16 @@ func (r *ToolTreeRegistry) pathStopsAtTerminal(tool string, prefix []string) boo
 		return false
 	}
 
-	if node := r.cachedNode(tool, prefix); isTerminalLeaf(node) {
-		return true
+	if r != nil {
+		r.ensureTrees()
+		r.mu.RLock()
+		cachedTerminal := isTerminalLeaf(r.cachedNodeLocked(tool, prefix))
+		r.mu.RUnlock()
+		if cachedTerminal {
+			return true
+		}
 	}
+
 	return isTerminalLeaf(builtinNodeForPath(tool, prefix))
 }
 
@@ -289,6 +346,7 @@ func (r *ToolTreeRegistry) storeChildren(tool string, prefix []string, children 
 		}
 		node.Children[child] = &TreeNode{}
 	}
+	cache.Tree.refreshChildTokens()
 	cache.UpdatedAt = now
 	r.mu.Unlock()
 
@@ -509,6 +567,7 @@ func (r *ToolTreeRegistry) loadCache() {
 		if cache == nil || cache.Tool == "" || cache.Tree == nil {
 			continue
 		}
+		cache.Tree.refreshChildTokens()
 		r.trees[cache.Tool] = cache
 	}
 }

@@ -177,7 +177,9 @@ func treeNodeForPath(root *TreeNode, prefix []string) (*TreeNode, bool) {
 }
 
 func treeBranch(children map[string]*TreeNode) *TreeNode {
-	return &TreeNode{Children: children}
+	node := &TreeNode{Children: children}
+	node.refreshChildTokens()
+	return node
 }
 
 func treeLeaf() *TreeNode {
