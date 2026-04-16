@@ -2,13 +2,13 @@
   <img src="docs/logo.svg" alt="Typo" width="280">
 </p>
 
-<p align="center">命令自动修正工具</p>
+<p align="center"><strong>在终端里直接修正输错的命令。</strong></p>
 
 [![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
 
-**[English](README.md)** | 简体中文
+[English](README.md) | 简体中文
 
-按两次 `Esc` 键自动修正输错的命令。
+Typo 是用 Go 编写的命令自动修正工具。输入命令后按两次 `Esc`，Typo 会把当前命令行替换成更可能正确的命令。
 
 <p align="center">
   <img src="docs/typo-demo.gif" alt="Typo Demo">
@@ -20,50 +20,83 @@
 
 有下面几个原因：
 
-1. theFuck 不在维护了，issue，pr 没人处理（这也是最大的原因；
-2. theFuck 和 Python 版本有绑定关系，我安装的时候废了点功夫～；
-3. theFuck 对包含 `""` 的处理并不好。
+- theFuck 不在维护了，issue，pr 没人处理（这也是最大的原因；
+- theFuck 和 Python 版本有绑定关系，我安装的时候废了点功夫～；
+- theFuck 对包含 "" 的处理并不好。
 
 基于上面的原因，我用 Go 写了 Typo，它不是 TheFuck 的翻译。而是从头开始的！
 
-## 安装
+
+## 功能亮点
+
+- 支持在 zsh、bash、fish 和 PowerShell 中原地修正命令。
+- 支持主命令、子命令、`&&` 连接命令、管道命令和运行时报错。
+- 支持用 `typo learn` 添加个人修正规则；用户规则和历史记录保存在 `~/.typo`。
+- 支持 macOS、Linux、WSL 和 Windows PowerShell 7+ 的原生二进制安装。
+- 使用 Go 语言编写，二进制安装不依赖外部环境。
+
+## 快速开始
+
+使用 Homebrew 安装：
 
 ```bash
-brew tap yuluo-yx/typo
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
 brew install typo
 ```
 
-脚本安装、升级和平台接入细节请看 [快速开始](docs/getting-started/quick-start_CN.md)。
+或者在 macOS / Linux 上使用脚本安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
+```
+
+Windows PowerShell 7+ 使用下面的命令安装：
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/quick-install.ps1 | iex
+```
+
+升级、校验 checksum 和平台差异说明请看 [快速开始](docs/getting-started/quick-start_CN.md)。
 
 ## Shell 集成
 
-请先安装 typo，再为当前 shell 启用集成。
+请先安装 Typo，再把对应的初始化命令添加到 shell 配置文件。
 
-| Shell 终端 | 支持状态  |
-|-----------|----------|
-| zsh       | ✅ 已支持 |
-| bash      | ✅ 已支持 |
-| fish      | ✅ 已支持 |
-| PowerShell| ✅ 已支持 |
+| Shell | 配置文件 | 初始化命令 |
+|-------|----------|------------|
+| zsh | `~/.zshrc` | `eval "$(typo init zsh)"` |
+| bash | `~/.bashrc` | `eval "$(typo init bash)"` |
+| fish | `~/.config/fish/config.fish` | `typo init fish \| source` |
+| PowerShell 7+ | `$PROFILE.CurrentUserCurrentHost` | `Invoke-Expression (& typo init powershell \| Out-String)` |
 
-## 运行
+重启终端后，运行下面的命令检查配置：
 
 ```bash
-# 添加到 ~/.zshrc
-eval "$(typo init zsh)"
-
-# 或添加到 ~/.bashrc
-eval "$(typo init bash)"
-
-# 或添加到 ~/.config/fish/config.fish
-typo init fish | source
-
-# 或添加到 $PROFILE.CurrentUserCurrentHost
-# 注意: Powershell 版本需要大于等于 7.x. 你可以通过 `$PSVersionTable.PSVersion` 检查版本.
-Invoke-Expression (& typo init powershell | Out-String)
+typo doctor
 ```
 
-重启终端后，先运行 `typo doctor`，然后输错命令按 `Esc` `Esc` 即可修正。
+然后输入一条带拼写错误的命令，并按两次 `Esc`：
+
+```shell
+gti stauts
+
+# 按两次 Esc 后
+git status
+```
+
+## CLI 命令
+
+需要直接输出结果或管理个人规则时，可以使用 CLI 命令：
+
+```bash
+typo fix "gut status && dcoker ps"
+typo learn "gst" "git status"
+typo config list
+typo rules list
+typo history list
+```
+
+完整命令和参数说明请看 [命令参考](docs/reference/commands_CN.md)。
 
 ## 文档导航
 
@@ -74,6 +107,18 @@ Invoke-Expression (& typo init powershell | Out-String)
 - [问题排查](docs/troubleshooting/troubleshooting_CN.md)
 - [从 0.x 升级](docs/troubleshooting/upgrade-from-0x_CN.md)
 - [工作原理](docs/reference/how-it-works_CN.md)
+
+## 本地开发
+
+开发环境需要 Go 1.25+ 和 GNU Make。
+
+```bash
+make setup
+make test
+make ci
+```
+
+提交变更前请确保 Git precommit 通过。代码风格、测试要求和提交信息格式请看 [贡献指南](CONTRIBUTING.md)。
 
 ## Release 完整性
 
@@ -89,6 +134,6 @@ Invoke-Expression (& typo init powershell | Out-String)
   <img src=".github/CONTRIBUTORS.svg" alt="Typo 贡献者">
 </p>
 
-## License
+## 许可证
 
 MIT

@@ -98,3 +98,17 @@ mkdir: test: Permission denied
 # fix it.
 $ sudo mkdir test
 ```
+
+## Multi-level subcommand fixes
+
+For example:
+
+```shell
+gti stash scave <Esc, Esc>
+```
+
+That is painful.
+
+```shell
+gti stash save
+```
