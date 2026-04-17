@@ -1645,8 +1645,12 @@ func TestFormatBuildDate(t *testing.T) {
 }
 
 func TestPrintZshIntegration(t *testing.T) {
+	script, code := printIntegrationScript("zsh")
+	if code != 0 {
+		t.Fatalf("Expected code 0, got %d", code)
+	}
 	output := captureStdout(t, func() {
-		printIntegrationScript("zsh")
+		printScript(script)
 	})
 
 	if output != zshIntegrationScript {
@@ -1668,8 +1672,12 @@ func TestPrintZshIntegrationAddsTrailingNewline(t *testing.T) {
 }
 
 func TestPrintBashIntegration(t *testing.T) {
+	script, code := printIntegrationScript("bash")
+	if code != 0 {
+		t.Fatalf("Expected code 0, got %d", code)
+	}
 	output := captureStdout(t, func() {
-		printIntegrationScript("bash")
+		printScript(script)
 	})
 
 	if output != bashIntegrationScript {
@@ -1691,8 +1699,12 @@ func TestPrintBashIntegrationAddsTrailingNewline(t *testing.T) {
 }
 
 func TestPrintFishIntegration(t *testing.T) {
+	script, code := printIntegrationScript("fish")
+	if code != 0 {
+		t.Fatalf("Expected code 0, got %d", code)
+	}
 	output := captureStdout(t, func() {
-		printIntegrationScript("fish")
+		printScript(script)
 	})
 
 	if output != fishIntegrationScript {
@@ -1714,8 +1726,12 @@ func TestPrintFishIntegrationAddsTrailingNewline(t *testing.T) {
 }
 
 func TestPrintPowerShellIntegration(t *testing.T) {
+	script, code := printIntegrationScript("powershell")
+	if code != 0 {
+		t.Fatalf("Expected code 0, got %d", code)
+	}
 	output := captureStdout(t, func() {
-		printIntegrationScript("powershell")
+		printScript(script)
 	})
 
 	if output != powerShellIntegrationScript {
@@ -2222,7 +2238,7 @@ func TestShellHelpersSupportFish(t *testing.T) {
 	if got := shellReloadCommand("fish", "~/.config/fish/config.fish"); got != "source ~/.config/fish/config.fish" {
 		t.Fatalf("shellReloadCommand(fish) = %q", got)
 	}
-	if got := shellPathExportCommand("fish", "/tmp/typo-bin"); got != "set -gx PATH $PATH /tmp/typo-bin" {
+	if got := shellPathExportCommand("fish", "/tmp/typo-bin"); got != "fish_add_path /tmp/typo-bin" {
 		t.Fatalf("shellPathExportCommand(fish) = %q", got)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -69,11 +68,7 @@ func cmdConfigSet(cfg *config.Config, args []string) int {
 		return 1
 	}
 
-	if err := cfg.SetValue(args[1], args[2]); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
-	}
-	if err := cfg.Save(); err != nil {
+	if err := cfg.Set(args[1], args[2]); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
@@ -188,7 +183,7 @@ func cmdRulesSetScopeEnabled(cfg *config.Config, args []string, enabled bool) in
 			os.Stderr,
 			"Error: unknown rule scope: %s (valid options: %s)\n",
 			scope,
-			strings.Join(sortedConfigRuleScopes(cfg), ", "),
+			strings.Join(SortedConfigRuleScopes(cfg), ", "),
 		)
 		return 1
 	}
@@ -206,17 +201,4 @@ func cmdRulesSetScopeEnabled(cfg *config.Config, args []string, enabled bool) in
 
 	fmt.Printf("Disabled rule scope: %s\n", scope)
 	return 0
-}
-
-func sortedConfigRuleScopes(cfg *config.Config) []string {
-	if cfg == nil {
-		return nil
-	}
-
-	scopes := make([]string, 0, len(cfg.User.Rules))
-	for scope := range cfg.User.Rules {
-		scopes = append(scopes, scope)
-	}
-	sort.Strings(scopes)
-	return scopes
 }

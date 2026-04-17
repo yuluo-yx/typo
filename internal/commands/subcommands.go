@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -614,9 +615,14 @@ func (r *ToolTreeRegistry) saveCache() {
 		return
 	}
 
-	_ = os.MkdirAll(r.cacheDir, 0755)
+	if err := os.MkdirAll(r.cacheDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "typo: failed to create cache directory %s: %v\n", r.cacheDir, err)
+		return
+	}
 	cacheFile := filepath.Join(r.cacheDir, "subcommands.json")
-	_ = storage.WriteFileAtomic(cacheFile, data, 0600)
+	if err := storage.WriteFileAtomic(cacheFile, data, 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "typo: failed to write subcommand cache %s: %v\n", cacheFile, err)
+	}
 }
 
 // Tool help output parsers.

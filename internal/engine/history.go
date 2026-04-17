@@ -36,6 +36,9 @@ func NewHistory(configDir string) *History {
 		entries:   make(map[string]HistoryEntry),
 		configDir: configDir,
 	}
+	if configDir != "" {
+		_ = os.MkdirAll(configDir, 0755)
+	}
 	h.load()
 	h.rebuildTargets()
 	return h
