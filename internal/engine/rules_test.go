@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func TestRules_Match(t *testing.T) {
@@ -54,7 +56,7 @@ func TestRules_UserRulesPriority(t *testing.T) {
 	r := NewRules(tmpDir)
 
 	// Add a user rule that overrides builtin
-	userRule := Rule{From: "gut", To: "customgit", Scope: "custom"}
+	userRule := itypes.Rule{From: "gut", To: "customgit", Scope: "custom"}
 	if err := r.AddUserRule(userRule); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
@@ -72,7 +74,7 @@ func TestRules_AddUserRule(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := NewRules(tmpDir)
 
-	rule := Rule{From: "testcmd", To: "correctcmd", Scope: "test"}
+	rule := itypes.Rule{From: "testcmd", To: "correctcmd", Scope: "test"}
 
 	// Add rule
 	if err := r.AddUserRule(rule); err != nil {
@@ -100,7 +102,7 @@ func TestRules_RemoveUserRule(t *testing.T) {
 	r := NewRules(tmpDir)
 
 	// Add then remove
-	rule := Rule{From: "testcmd", To: "correctcmd"}
+	rule := itypes.Rule{From: "testcmd", To: "correctcmd"}
 	if err := r.AddUserRule(rule); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
@@ -195,7 +197,7 @@ func TestRules_LoadExistingUserRules(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Pre-create rules.json
-	existingRules := []Rule{
+	existingRules := []itypes.Rule{
 		{From: "existingcmd", To: "correctcmd", Scope: "user"},
 	}
 	data, _ := jsonMarshal(existingRules)
@@ -230,7 +232,7 @@ func TestRules_EmptyConfigDir(t *testing.T) {
 	}
 
 	// AddUserRule should not error with empty config dir
-	err := r.AddUserRule(Rule{From: "test", To: "test"})
+	err := r.AddUserRule(itypes.Rule{From: "test", To: "test"})
 	if err != nil {
 		t.Errorf("AddUserRule should not error with empty config dir: %v", err)
 	}
@@ -312,7 +314,7 @@ func TestRules_SaveMkdirError(t *testing.T) {
 	r := NewRules(tmpFile.Name())
 
 	// AddUserRule should fail because MkdirAll will fail
-	err = r.AddUserRule(Rule{From: "test", To: "correct"})
+	err = r.AddUserRule(itypes.Rule{From: "test", To: "correct"})
 	if err == nil {
 		t.Error("Expected error when saving to invalid path")
 	}
@@ -323,7 +325,7 @@ func TestRules_ListRules_WithUserRules(t *testing.T) {
 	r := NewRules(tmpDir)
 
 	// Add user rule
-	if err := r.AddUserRule(Rule{From: "mycustom", To: "mycorrect"}); err != nil {
+	if err := r.AddUserRule(itypes.Rule{From: "mycustom", To: "mycorrect"}); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
@@ -347,14 +349,14 @@ func TestRules_Match_DisabledRule(t *testing.T) {
 	r := NewRules(tmpDir)
 
 	// Add a disabled rule
-	rule := Rule{From: "disabledcmd", To: "correctcmd", Enable: false}
+	rule := itypes.Rule{From: "disabledcmd", To: "correctcmd", Enable: false}
 	if err := r.AddUserRule(rule); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
 	// Manually set the rule to disabled
 	r.mu.Lock()
-	r.user["disabledcmd"] = Rule{From: "disabledcmd", To: "correctcmd", Enable: false}
+	r.user["disabledcmd"] = itypes.Rule{From: "disabledcmd", To: "correctcmd", Enable: false}
 	r.mu.Unlock()
 
 	// Should not match disabled rule
@@ -373,7 +375,7 @@ func TestRules_TargetPriority(t *testing.T) {
 		t.Fatal("Expected builtin docker target priority to be non-zero")
 	}
 
-	if err := r.AddUserRule(Rule{From: "dockre", To: "docker"}); err != nil {
+	if err := r.AddUserRule(itypes.Rule{From: "dockre", To: "docker"}); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 

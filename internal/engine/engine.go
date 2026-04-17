@@ -1589,7 +1589,7 @@ func buildBuiltinToolOptionSet() map[string]map[string]bool {
 
 // Learn stores a user-taught correction as a rule instead of history.
 func (e *Engine) Learn(from, to string) error {
-	if err := e.rules.AddUserRule(Rule{From: from, To: to}); err != nil {
+	if err := e.rules.AddUserRule(itypes.Rule{From: from, To: to}); err != nil {
 		return err
 	}
 
@@ -1598,7 +1598,7 @@ func (e *Engine) Learn(from, to string) error {
 
 // AddRule adds a user rule.
 func (e *Engine) AddRule(from, to string) error {
-	if err := e.rules.AddUserRule(Rule{From: from, To: to}); err != nil {
+	if err := e.rules.AddUserRule(itypes.Rule{From: from, To: to}); err != nil {
 		return err
 	}
 
@@ -1606,12 +1606,12 @@ func (e *Engine) AddRule(from, to string) error {
 }
 
 // ListRules returns all rules.
-func (e *Engine) ListRules() []Rule {
+func (e *Engine) ListRules() []itypes.Rule {
 	return e.rules.ListRules()
 }
 
 // ListHistory returns all history entries.
-func (e *Engine) ListHistory() []HistoryEntry {
+func (e *Engine) ListHistory() []itypes.HistoryEntry {
 	return e.history.List()
 }
 

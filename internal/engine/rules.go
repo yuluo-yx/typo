@@ -8,32 +8,25 @@ import (
 	"sync"
 
 	"github.com/yuluo-yx/typo/internal/storage"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // ErrRuleNotFound is returned when attempting to remove a rule that does not exist.
 var ErrRuleNotFound = errors.New("rule not found")
 
-// Rule represents a single correction rule.
-type Rule struct {
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Scope  string `json:"scope,omitempty"`  // e.g., "git", "docker", "npm"
-	Enable bool   `json:"enable,omitempty"` // default true
-}
-
 // RuleSet represents a collection of rules.
 type RuleSet struct {
-	Name   string `json:"name"`
-	Enable bool   `json:"enable"`
-	Rules  []Rule `json:"rules"`
+	Name   string        `json:"name"`
+	Enable bool          `json:"enable"`
+	Rules  []itypes.Rule `json:"rules"`
 }
 
 // Rules manages correction rules.
 type Rules struct {
 	mu        sync.RWMutex
-	builtin   map[string]Rule    // from -> Rule, compiled into binary
-	user      map[string]Rule    // from -> Rule, loaded from user config
-	ruleSets  map[string]RuleSet // scope -> RuleSet
+	builtin   map[string]itypes.Rule // from -> itypes.Rule, compiled into binary
+	user      map[string]itypes.Rule // from -> itypes.Rule, loaded from user config
+	ruleSets  map[string]RuleSet     // scope -> RuleSet
 	configDir string
 	targets   map[string]bool // cached set of all rule .To values
 }
@@ -41,8 +34,8 @@ type Rules struct {
 // NewRules creates a new Rules instance.
 func NewRules(configDir string) *Rules {
 	r := &Rules{
-		builtin:   make(map[string]Rule),
-		user:      make(map[string]Rule),
+		builtin:   make(map[string]itypes.Rule),
+		user:      make(map[string]itypes.Rule),
 		ruleSets:  make(map[string]RuleSet),
 		configDir: configDir,
 	}
@@ -57,7 +50,7 @@ func NewRules(configDir string) *Rules {
 
 // Match finds a matching rule for the given command.
 // Returns the rule and true if found, empty rule and false otherwise.
-func (r *Rules) Match(cmd string) (Rule, bool) {
+func (r *Rules) Match(cmd string) (itypes.Rule, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -71,37 +64,37 @@ func (r *Rules) Match(cmd string) (Rule, bool) {
 		return rule, true
 	}
 
-	return Rule{}, false
+	return itypes.Rule{}, false
 }
 
 // MatchUser finds a matching user rule for the given command.
-func (r *Rules) MatchUser(cmd string) (Rule, bool) {
+func (r *Rules) MatchUser(cmd string) (itypes.Rule, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	rule, ok := r.user[cmd]
 	if !ok || !rule.Enable {
-		return Rule{}, false
+		return itypes.Rule{}, false
 	}
 
 	return rule, true
 }
 
 // MatchBuiltin finds a matching builtin rule for the given command.
-func (r *Rules) MatchBuiltin(cmd string) (Rule, bool) {
+func (r *Rules) MatchBuiltin(cmd string) (itypes.Rule, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	rule, ok := r.builtin[cmd]
 	if !ok || !rule.Enable {
-		return Rule{}, false
+		return itypes.Rule{}, false
 	}
 
 	return rule, true
 }
 
 // AddUserRule adds a new user rule.
-func (r *Rules) AddUserRule(rule Rule) error {
+func (r *Rules) AddUserRule(rule itypes.Rule) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -125,11 +118,11 @@ func (r *Rules) RemoveUserRule(from string) error {
 }
 
 // ListRules returns all rules (builtin + user).
-func (r *Rules) ListRules() []Rule {
+func (r *Rules) ListRules() []itypes.Rule {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	rules := make([]Rule, 0, len(r.builtin)+len(r.user))
+	rules := make([]itypes.Rule, 0, len(r.builtin)+len(r.user))
 
 	// Add builtin rules
 	for _, rule := range r.builtin {
@@ -221,7 +214,7 @@ func (r *Rules) rebuildTargets() {
 }
 
 func (r *Rules) initBuiltinRules() {
-	builtinRules := []Rule{
+	builtinRules := []itypes.Rule{
 		// Git rules
 		{From: "gut", To: "git", Scope: "git"},
 		{From: "gti", To: "git", Scope: "git"},
@@ -440,7 +433,7 @@ func (r *Rules) loadUserRules() {
 		return // No user rules file yet
 	}
 
-	var userRules []Rule
+	var userRules []itypes.Rule
 	if err := json.Unmarshal(data, &userRules); err != nil {
 		storage.QuarantineInvalidJSON(rulesFile, err)
 		return
@@ -461,7 +454,7 @@ func (r *Rules) saveUserRules() error {
 		return err
 	}
 
-	rules := make([]Rule, 0, len(r.user))
+	rules := make([]itypes.Rule, 0, len(r.user))
 	for _, rule := range r.user {
 		rules = append(rules, rule)
 	}

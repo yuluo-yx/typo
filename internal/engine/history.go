@@ -10,22 +10,15 @@ import (
 	"time"
 
 	"github.com/yuluo-yx/typo/internal/storage"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 const usageHistoryFileName = "usage_history.json"
 
-// HistoryEntry represents a single correction history entry.
-type HistoryEntry struct {
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Timestamp int64  `json:"timestamp,omitempty"`
-	Count     int    `json:"count,omitempty"` // Times this correction was used
-}
-
 // History manages correction history.
 type History struct {
 	mu        sync.RWMutex
-	entries   map[string]HistoryEntry // from -> entry
+	entries   map[string]itypes.HistoryEntry // from -> entry
 	configDir string
 	targets   map[string]bool // cached set of all entry .To values
 }
@@ -33,7 +26,7 @@ type History struct {
 // NewHistory creates a new History instance.
 func NewHistory(configDir string) *History {
 	h := &History{
-		entries:   make(map[string]HistoryEntry),
+		entries:   make(map[string]itypes.HistoryEntry),
 		configDir: configDir,
 	}
 	if configDir != "" {
@@ -55,7 +48,7 @@ func (h *History) Record(from, to string) error {
 		entry.Timestamp = time.Now().Unix()
 		h.entries[from] = entry
 	} else {
-		h.entries[from] = HistoryEntry{
+		h.entries[from] = itypes.HistoryEntry{
 			From:      from,
 			To:        to,
 			Timestamp: time.Now().Unix(),
@@ -68,7 +61,7 @@ func (h *History) Record(from, to string) error {
 }
 
 // Lookup finds a historical correction for the given command.
-func (h *History) Lookup(from string) (HistoryEntry, bool) {
+func (h *History) Lookup(from string) (itypes.HistoryEntry, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -149,17 +142,17 @@ func (h *History) Clear() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	h.entries = make(map[string]HistoryEntry)
+	h.entries = make(map[string]itypes.HistoryEntry)
 	h.rebuildTargets()
 	return h.save()
 }
 
 // List returns all history entries.
-func (h *History) List() []HistoryEntry {
+func (h *History) List() []itypes.HistoryEntry {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	entries := make([]HistoryEntry, 0, len(h.entries))
+	entries := make([]itypes.HistoryEntry, 0, len(h.entries))
 	for _, entry := range h.entries {
 		entries = append(entries, entry)
 	}
@@ -208,7 +201,7 @@ func (h *History) load() {
 		return // No history file yet
 	}
 
-	var entries []HistoryEntry
+	var entries []itypes.HistoryEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
 		storage.QuarantineInvalidJSON(historyFile, err)
 		return
@@ -228,7 +221,7 @@ func (h *History) save() error {
 		return err
 	}
 
-	entries := make([]HistoryEntry, 0, len(h.entries))
+	entries := make([]itypes.HistoryEntry, 0, len(h.entries))
 	for _, entry := range h.entries {
 		entries = append(entries, entry)
 	}
