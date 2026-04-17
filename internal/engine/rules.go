@@ -46,6 +46,9 @@ func NewRules(configDir string) *Rules {
 		ruleSets:  make(map[string]RuleSet),
 		configDir: configDir,
 	}
+	if configDir != "" {
+		_ = os.MkdirAll(configDir, 0755)
+	}
 	r.initBuiltinRules()
 	r.loadUserRules()
 	r.rebuildTargets()

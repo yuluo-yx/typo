@@ -97,7 +97,7 @@ func shellPathExportCommand(shellName, dir string) string {
 	case shellNamePowerShell:
 		return fmt.Sprintf("$env:PATH = \"$env:PATH%c%s\"", os.PathListSeparator, dir)
 	case "fish":
-		return fmt.Sprintf("set -gx PATH $PATH %s", dir)
+		return fmt.Sprintf("fish_add_path %s", dir)
 	default:
 		return fmt.Sprintf("export PATH=\"$PATH:%s\"", dir)
 	}
@@ -147,7 +147,7 @@ func getGoBinDir() string {
 		if err != nil {
 			return ""
 		}
-		goPath = homeDir + "/go"
+		goPath = filepath.Join(homeDir, "go")
 	}
 	return filepath.Join(goPath, "bin")
 }

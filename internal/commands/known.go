@@ -151,7 +151,7 @@ func IsExecutable(path string) bool {
 	}
 	if runtime.GOOS == "windows" {
 		ext := strings.ToLower(filepath.Ext(cleanPath))
-		return ext == "" || isWindowsExecutablePath(cleanPath)
+		return ext != "" && isWindowsExecutablePath(cleanPath)
 	}
 	return info.Mode()&0111 != 0
 }

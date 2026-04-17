@@ -14,24 +14,36 @@ func cmdInit(args []string) int {
 
 	switch normalizeShellName(args[0]) {
 	case "zsh":
-		printIntegrationScript("zsh")
-		return 0
+		script, code := printIntegrationScript("zsh")
+		if code == 0 {
+			printScript(script)
+		}
+		return code
 	case "bash":
-		printIntegrationScript("bash")
-		return 0
+		script, code := printIntegrationScript("bash")
+		if code == 0 {
+			printScript(script)
+		}
+		return code
 	case "fish":
-		printIntegrationScript("fish")
-		return 0
+		script, code := printIntegrationScript("fish")
+		if code == 0 {
+			printScript(script)
+		}
+		return code
 	case shellNamePowerShell:
-		printIntegrationScript(shellNamePowerShell)
-		return 0
+		script, code := printIntegrationScript(shellNamePowerShell)
+		if code == 0 {
+			printScript(script)
+		}
+		return code
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", args[0])
 		return 1
 	}
 }
 
-func printIntegrationScript(shell string) {
+func printIntegrationScript(shell string) (string, int) {
 	var script string
 	switch shell {
 	case "zsh":
@@ -44,10 +56,10 @@ func printIntegrationScript(shell string) {
 		script = powerShellIntegrationScript
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n", shell)
-		os.Exit(1)
+		return "", 1
 	}
 
-	printScript(script)
+	return script, 0
 }
 
 func printScript(script string) {
