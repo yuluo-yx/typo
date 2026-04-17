@@ -63,7 +63,8 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 iwr -useb https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/quick-install.ps1 | iex
 ```
 
-Windows 快速安装脚本会下载最新 Release 的二进制，使用 `checksums.txt` 做校验，将 `typo.exe` 安装到 `%LOCALAPPDATA%\Programs\typo\bin`，然后输出后续 PowerShell 集成步骤。
+Windows 快速安装脚本会下载最新 Release 的二进制，在该 Release 提供 `checksums.txt` 时做校验，将 `typo.exe` 安装到 `%LOCALAPPDATA%\Programs\typo\bin`，然后输出后续 PowerShell 集成步骤。
+如果历史 Release 缺少 `checksums.txt`，脚本会输出警告并在未执行 checksum 校验的情况下继续安装。二进制下载失败仍会终止安装。
 
 ## 平台支持
 
@@ -109,6 +110,7 @@ Typo 当前支持：
 ## 校验 Release 二进制
 
 如果你是从 GitHub Release 页面手动下载二进制，请同时下载同一版本里的 `checksums.txt`，并在安装前先校验文件完整性。
+部分历史 Release 可能缺少 `checksums.txt`；如果你需要自动或手动 checksum 校验，请优先使用较新的 Release。
 请在“二进制文件和 `checksums.txt` 位于同一目录”时执行下面的命令。
 
 Linux 示例：

@@ -122,8 +122,8 @@ make ci
 
 ## Release 完整性
 
-每个 GitHub Release 都会额外发布一个 `checksums.txt`，其中包含所有平台二进制的 SHA-256 摘要。
-如果你是直接使用 Release 资产安装，请先对照该文件校验后再放到 `PATH` 中。
+当前 GitHub Release 流程会额外发布一个 `checksums.txt`，其中包含所有平台二进制的 SHA-256 摘要；部分历史 Release 可能缺少该文件。
+如果你是直接使用 Release 资产安装，并且对应 Release 提供 `checksums.txt`，请先对照该文件校验后再放到 `PATH` 中。
 完整校验步骤请看 [快速开始](docs/getting-started/quick-start_CN.md)。
 
 ## 社区贡献者

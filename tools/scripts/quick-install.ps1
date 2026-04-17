@@ -174,6 +174,26 @@ function Download-File {
     Invoke-WebRequest -Uri $Uri -OutFile $OutFile | Out-Null
 }
 
+function Try-Download-File {
+    param(
+        [string]$Uri,
+        [string]$OutFile,
+        [string]$WarningMessage
+    )
+
+    try {
+        Download-File -Uri $Uri -OutFile $OutFile
+        return $true
+    } catch {
+        if (Test-Path -Path $OutFile) {
+            Remove-Item -Path $OutFile -Force -ErrorAction SilentlyContinue
+        }
+
+        Write-Warning "$WarningMessage Error: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Get-ExpectedChecksum {
     param(
         [string]$ChecksumsFile,
@@ -348,12 +368,21 @@ function Invoke-TypoQuickInstall {
 
         Write-Host "Downloading $assetName from $binaryUrl"
         Download-File -Uri $binaryUrl -OutFile $binaryPath
-        Download-File -Uri $checksumsUrl -OutFile $checksumsPath
 
-        $expectedHash = Get-ExpectedChecksum -ChecksumsFile $checksumsPath -AssetName $assetName
-        $actualHash = (Get-FileHash -Path $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actualHash -ne $expectedHash) {
-            throw "Checksum verification failed for $assetName"
+        Write-Host "Downloading checksums.txt from $checksumsUrl"
+        $hasChecksums = Try-Download-File `
+            -Uri $checksumsUrl `
+            -OutFile $checksumsPath `
+            -WarningMessage "Unable to download checksums.txt for $tag. Checksum verification will be skipped."
+
+        if ($hasChecksums) {
+            $expectedHash = Get-ExpectedChecksum -ChecksumsFile $checksumsPath -AssetName $assetName
+            $actualHash = (Get-FileHash -Path $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $expectedHash) {
+                throw "Checksum verification failed for $assetName"
+            }
+
+            Write-Host "Checksum verified for $assetName"
         }
 
         New-Item -ItemType Directory -Path $resolvedInstallDir -Force | Out-Null
