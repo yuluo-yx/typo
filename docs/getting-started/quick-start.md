@@ -63,7 +63,8 @@ Notes:
 iwr -useb https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/quick-install.ps1 | iex
 ```
 
-The Windows quick-install script downloads the latest Release binary, verifies it against `checksums.txt`, installs `typo.exe` into `%LOCALAPPDATA%\Programs\typo\bin`, and prints the next PowerShell integration steps.
+The Windows quick-install script downloads the latest Release binary, verifies it against `checksums.txt` when that file is available, installs `typo.exe` into `%LOCALAPPDATA%\Programs\typo\bin`, and prints the next PowerShell integration steps.
+If a historical Release does not provide `checksums.txt`, the script prints a warning and continues without checksum verification. Binary download failures still stop the install.
 
 ## Platform support
 
@@ -109,6 +110,7 @@ What `typo doctor` should report:
 ## Verify a Release binary
 
 If you download a binary manually from a GitHub Release, download `checksums.txt` from the same release and verify the file before installing it.
+Some historical Releases may not include `checksums.txt`; prefer a newer Release when you need automatic or manual checksum verification.
 Run the following commands from the directory that contains both the downloaded binary and `checksums.txt`.
 
 Linux example:

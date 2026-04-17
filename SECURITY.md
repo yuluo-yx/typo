@@ -44,8 +44,9 @@ Typo is a local command-correction CLI. The current implementation has the follo
 - Typo does not automatically escalate privileges
 - Permission-related logic only suggests a command prefixed with `sudo`; the user decides whether to run it
 - Subcommand discovery looks up tools from the current `PATH` and may call local tools with `--help` or `help` to build cache data
-- GitHub Releases publish a `checksums.txt` file with SHA-256 hashes for all platform binaries
-- The install script currently downloads release binaries from GitHub over HTTPS, or downloads the `main` branch source and builds locally; it does not currently verify checksums or signatures automatically
+- The current GitHub Release workflow publishes a `checksums.txt` file with SHA-256 hashes for all platform binaries; some historical Releases may not include that file
+- The macOS/Linux install script currently downloads release binaries from GitHub over HTTPS, or downloads the `main` branch source and builds locally; it does not currently verify checksums or signatures automatically
+- The Windows quick-install script verifies release checksums when `checksums.txt` is available; if that file is missing for a historical Release, it warns and continues without checksum verification
 
 As a result, the following may be security-relevant:
 
@@ -77,7 +78,7 @@ If your command arguments, command history, or error output may contain sensitiv
 - Be cautious when enabling shell integration on shared machines, shared accounts, or high-sensitivity environments
 - You can disable persisted history with `typo config set history.enabled false`
 - Evaluate whether temporarily storing the previous command's `stderr` in the system temp directory is acceptable for your environment
-- If you install from GitHub Release assets directly, download the matching `checksums.txt` file and verify the SHA-256 hash before placing the binary on your `PATH`
+- If you install from GitHub Release assets directly, download the matching `checksums.txt` file and verify the SHA-256 hash before placing the binary on your `PATH` when that file is available
 
 ## What We Usually Treat as a Security Issue
 

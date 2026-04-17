@@ -140,6 +140,52 @@ func TestWindowsQuickInstallInstallsLatestRelease(t *testing.T) {
 	)
 }
 
+func TestWindowsQuickInstallInstallsWhenChecksumsMissing(t *testing.T) {
+	env := newWindowsQuickInstallEnv(t)
+
+	binaryContent := []byte("fake-typo-windows-binary-without-checksum")
+
+	recorder := &recordedRequests{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recorder.add(r.URL.Path + "?" + r.URL.RawQuery)
+
+		switch {
+		case r.URL.Path == "/repos/yuluo-yx/typo/releases" && r.URL.RawQuery == "per_page=1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"tag_name":"v0.2.0"}]`))
+		case r.URL.Path == "/releases/download/v0.2.0/typo-windows-amd64.exe":
+			_, _ = w.Write(binaryContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	result := env.run(t, []string{
+		"TYPO_INSTALL_GITHUB_API=" + server.URL + "/repos/yuluo-yx/typo",
+		"TYPO_INSTALL_RELEASE_BASE_URL=" + server.URL + "/releases/download",
+		"TYPO_INSTALL_SKIP_PATH_UPDATE=1",
+	})
+	if result.code != 0 {
+		t.Fatalf("quick install should continue without checksums: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+
+	installedBinary := filepath.Join(env.installDir, "typo.exe")
+	assertInstalledBinaryMatches(t, installedBinary, binaryContent)
+	assertQuickInstallOutput(t, result.stdout, installedBinary)
+
+	combinedOutput := result.stdout + result.stderr
+	if !strings.Contains(combinedOutput, "Checksum verification will be skipped") {
+		t.Fatalf("expected checksum skip warning, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+
+	assertRequestedPaths(t, recorder.snapshot(),
+		"/repos/yuluo-yx/typo/releases?per_page=1",
+		"/releases/download/v0.2.0/typo-windows-amd64.exe?",
+		"/releases/download/v0.2.0/checksums.txt?",
+	)
+}
+
 func TestWindowsQuickInstallFailsOnChecksumMismatch(t *testing.T) {
 	env := newWindowsQuickInstallEnv(t)
 	customInstallDir := filepath.Join(env.base, "custom-bin")
