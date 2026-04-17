@@ -812,7 +812,7 @@ func TestEngine_UserRuleOverridesHistory(t *testing.T) {
 	}
 
 	rules := NewRules(tmpDir)
-	if err := rules.AddUserRule(Rule{From: "gut", To: "mygit"}); err != nil {
+	if err := rules.AddUserRule(itypes.Rule{From: "gut", To: "mygit"}); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
@@ -1490,10 +1490,10 @@ func TestEngineConfigurableDistanceMatch(t *testing.T) {
 func TestEngineMaxFixPasses(t *testing.T) {
 	tmpDir := t.TempDir()
 	rules := NewRules(tmpDir)
-	if err := rules.AddUserRule(Rule{From: "aaa", To: "bbb"}); err != nil {
+	if err := rules.AddUserRule(itypes.Rule{From: "aaa", To: "bbb"}); err != nil {
 		t.Fatalf("AddUserRule aaa failed: %v", err)
 	}
-	if err := rules.AddUserRule(Rule{From: "bbb", To: "ccc"}); err != nil {
+	if err := rules.AddUserRule(itypes.Rule{From: "bbb", To: "ccc"}); err != nil {
 		t.Fatalf("AddUserRule bbb failed: %v", err)
 	}
 

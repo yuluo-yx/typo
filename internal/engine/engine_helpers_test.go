@@ -128,7 +128,7 @@ func TestOptionTakesValue(t *testing.T) {
 func TestEngine_CommandPriority(t *testing.T) {
 	tmpDir := t.TempDir()
 	rules := NewRules(tmpDir)
-	if err := rules.AddUserRule(Rule{From: "dockre", To: "docker"}); err != nil {
+	if err := rules.AddUserRule(itypes.Rule{From: "dockre", To: "docker"}); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
@@ -410,7 +410,7 @@ func TestEngine_TryHistoryAndTryUserRules_SubcommandAware(t *testing.T) {
 		t.Fatalf("Expected unknown history lookup to fail, got %+v", got)
 	}
 
-	if err := eng.rules.AddUserRule(Rule{From: "nmp", To: "npm"}); err != nil {
+	if err := eng.rules.AddUserRule(itypes.Rule{From: "nmp", To: "npm"}); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 	if got := eng.tryUserRules("nmp rn test"); !got.Fixed || got.Command != "npm run test" || got.Source != "rule" {
@@ -456,7 +456,7 @@ func TestEngine_FixCommand_PriorityPaths(t *testing.T) {
 	}
 
 	rules := NewRules(tmpDir)
-	if err := rules.AddUserRule(Rule{From: "gut", To: "rulegit"}); err != nil {
+	if err := rules.AddUserRule(itypes.Rule{From: "gut", To: "rulegit"}); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
@@ -486,7 +486,7 @@ func TestEngine_FixCommand_FallbackPriorityPaths(t *testing.T) {
 	}
 
 	rules := NewRules(tmpDir)
-	if err := rules.AddUserRule(Rule{From: "myrule", To: "rulecmd"}); err != nil {
+	if err := rules.AddUserRule(itypes.Rule{From: "myrule", To: "rulecmd"}); err != nil {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 func TestHistory_Record(t *testing.T) {
@@ -208,7 +210,7 @@ func TestHistory_LoadExisting(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Pre-create usage history file
-	existing := []HistoryEntry{
+	existing := []itypes.HistoryEntry{
 		{From: "existing", To: "correct", Timestamp: 100, Count: 5},
 	}
 	data, _ := jsonMarshalHistory(existing)
@@ -328,8 +330,8 @@ func TestHistory_ListSortedByTimestamp(t *testing.T) {
 	tmpDir := t.TempDir()
 	h := NewHistory(tmpDir)
 
-	h.entries["older"] = HistoryEntry{From: "older", To: "git", Timestamp: 10, Count: 1}
-	h.entries["newer"] = HistoryEntry{From: "newer", To: "docker", Timestamp: 20, Count: 1}
+	h.entries["older"] = itypes.HistoryEntry{From: "older", To: "git", Timestamp: 10, Count: 1}
+	h.entries["newer"] = itypes.HistoryEntry{From: "newer", To: "docker", Timestamp: 20, Count: 1}
 
 	entries := h.List()
 	if len(entries) != 2 {
