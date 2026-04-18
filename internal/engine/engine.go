@@ -947,7 +947,7 @@ func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, 
 		}
 
 		match, distance := closestSubcommand(token, subcommands, cfg)
-		if !isGoodDistanceMatch(token, match, distance, cfg) {
+		if !isGoodSubcommandMatch(token, match, distance, cfg) {
 			break
 		}
 
@@ -1024,7 +1024,7 @@ func isSubcommandCandidate(token string, subcommands []string, cfg distanceMatch
 	}
 
 	match, distance := closestSubcommand(token, subcommands, cfg)
-	return isGoodDistanceMatch(token, match, distance, cfg)
+	return isGoodSubcommandMatch(token, match, distance, cfg)
 }
 
 func tokenAt(tokens []string, idx int) string {
@@ -1214,7 +1214,7 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 
 	for _, known := range knownSubcommands {
 		d := Distance(subcmd, known, cfg.keyboard)
-		if !isGoodDistanceMatch(subcmd, known, d, cfg) {
+		if !isGoodSubcommandMatch(subcmd, known, d, cfg) {
 			continue
 		}
 		lengthDelta := utils.Abs(len(subcmd) - len(known))
@@ -1241,6 +1241,22 @@ func isGoodDistanceMatch(original, candidate string, distance int, cfg distanceM
 	}
 
 	return SimilarityFromDistance(len(original), len(candidate), distance) >= cfg.similarityThreshold
+}
+
+func isGoodSubcommandMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
+	if isGoodDistanceMatch(original, candidate, distance, cfg) {
+		return true
+	}
+
+	if candidate == "" || distance > cfg.maxEditDistance {
+		return false
+	}
+
+	if utils.IsSingleAdjacentTransposition(original, candidate) {
+		return true
+	}
+
+	return isShortBoundaryPreservingMatch(original, candidate, distance)
 }
 
 func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
