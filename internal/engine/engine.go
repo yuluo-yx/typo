@@ -1235,7 +1235,6 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 	return bestMatch, bestDistance
 }
 
-
 func isGoodDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
 	if candidate == "" || distance > cfg.maxEditDistance {
 		return false

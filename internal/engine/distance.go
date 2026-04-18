@@ -77,4 +77,3 @@ func SimilarityFromDistance(lenA, lenB, distance int) float64 {
 	}
 	return 1.0 - float64(distance)/float64(maxLen)
 }
-

@@ -77,7 +77,6 @@ func TestSimilarity(t *testing.T) {
 	}
 }
 
-
 func TestMax(t *testing.T) {
 	tests := []struct {
 		name     string
