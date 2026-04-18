@@ -804,11 +804,11 @@ func TestEngine_TrySubcommandFix_DockerNestedSubcommandMatrix(t *testing.T) {
 	}{
 		{name: "root command and build subcommand", cmd: "dcoker biuld -t app .", wantCmd: "docker build -t app ."},
 		{name: "image command and leaf command", cmd: "docker iamge hisotry app:latest", wantCmd: "docker image history app:latest"},
-		{name: "container management command", cmd: "docker conatiner restrat web", wantCmd: "docker container restart web"},
-		{name: "network management command", cmd: "docker netwrok conenct app-net web", wantCmd: "docker network connect app-net web"},
-		{name: "volume management command", cmd: "docker voluem insepct data", wantCmd: "docker volume inspect data"},
+		{name: "container management command", cmd: "docker conatiner restrat web", wantCmd: "docker container restart web"},           //nolint:misspell // Intentional misspelled command input.
+		{name: "network management command", cmd: "docker netwrok conenct app-net web", wantCmd: "docker network connect app-net web"}, //nolint:misspell // Intentional misspelled command input.
+		{name: "volume management command", cmd: "docker voluem insepct data", wantCmd: "docker volume inspect data"},                  //nolint:misspell // Intentional misspelled command input.
 		{name: "global option before nested command", cmd: "docker --context prod iamge lsit", wantCmd: "docker --context prod image list"},
-		{name: "wrapper before nested command", cmd: "sudo docker conatiner stpo web", wantCmd: "sudo docker container stop web"},
+		{name: "wrapper before nested command", cmd: "sudo docker conatiner stpo web", wantCmd: "sudo docker container stop web"}, //nolint:misspell // Intentional misspelled command input.
 	}
 
 	for _, tt := range tests {
@@ -963,7 +963,7 @@ func TestEngine_TrySubcommandFix_ThreeLevelCloudSubcommands(t *testing.T) {
 		},
 		{
 			name:    "az four-level network create with transpositions",
-			cmd:     "az netwrok vnet subent craete",
+			cmd:     "az netwrok vnet subent craete", //nolint:misspell // 故意保留拼错的命令输入。
 			wantCmd: "az network vnet subnet create",
 		},
 	}
