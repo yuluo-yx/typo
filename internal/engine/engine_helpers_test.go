@@ -762,7 +762,10 @@ func TestEngine_TrySubcommandFix_BuiltinNestedToolTrees(t *testing.T) {
 		{name: "docker first level", cmd: "docker imge ls", wantCmd: "docker image ls"},
 		{name: "docker second level", cmd: "docker container stp", wantCmd: "docker container stop"},
 		{name: "docker image list alias typo", cmd: "docker image listt", wantCmd: "docker image list"},
+		{name: "docker nested transposed subcommands", cmd: "docker imaeg lits", wantCmd: "docker image list"},
 		{name: "kubectl resource", cmd: "kubectl get pds", wantCmd: "kubectl get pods"},
+		{name: "kubectl transposed verb", cmd: "kubectl gte pods", wantCmd: "kubectl get pods"},
+		{name: "kubectl resolved main command and transposed path", cmd: "kubeclt gte posd", wantCmd: "kubectl get pods"},
 		{name: "kubectl alias canonicalization", cmd: "kubectl get po", wantCmd: "kubectl get pods"},
 		{name: "git option before nested command", cmd: "git -C repo stash sve", wantCmd: "git -C repo stash save"},
 		{name: "docker option before nested command", cmd: "docker --context prod imge ls", wantCmd: "docker --context prod image ls"},
@@ -782,6 +785,66 @@ func TestEngine_TrySubcommandFix_BuiltinNestedToolTrees(t *testing.T) {
 
 	if got := eng.Fix("git commit somefile", ""); got.Fixed {
 		t.Fatalf("Expected passthrough argument to stay untouched, got %+v", got)
+	}
+	if got := eng.Fix("docker images list", ""); got.Fixed {
+		t.Fatalf("Expected docker images filter argument to stay untouched, got %+v", got)
+	}
+	if got := eng.Fix("kubectl get my-pod", ""); got.Fixed {
+		t.Fatalf("Expected kubectl resource name to stay untouched, got %+v", got)
+	}
+}
+
+func TestEngine_TrySubcommandFix_DockerNestedSubcommandMatrix(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{name: "root command and build subcommand", cmd: "dcoker biuld -t app .", wantCmd: "docker build -t app ."},
+		{name: "image command and leaf command", cmd: "docker iamge hisotry app:latest", wantCmd: "docker image history app:latest"},
+		{name: "container management command", cmd: "docker conatiner restrat web", wantCmd: "docker container restart web"},           //nolint:misspell // Intentional misspelled command input.
+		{name: "network management command", cmd: "docker netwrok conenct app-net web", wantCmd: "docker network connect app-net web"}, //nolint:misspell // Intentional misspelled command input.
+		{name: "volume management command", cmd: "docker voluem insepct data", wantCmd: "docker volume inspect data"},                  //nolint:misspell // Intentional misspelled command input.
+		{name: "global option before nested command", cmd: "docker --context prod iamge lsit", wantCmd: "docker --context prod image list"},
+		{name: "wrapper before nested command", cmd: "sudo docker conatiner stpo web", wantCmd: "sudo docker container stop web"}, //nolint:misspell // Intentional misspelled command input.
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestEngine_TrySubcommandFix_KubectlNestedSubcommandMatrix(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantCmd string
+	}{
+		{name: "root command verb and resource", cmd: "kuebctl dsecribe deployemnts api -n prod", wantCmd: "kubectl describe deployments api -n prod"},
+		{name: "delete resource path", cmd: "kubectl dleete servcies api", wantCmd: "kubectl delete services api"},
+		{name: "get namespace resource", cmd: "kubectl get nmaespaces", wantCmd: "kubectl get namespaces"},
+		{name: "config nested command", cmd: "kubectl cnfig use-contxet prod", wantCmd: "kubectl config use-context prod"},
+		{name: "rollout nested command", cmd: "kubectl rollout restrat deploy api", wantCmd: "kubectl rollout restart deploy api"},
+		{name: "global option before verb and resource", cmd: "kubectl --context prod gte secerets app", wantCmd: "kubectl --context prod get secrets app"},
+		{name: "resource alias still canonicalizes", cmd: "kubectl get svc api", wantCmd: "kubectl get services api"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.Fix(tt.cmd, "")
+			if !got.Fixed || got.Command != tt.wantCmd {
+				t.Fatalf("Fix(%q) = %+v, want %q", tt.cmd, got, tt.wantCmd)
+			}
+		})
 	}
 }
 
@@ -849,9 +912,29 @@ func TestEngine_TrySubcommandFix_ThreeLevelCloudSubcommands(t *testing.T) {
 			wantCmd: "aws cloudformation wait stack-create-complete",
 		},
 		{
+			name:    "aws transposed three-level path",
+			cmd:     "aws coludformation wait stack-create-complete",
+			wantCmd: "aws cloudformation wait stack-create-complete",
+		},
+		{
 			name:    "aws option before three-level waiter",
 			cmd:     "aws --region us-east-1 cloudformation wait stack-update-complet",
 			wantCmd: "aws --region us-east-1 cloudformation wait stack-update-complete",
+		},
+		{
+			name:    "aws transposed leaf in three-level path",
+			cmd:     "aws cloudformation wait stack-updtae-complete",
+			wantCmd: "aws cloudformation wait stack-update-complete",
+		},
+		{
+			name:    "gcloud resolved main command and three transposed levels",
+			cmd:     "gclodu compuet instnaces lsit",
+			wantCmd: "gcloud compute instances list",
+		},
+		{
+			name:    "gcloud option between three-level commands",
+			cmd:     "gcloud compute --zone us-east1 instnaces dsecribe vm-1",
+			wantCmd: "gcloud compute --zone us-east1 instances describe vm-1",
 		},
 		{
 			name:    "gcloud container clusters",
@@ -869,9 +952,19 @@ func TestEngine_TrySubcommandFix_ThreeLevelCloudSubcommands(t *testing.T) {
 			wantCmd: "az storage account list",
 		},
 		{
+			name:    "az storage account show",
+			cmd:     "az sotrage acocunt hsow",
+			wantCmd: "az storage account show",
+		},
+		{
 			name:    "az four-level network path",
 			cmd:     "az network vnet subnet lst",
 			wantCmd: "az network vnet subnet list",
+		},
+		{
+			name:    "az four-level network create with transpositions",
+			cmd:     "az netwrok vnet subent craete", //nolint:misspell // 故意保留拼错的命令输入。
+			wantCmd: "az network vnet subnet create",
 		},
 	}
 
