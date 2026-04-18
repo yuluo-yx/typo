@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 // Discover discovers commands from the system PATH.
@@ -97,7 +99,7 @@ func DiscoverCommon() []string {
 	}
 }
 
-var commonCommandSet = buildCommandSet(DiscoverCommon())
+var commonCommandSet = utils.StringSet(DiscoverCommon())
 
 // ShellBuiltins returns a list of shell builtin commands.
 // These commands are built into the shell and not found in PATH.
@@ -116,7 +118,7 @@ func ShellBuiltins() []string {
 	}
 }
 
-var shellBuiltinSet = buildCommandSet(ShellBuiltins())
+var shellBuiltinSet = utils.StringSet(ShellBuiltins())
 
 // Filter filters commands by prefix.
 func Filter(commands []string, prefix string) []string {
@@ -184,14 +186,6 @@ func IsCommonCommand(name string) bool {
 // IsShellBuiltin reports whether a command is a shell builtin.
 func IsShellBuiltin(name string) bool {
 	return shellBuiltinSet[name]
-}
-
-func buildCommandSet(items []string) map[string]bool {
-	set := make(map[string]bool, len(items))
-	for _, item := range items {
-		set[item] = true
-	}
-	return set
 }
 
 func executableCandidates(name string) []string {

@@ -77,28 +77,6 @@ func TestSimilarity(t *testing.T) {
 	}
 }
 
-func TestMinFloat64(t *testing.T) {
-	tests := []struct {
-		name     string
-		vals     []float64
-		expected float64
-	}{
-		{"single value", []float64{1.0}, 1.0},
-		{"multiple values", []float64{3.0, 1.0, 2.0}, 1.0},
-		{"negative values", []float64{-1.0, -2.0, -3.0}, -3.0},
-		{"mixed values", []float64{-1.0, 0.0, 1.0}, -1.0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := minFloat64(tt.vals...)
-			if result != tt.expected {
-				t.Errorf("minFloat64(%v) = %f, want %f", tt.vals, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestMax(t *testing.T) {
 	tests := []struct {
 		name     string

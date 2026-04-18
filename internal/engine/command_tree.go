@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 type commandTreeTokenCandidate struct {
@@ -266,7 +267,7 @@ func newCommandTreeTokenCandidate(original, candidate string, node *itypes.Comma
 		node:        node,
 		distance:    distance,
 		similarity:  SimilarityFromDistance(len(original), len(candidate), distance),
-		lengthDelta: abs(len([]rune(original)) - len([]rune(candidate))),
+		lengthDelta: utils.Abs(len([]rune(original)) - len([]rune(candidate))),
 	}, true
 }
 
@@ -292,38 +293,11 @@ func isGoodCommandTreeTokenMatch(original, candidate string, distance int, cfg d
 		return false
 	}
 
-	if isSingleAdjacentTransposition(original, candidate) {
+	if utils.IsSingleAdjacentTransposition(original, candidate) {
 		return true
 	}
 
 	return isShortBoundaryPreservingMatch(original, candidate, distance)
-}
-
-func isSingleAdjacentTransposition(original, candidate string) bool {
-	originalRunes := []rune(original)
-	candidateRunes := []rune(candidate)
-	if len(originalRunes) != len(candidateRunes) || len(originalRunes) < 2 {
-		return false
-	}
-
-	diffIdx := make([]int, 0, 2)
-	for i := range originalRunes {
-		if originalRunes[i] == candidateRunes[i] {
-			continue
-		}
-		diffIdx = append(diffIdx, i)
-		if len(diffIdx) > 2 {
-			return false
-		}
-	}
-
-	if len(diffIdx) != 2 || diffIdx[1] != diffIdx[0]+1 {
-		return false
-	}
-
-	i := diffIdx[0]
-	j := diffIdx[1]
-	return originalRunes[i] == candidateRunes[j] && originalRunes[j] == candidateRunes[i]
 }
 
 func isShortBoundaryPreservingMatch(original, candidate string, distance int) bool {

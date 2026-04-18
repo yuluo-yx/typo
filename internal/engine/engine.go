@@ -481,7 +481,7 @@ func (e *Engine) commonTranspositionCandidate(cmd string) string {
 		if candidate == cmdWord || !commands.IsCommonCommand(candidate) {
 			continue
 		}
-		if isSingleAdjacentTransposition(cmdWord, candidate) {
+		if utils.IsSingleAdjacentTransposition(cmdWord, candidate) {
 			return candidate
 		}
 	}
@@ -1085,7 +1085,7 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 			distance:   d,
 			similarity: SimilarityFromDistance(len(cmd), len(known), d),
 			priority:   e.commandPriority(known),
-			transposed: isSingleAdjacentTransposition(cmd, known),
+			transposed: utils.IsSingleAdjacentTransposition(cmd, known),
 		})
 	}
 
@@ -1217,9 +1217,9 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 		if !isGoodDistanceMatch(subcmd, known, d, cfg) {
 			continue
 		}
-		lengthDelta := abs(len(subcmd) - len(known))
+		lengthDelta := utils.Abs(len(subcmd) - len(known))
 		similarity := SimilarityFromDistance(len(subcmd), len(known), d)
-		transposed := isSingleAdjacentTransposition(subcmd, known)
+		transposed := utils.IsSingleAdjacentTransposition(subcmd, known)
 		if d < bestDistance ||
 			(d == bestDistance && transposed && !bestTransposition) ||
 			(d == bestDistance && transposed == bestTransposition && lengthDelta < bestLengthDelta) ||
@@ -1233,13 +1233,6 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 	}
 
 	return bestMatch, bestDistance
-}
-
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
 }
 
 func isGoodDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
@@ -1259,7 +1252,7 @@ func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg di
 		return false
 	}
 
-	return isSingleAdjacentTransposition(original, candidate)
+	return utils.IsSingleAdjacentTransposition(original, candidate)
 }
 
 func isMeaningfulFix(original string, result itypes.FixResult) bool {
@@ -1577,11 +1570,7 @@ var builtinToolOptionsWithValues = map[string]map[string]bool{
 func buildBuiltinToolOptionSet() map[string]map[string]bool {
 	result := make(map[string]map[string]bool, len(builtinToolOptions))
 	for tool, options := range builtinToolOptions {
-		set := make(map[string]bool, len(options))
-		for _, option := range options {
-			set[option] = true
-		}
-		result[tool] = set
+		result[tool] = utils.StringSet(options)
 	}
 
 	return result

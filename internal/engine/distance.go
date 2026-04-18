@@ -33,7 +33,7 @@ func Distance(a, b string, weights KeyboardWeights) int {
 		curr[0] = float64(i)
 		for j := 1; j <= lenB; j++ {
 			cost := substitutionCost(runesA[i-1], runesB[j-1], weights)
-			curr[j] = minFloat64(
+			curr[j] = min(
 				prev[j]+1.0,    // deletion
 				curr[j-1]+1.0,  // insertion
 				prev[j-1]+cost, // substitution
@@ -76,14 +76,4 @@ func SimilarityFromDistance(lenA, lenB, distance int) float64 {
 		return 1.0
 	}
 	return 1.0 - float64(distance)/float64(maxLen)
-}
-
-func minFloat64(vals ...float64) float64 {
-	result := vals[0]
-	for _, v := range vals[1:] {
-		if v < result {
-			result = v
-		}
-	}
-	return result
 }
