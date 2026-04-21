@@ -31,6 +31,7 @@ Typo 是用 Go 编写的命令自动修正工具。输入命令后按两次 `Esc
 
 - 支持在 zsh、bash、fish 和 PowerShell 中原地修正命令。
 - 支持主命令、子命令、`&&` 连接命令、管道命令和运行时报错。
+- 将当前 shell 会话中的 alias 和简单包装函数作为修正上下文，例如 `k=kubectl`。
 - 支持用 `typo learn` 添加个人修正规则；用户规则和历史记录保存在 `~/.typo`。
 - 支持 macOS、Linux、WSL 和 Windows PowerShell 7+ 的原生二进制安装。
 - 使用 Go 语言编写，二进制安装不依赖外部环境。
@@ -82,6 +83,16 @@ gti stauts
 
 # 按两次 Esc 后
 git status
+```
+
+Shell 集成也能识别当前会话中的 alias：
+
+```shell
+alias k=kubectl
+k lgo
+
+# 按两次 Esc 后
+k logs
 ```
 
 ## CLI 命令

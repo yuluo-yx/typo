@@ -19,6 +19,12 @@ Useful flags:
 - `-s <file>`: read `stderr` from a file captured by shell integration.
 - `--exit-code <n>`: reuse the previous exit code as additional correction context.
 - `--no-history`: do not persist the accepted correction into history.
+- `--alias-context <file>`: read the shell alias context captured by shell integration.
+
+`--alias-context` is mainly used by `typo init <shell>` scripts. The context is
+temporary and session-local; it lets Typo expand aliases such as `k=kubectl`,
+correct the expanded command, and print the result back with the original alias
+when that is safe.
 
 ## `typo learn`
 
@@ -30,7 +36,7 @@ typo learn "gst" "git status"
 
 Use `learn` for day-to-day teaching. `typo learn` and `typo rules add` both add the same user rule, persist it to `~/.typo/rules.json`, and clear conflicting history; `learn` is the simpler user-facing command.
 
-It is especially useful as a last-resort override for outrageous typos that the shortest-path matcher may not infer, such as teaching `gitsss` -> `git`. It can also learn personal aliases. For example, if your shell has `alias k=kubectl`, you can teach Typo that `k` should resolve to `kubectl`.
+It is especially useful as a last-resort override for outrageous typos that the shortest-path matcher may not infer, such as teaching `gitsss` -> `git`. For shell aliases, prefer the shell integration first: zsh, bash, fish, and PowerShell can pass the active alias context automatically. Use `learn` for aliases only when you want a persistent manual rule outside that live shell context.
 
 ## `typo config`
 

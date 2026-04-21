@@ -645,6 +645,61 @@ func TestFixWithStderrFile(t *testing.T) {
 	}
 }
 
+func TestLoadAliasContext(t *testing.T) {
+	tmpDir := t.TempDir()
+	contextFile := filepath.Join(tmpDir, "aliases.tsv")
+	content := strings.Join([]string{
+		"not-a-valid-line",
+		"zsh\talias\tbad\tkubectl | rm",
+		"zsh\talias\tk\tkubectl",
+		"zsh\talias\tk\tkubctl",
+		"fish\tabbr\tg\tgit",
+		"bash\tfunction\twrap\tkubectl",
+	}, "\n")
+	if err := os.WriteFile(contextFile, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write alias context: %v", err)
+	}
+
+	entries := loadAliasContext(contextFile)
+	if len(entries) != 3 {
+		t.Fatalf("loadAliasContext() len = %d, want 3: %+v", len(entries), entries)
+	}
+	if entries[0].Name != "k" || entries[0].Expansion != "kubectl" {
+		t.Fatalf("Expected duplicate alias to keep first kubectl entry, got %+v", entries[0])
+	}
+	if entries[1].Kind != "abbr" || entries[1].Name != "g" || entries[1].Expansion != "git" {
+		t.Fatalf("Expected fish abbreviation entry, got %+v", entries[1])
+	}
+	if entries[2].Kind != "function" || entries[2].Name != "wrap" || entries[2].Expansion != "kubectl" {
+		t.Fatalf("Expected simple function entry, got %+v", entries[2])
+	}
+}
+
+func TestLoadAliasContextRejectsLargeFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	contextFile := filepath.Join(tmpDir, "aliases.tsv")
+	if err := os.WriteFile(contextFile, []byte(strings.Repeat("x", aliasContextMaxFileSize+1)), 0600); err != nil {
+		t.Fatalf("failed to write large alias context: %v", err)
+	}
+
+	if entries := loadAliasContext(contextFile); len(entries) != 0 {
+		t.Fatalf("Expected large alias context to be ignored, got %+v", entries)
+	}
+}
+
+func TestFixWithAliasContextFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	contextFile := filepath.Join(tmpDir, "aliases.tsv")
+	if err := os.WriteFile(contextFile, []byte("zsh\talias\tk\tkubectl\n"), 0600); err != nil {
+		t.Fatalf("failed to write alias context: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--alias-context", contextFile, "k", "lgo"})
+	if code != 0 || stdout != "k logs\n" {
+		t.Fatalf("alias context fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
 func TestFixWithExitCodeAndPermissionDenied(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -3101,6 +3156,31 @@ grep -q "fallback-stderr" "$expected" || exit 44
 
 _typo_zshexit
 [[ ! -e "$expected" ]] || exit 45
+`)
+}
+
+func TestZshIntegrationWritesTargetedAliasContext(t *testing.T) {
+	runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+
+alias k=kubectl
+alias kk=k
+alias g=git
+alias d=docker
+ktf() { terraform "$@"; }
+unused_wrap() { docker "$@"; }
+
+_typo_write_alias_context 'sudo kk lgo && g stauts && ktf valdiate'
+
+grep -q '^zsh	alias	kk	k$' "$TYPO_ALIAS_CONTEXT" || exit 71
+grep -q '^zsh	alias	k	kubectl$' "$TYPO_ALIAS_CONTEXT" || exit 72
+grep -q '^zsh	alias	g	git$' "$TYPO_ALIAS_CONTEXT" || exit 73
+grep -q '^zsh	function	ktf	terraform$' "$TYPO_ALIAS_CONTEXT" || exit 74
+grep -q '^zsh	alias	d	docker$' "$TYPO_ALIAS_CONTEXT" && exit 75
+grep -q '^zsh	function	unused_wrap	docker$' "$TYPO_ALIAS_CONTEXT" && exit 76
+true
 `)
 }
 

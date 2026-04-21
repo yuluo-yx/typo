@@ -967,6 +967,27 @@ print -r -- "$BUFFER"
 	}
 }
 
+func TestE2EZshIntegrationAliasContext(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initZshScript(t)
+
+	result := env.runZsh(t, initScript, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+alias k=kubectl
+alias g=git
+ktf() { terraform "$@"; }
+BUFFER="k lgo && g stauts && ktf valdiate"
+_typo_fix_command
+[[ "$BUFFER" == "k logs && g status && ktf validate" ]] || { print -r -- "$BUFFER"; exit 26; }
+print -r -- "$BUFFER"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, "k logs && g status && ktf validate") {
+		t.Fatalf("zsh alias context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
 func TestE2EComplexFixFlows(t *testing.T) {
 	env := newE2EEnv(t)
 	gitStderr := env.writeTempFile(t, "complex-git.stderr", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
@@ -1096,6 +1117,16 @@ if ($env:TYPO_SHELL_INTEGRATION -ne "1") {
 if (-not (Test-Path -LiteralPath $env:TYPO_STDERR_CACHE)) {
     throw "missing TYPO_STDERR_CACHE"
 }
+Set-Alias -Name k -Value kubectl -Scope Global
+$aliasContext = __typo_WriteAliasContext
+if (-not (Test-Path -LiteralPath $aliasContext)) {
+    throw "missing alias context"
+}
+$aliasContent = Get-Content -LiteralPath $aliasContext -Raw
+$expectedAlias = "powershell" + [char]9 + "alias" + [char]9 + "k" + [char]9 + "kubectl"
+if (-not $aliasContent.Contains($expectedAlias)) {
+    throw "missing PowerShell alias context entry"
+}
 Write-Output "ok"
 `)
 
@@ -1152,6 +1183,26 @@ printf "%s\n" "$READLINE_LINE"
 `)
 	if stderrFix.code != 0 || !strings.Contains(stderrFix.stdout, "git remote -v") {
 		t.Fatalf("bash stderr fix failed: stdout=%q stderr=%q code=%d", stderrFix.stdout, stderrFix.stderr, stderrFix.code)
+	}
+}
+
+func TestE2EBashIntegrationAliasContext(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initBashScript(t)
+
+	result := env.runBash(t, initScript, `
+source "$1"
+trap - DEBUG
+alias k=kubectl
+alias g=git
+ktf() { terraform "$@"; }
+READLINE_LINE="k lgo && g stauts && ktf valdiate"
+_typo_fix_command
+[[ "$READLINE_LINE" == "k logs && g status && ktf validate" ]] || { printf "%s\n" "$READLINE_LINE"; exit 73; }
+printf "%s\n" "$READLINE_LINE"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, "k logs && g status && ktf validate") {
+		t.Fatalf("bash alias context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }
 
@@ -1213,5 +1264,39 @@ printf "%s\n" "$TYPO_TEST_BUFFER"
 `)
 	if historyFix.code != 0 || !strings.Contains(historyFix.stdout, "git status") {
 		t.Fatalf("fish history fix failed: stdout=%q stderr=%q code=%d", historyFix.stdout, historyFix.stderr, historyFix.code)
+	}
+}
+
+func TestE2EFishIntegrationAliasContext(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initFishScript(t)
+
+	result := env.runFish(t, initScript, `
+set -g TYPO_TEST_BUFFER "k lgo && ktf valdiate"
+
+function commandline
+    switch "$argv[1]"
+        case -b
+            printf "%s\n" "$TYPO_TEST_BUFFER"
+        case -r
+            set -g TYPO_TEST_BUFFER "$argv[2]"
+        case -C
+            true
+        case -f
+            true
+    end
+end
+
+source "$argv[1]"
+abbr -a k kubectl
+function ktf
+    terraform $argv
+end
+_typo_fix_command
+test "$TYPO_TEST_BUFFER" = "k logs && ktf validate"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 94; end
+printf "%s\n" "$TYPO_TEST_BUFFER"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, "k logs && ktf validate") {
+		t.Fatalf("fish alias context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }

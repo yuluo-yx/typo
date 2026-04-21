@@ -30,6 +30,7 @@ For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is
 
 - Correct commands in place from zsh, bash, fish, and PowerShell.
 - Fix top-level commands, subcommands, compound commands, pipes, and runtime errors.
+- Use active shell aliases and simple wrappers as correction context, such as `k=kubectl`.
 - Teach personal corrections with `typo learn`; Typo stores user rules and history under `~/.typo`.
 - Install native binaries on macOS, Linux, WSL, and Windows PowerShell 7+.
 - Written in Go, with binary installs that do not require an external runtime.
@@ -81,6 +82,16 @@ gti stauts
 
 # after pressing Esc Esc
 git status
+```
+
+Shell integration also understands active aliases in the current session:
+
+```shell
+alias k=kubectl
+k lgo
+
+# after pressing Esc Esc
+k logs
 ```
 
 ## CLI Commands

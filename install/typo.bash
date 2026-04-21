@@ -22,6 +22,8 @@ _typo_fix_command() {
     local fixed=""
     local last_exit_code="${TYPO_LAST_EXIT_CODE:-0}"
     local use_last_command=0
+    local alias_context_file=""
+    local alias_args=()
 
     # If buffer is empty, get last command from history.
     if [[ -z "$cmd" ]]; then
@@ -31,13 +33,19 @@ _typo_fix_command() {
 
     [[ -z "$cmd" ]] && return
 
+    _typo_write_alias_context
+    if _typo_owns_alias_context && [[ -f "$TYPO_ALIAS_CONTEXT" ]]; then
+        alias_context_file="$TYPO_ALIAS_CONTEXT"
+        alias_args=(--alias-context "$alias_context_file")
+    fi
+
     if [[ "$use_last_command" -eq 1 && -f "$stderr_file" && -s "$stderr_file" ]]; then
-        fixed=$(typo fix --exit-code "$last_exit_code" -s "$stderr_file" "$cmd" 2>/dev/null)
+        fixed=$(typo fix "${alias_args[@]}" --exit-code "$last_exit_code" -s "$stderr_file" "$cmd" 2>/dev/null)
     elif [[ "$use_last_command" -eq 1 ]]; then
-        fixed=$(typo fix --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
+        fixed=$(typo fix "${alias_args[@]}" --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
     else
         # Preview fixes for the current readline buffer should not be persisted.
-        fixed=$(typo fix --no-history "$cmd" 2>/dev/null)
+        fixed=$(typo fix "${alias_args[@]}" --no-history "$cmd" 2>/dev/null)
     fi
 
     if [[ -n "$fixed" && "$fixed" != "$cmd" ]]; then
@@ -52,6 +60,10 @@ _typo_current_shell_id() {
 
 _typo_owns_stderr_cache() {
     [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+}
+
+_typo_owns_alias_context() {
+    [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" == "$(_typo_current_shell_id)" ]]
 }
 
 _typo_owns_original_stderr_fd() {
@@ -114,6 +126,41 @@ _typo_init_stderr_cache() {
     fi
 }
 
+# Initialize alias context file for this shell session.
+_typo_init_alias_context() {
+    local tmp_dir="${TMPDIR:-/tmp}"
+    local shell_id
+    local alias_context=""
+
+    shell_id="$(_typo_current_shell_id)"
+
+    if [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" != "$shell_id" ]]; then
+        unset TYPO_ALIAS_CONTEXT
+        unset TYPO_ALIAS_CONTEXT_OWNER
+    fi
+
+    if _typo_owns_alias_context && [[ -f "$TYPO_ALIAS_CONTEXT" && -w "$TYPO_ALIAS_CONTEXT" ]]; then
+        return 0
+    fi
+
+    unset TYPO_ALIAS_CONTEXT
+    unset TYPO_ALIAS_CONTEXT_OWNER
+
+    if command -v mktemp >/dev/null 2>&1; then
+        alias_context=$(mktemp "$tmp_dir/typo-alias-XXXXXX" 2>/dev/null)
+    fi
+    if [[ -z "$alias_context" ]]; then
+        alias_context="$tmp_dir/typo-alias-$$"
+        : > "$alias_context" 2>/dev/null || return 1
+    fi
+    if [[ ! -f "$alias_context" || ! -w "$alias_context" ]]; then
+        return 1
+    fi
+
+    TYPO_ALIAS_CONTEXT="$alias_context"
+    TYPO_ALIAS_CONTEXT_OWNER="$shell_id"
+}
+
 # Remove stale caches older than one day.
 _typo_cleanup_stale_caches() {
     local tmp_dir="${TMPDIR:-/tmp}"
@@ -123,6 +170,76 @@ _typo_cleanup_stale_caches() {
         [[ "$file" == "${TYPO_STDERR_CACHE:-}" ]] && continue
         rm -f -- "$file" 2>/dev/null
     done < <(find "$tmp_dir" -maxdepth 1 -type f -name 'typo-stderr-*' -mtime +1 -print0 2>/dev/null)
+
+    while IFS= read -r -d '' file; do
+        [[ "$file" == "${TYPO_ALIAS_CONTEXT:-}" ]] && continue
+        rm -f -- "$file" 2>/dev/null
+    done < <(find "$tmp_dir" -maxdepth 1 -type f -name 'typo-alias-*' -mtime +1 -print0 2>/dev/null)
+}
+
+_typo_simple_function_expansion() {
+    local definition="$1"
+    local body line expansion suffix
+    local count=0
+
+    body=$(printf '%s\n' "$definition" | sed '1d;$d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d')
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" == "{" || "$line" == "}" ]] && continue
+        expansion="$line"
+        count=$((count + 1))
+    done <<< "$body"
+
+    [[ "$count" -eq 1 ]] || return 1
+    expansion="${expansion%;}"
+    suffix=' "$@"'
+    if [[ "$expansion" == *"$suffix" ]]; then
+        expansion="${expansion:0:${#expansion}-${#suffix}}"
+    fi
+    suffix=' $@'
+    if [[ "$expansion" == *"$suffix" ]]; then
+        expansion="${expansion:0:${#expansion}-${#suffix}}"
+    fi
+    [[ -n "$expansion" ]] || return 1
+    case "$expansion" in
+        *'|'*|*'&'*|*';'*|*'<'*|*'>'*|*'$'*|*'`'*|*'('*|*')'*|*'{'*|*'}'*|*'['*|*']'*)
+            return 1
+            ;;
+    esac
+
+    printf '%s\n' "$expansion"
+}
+
+_typo_write_alias_context() {
+    _typo_init_alias_context || return
+    : > "$TYPO_ALIAS_CONTEXT" 2>/dev/null || return
+
+    local name expansion definition alias_line
+    if declare -p BASH_ALIASES >/dev/null 2>&1; then
+        for name in "${!BASH_ALIASES[@]}"; do
+            expansion="${BASH_ALIASES[$name]}"
+            [[ -n "$name" && -n "$expansion" ]] || continue
+            printf 'bash\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+        done
+    else
+        while IFS= read -r alias_line; do
+            name="${alias_line#alias }"
+            name="${name%%=*}"
+            expansion="${alias_line#*=}"
+            if [[ "$expansion" == \'*\' ]]; then
+                expansion="${expansion:1:${#expansion}-2}"
+            fi
+            [[ -n "$name" && -n "$expansion" ]] || continue
+            printf 'bash\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+        done < <(alias -p 2>/dev/null)
+    fi
+
+    while read -r _ _ name; do
+        [[ -n "$name" && "$name" != _typo_* ]] || continue
+        definition="$(declare -f "$name" 2>/dev/null)" || continue
+        expansion="$(_typo_simple_function_expansion "$definition")" || continue
+        [[ -n "$expansion" ]] || continue
+        printf 'bash\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+    done < <(declare -F)
 }
 
 # Save the original stderr once to avoid chaining shell descriptors.
@@ -205,6 +322,12 @@ _typo_bashexit() {
     fi
     unset TYPO_STDERR_CACHE
     unset TYPO_STDERR_CACHE_OWNER
+
+    if _typo_owns_alias_context; then
+        rm -f -- "$TYPO_ALIAS_CONTEXT" 2>/dev/null
+    fi
+    unset TYPO_ALIAS_CONTEXT
+    unset TYPO_ALIAS_CONTEXT_OWNER
 
     # Clean up the named pipe
     if [[ -n "${_TYPO_STDERR_FIFO:-}" && -p "${_TYPO_STDERR_FIFO:-}" ]]; then
@@ -300,6 +423,7 @@ _typo_install_fix_binding() {
 }
 
 _typo_init_stderr_cache
+_typo_init_alias_context
 _typo_save_original_stderr
 _typo_cleanup_stale_caches
 _typo_install_precmd_hook
