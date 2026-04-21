@@ -1247,6 +1247,19 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 	)
 }
 
+func envContextEntries(names ...string) []itypes.AliasContextEntry {
+	entries := make([]itypes.AliasContextEntry, 0, len(names))
+	for _, name := range names {
+		entries = append(entries, itypes.AliasContextEntry{
+			Shell:     "zsh",
+			Kind:      "env",
+			Name:      name,
+			Expansion: name,
+		})
+	}
+	return entries
+}
+
 func TestEngine_FixWithAliasContext(t *testing.T) {
 	eng := newEngineWithCommonToolSubcommands(t)
 	aliases := []itypes.AliasContextEntry{
@@ -1279,6 +1292,65 @@ func TestEngine_FixWithAliasContext(t *testing.T) {
 				t.Fatalf("FixWithContext(%q) = %+v, want %q", tt.command, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestEngine_FixWithEnvContext(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command:      `cd $HOEM/project && echo ${USRE} "$PYTONPATH"`,
+		AliasContext: envContextEntries("HOME", "USER", "PYTHONPATH"),
+	})
+	if !got.Fixed || got.Command != `cd $HOME/project && echo ${USER} "$PYTHONPATH"` {
+		t.Fatalf("Expected env-context fix, got %+v", got)
+	}
+}
+
+func TestEngine_FixWithAliasAndEnvContext(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	context := append([]itypes.AliasContextEntry{
+		{Shell: "zsh", Kind: "alias", Name: "g", Expansion: "git"},
+	}, envContextEntries("PATH")...)
+
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command:      `g stauts "$PAHT"`,
+		AliasContext: context,
+	})
+	if !got.Fixed || got.Command != `g status "$PATH"` {
+		t.Fatalf("Expected alias and env fix, got %+v", got)
+	}
+}
+
+func TestEngine_FixWithEnvContextSkipsUnsupportedExpansions(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command:      `echo ${#PAHT} ${PAHT:-/tmp} $? $1`,
+		AliasContext: envContextEntries("PATH"),
+	})
+	if got.Fixed {
+		t.Fatalf("Expected unsupported expansions to stay unchanged, got %+v", got)
+	}
+}
+
+func TestEngine_FixWithEnvContextAvoidsShortFalsePositive(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command:      `echo $PS`,
+		AliasContext: envContextEntries("PS1", "PATH"),
+	})
+	if got.Fixed {
+		t.Fatalf("Expected short env typo to stay unchanged, got %+v", got)
+	}
+}
+
+func TestEngine_FixWithEnvContextAfterCommandRepair(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command:      `gti $HOEM`,
+		AliasContext: envContextEntries("HOME"),
+	})
+	if !got.Fixed || got.Command != `git $HOME` {
+		t.Fatalf("Expected command repair before env repair across passes, got %+v", got)
 	}
 }
 

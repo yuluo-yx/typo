@@ -159,6 +159,10 @@ function global:__typo_IsSafeAliasToken([string]$value) {
     return -not [string]::IsNullOrWhiteSpace($value) -and $value -notmatch "[\t\r\n\0]"
 }
 
+function global:__typo_IsSafeEnvName([string]$value) {
+    return -not [string]::IsNullOrWhiteSpace($value) -and $value -match '^[A-Za-z_][A-Za-z0-9_]*$'
+}
+
 function global:__typo_GetSimpleFunctionExpansion([string]$definition) {
     if ([string]::IsNullOrWhiteSpace($definition)) {
         return ""
@@ -199,6 +203,13 @@ function global:__typo_WriteAliasContext {
         $expansion = __typo_GetSimpleFunctionExpansion ([string]$_.Definition)
         if ((__typo_IsSafeAliasToken $name) -and (__typo_IsSafeAliasToken $expansion)) {
             $lines.Add("powershell`tfunction`t$name`t$expansion")
+        }
+    }
+
+    Get-ChildItem Env: -ErrorAction SilentlyContinue | ForEach-Object {
+        $name = [string]$_.Name
+        if (__typo_IsSafeEnvName $name) {
+            $lines.Add("powershell`tenv`t$name`t$name")
         }
     }
 

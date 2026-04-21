@@ -19,12 +19,12 @@ Useful flags:
 - `-s <file>`: read `stderr` from a file captured by shell integration.
 - `--exit-code <n>`: reuse the previous exit code as additional correction context.
 - `--no-history`: do not persist the accepted correction into history.
-- `--alias-context <file>`: read the shell alias context captured by shell integration.
+- `--alias-context <file>`: read the shell correction context captured by shell integration.
 
 `--alias-context` is mainly used by `typo init <shell>` scripts. The context is
 temporary and session-local; it lets Typo expand aliases such as `k=kubectl`,
-correct the expanded command, and print the result back with the original alias
-when that is safe.
+match `$VAR` tokens against live environment variable names such as `$HOME`, and
+print the corrected result back with the original alias when that is safe.
 
 ## `typo learn`
 

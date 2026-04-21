@@ -20,7 +20,8 @@ type ParserResult struct {
 	Kind    string // Internal result tag used to distinguish fix categories.
 }
 
-// AliasContextEntry describes one shell-local command shorthand captured by shell integration.
+// AliasContextEntry describes one shell-local correction context entry captured by shell integration.
+// Kind can be alias-like command shorthands or environment variable names.
 type AliasContextEntry struct {
 	Shell     string
 	Kind      string

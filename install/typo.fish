@@ -164,6 +164,14 @@ function _typo_write_alias_context
             printf 'fish\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
         end
     end
+
+    for line in (env 2>/dev/null)
+        set -l fields (string split -m 1 '=' -- "$line")
+        set -l name "$fields[1]"
+        if string match -rq '^[A-Za-z_][A-Za-z0-9_]*$' -- "$name"
+            printf 'fish\tenv\t%s\t%s\n' "$name" "$name" >> "$TYPO_ALIAS_CONTEXT"
+        end
+    end
 end
 
 function _typo_preexec --on-event fish_preexec

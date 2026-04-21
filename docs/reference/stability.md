@@ -146,10 +146,11 @@ contract:
   `typo-stderr-*` files for passing real error output to `typo fix -s`. This
   mechanism will remain available throughout v1.x, though internal file naming
   may change.
-- **Alias context**: supported shell integrations may pass a temporary
-  `typo-alias-*` context file to `typo fix --alias-context`. The flag is stable;
-  the internal environment variable name and temporary file naming are not part
-  of the public API.
+- **Shell correction context**: supported shell integrations may pass a
+  temporary `typo-alias-*` context file to `typo fix --alias-context`. That file
+  may contain alias-like command shorthands and environment variable names. The
+  flag is stable; the internal environment variable name and temporary file
+  naming are not part of the public API.
 
 ### What may change
 

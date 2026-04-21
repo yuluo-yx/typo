@@ -164,7 +164,6 @@ func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixRe
 	if input.Command == "" {
 		return itypes.FixResult{Fixed: false}
 	}
-	input.AliasContext = nil
 
 	originalCmd := input.Command
 	currentCmd := input.Command
@@ -245,18 +244,23 @@ func (e *Engine) fixOnePass(input itypes.ParserContext) itypes.FixResult {
 		return result
 	}
 
-	// 6. Try tool global option fix
-	if result := e.tryToolOptionFix(cmd); isMeaningfulFix(cmd, result) {
-		return result
-	}
-
-	// 7. Try subcommand fix
+	// 6. Try subcommand fix
 	if result := e.trySubcommandFix(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
-	// 8. Try edit distance
+	// 7. Try edit distance
 	if result := e.tryDistance(cmd); isMeaningfulFix(cmd, result) {
+		return result
+	}
+
+	// 8. Try environment variable fix
+	if result := e.tryEnvVarFix(cmd, input.AliasContext); isMeaningfulFix(cmd, result) {
+		return result
+	}
+
+	// 9. Try tool global option fix
+	if result := e.tryToolOptionFix(cmd); isMeaningfulFix(cmd, result) {
 		return result
 	}
 
@@ -1110,17 +1114,12 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 	sort.Slice(candidates, func(i, j int) bool {
 		// Exact matches must stay first; otherwise, prefer adjacent
 		// transpositions over ordinary fuzzy matches from PATH.
-		if candidates[i].distance == 0 || candidates[j].distance == 0 {
-			return candidates[i].distance < candidates[j].distance
-		}
-		if candidates[i].transposed != candidates[j].transposed {
-			return candidates[i].transposed
-		}
-		if candidates[i].distance != candidates[j].distance {
-			return candidates[i].distance < candidates[j].distance
-		}
-		if candidates[i].similarity != candidates[j].similarity {
-			return candidates[i].similarity > candidates[j].similarity
+		if cmp := compareFuzzyCandidateOrder(
+			candidates[i].distance, candidates[j].distance,
+			candidates[i].transposed, candidates[j].transposed,
+			candidates[i].similarity, candidates[j].similarity,
+		); cmp != 0 {
+			return cmp < 0
 		}
 		if candidates[i].priority != candidates[j].priority {
 			return candidates[i].priority > candidates[j].priority
@@ -1662,6 +1661,38 @@ type commandCandidate struct {
 	similarity float64
 	priority   int
 	transposed bool
+}
+
+func compareFuzzyCandidateOrder(distanceA, distanceB int, transposedA, transposedB bool, similarityA, similarityB float64) int {
+	if distanceA == 0 || distanceB == 0 {
+		switch {
+		case distanceA < distanceB:
+			return -1
+		case distanceA > distanceB:
+			return 1
+		default:
+			return 0
+		}
+	}
+	if transposedA != transposedB {
+		if transposedA {
+			return -1
+		}
+		return 1
+	}
+	if distanceA != distanceB {
+		if distanceA < distanceB {
+			return -1
+		}
+		return 1
+	}
+	if similarityA != similarityB {
+		if similarityA > similarityB {
+			return -1
+		}
+		return 1
+	}
+	return 0
 }
 
 func (e *Engine) commandPriority(cmd string) int {

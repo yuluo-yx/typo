@@ -240,6 +240,11 @@ _typo_write_alias_context() {
         [[ -n "$expansion" ]] || continue
         printf 'bash\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
     done < <(declare -F)
+
+    while IFS= read -r name; do
+        [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        printf 'bash\tenv\t%s\t%s\n' "$name" "$name" >> "$TYPO_ALIAS_CONTEXT"
+    done < <(compgen -e 2>/dev/null)
 }
 
 # Save the original stderr once to avoid chaining shell descriptors.

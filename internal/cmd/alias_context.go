@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"os"
+	"regexp"
 	"strings"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -17,7 +18,10 @@ var aliasContextKinds = map[string]bool{
 	"alias":    true,
 	"abbr":     true,
 	"function": true,
+	"env":      true,
 }
+
+var safeEnvNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func loadAliasContext(path string) []itypes.AliasContextEntry {
 	path = strings.TrimSpace(path)
@@ -47,13 +51,14 @@ func loadAliasContext(path string) []itypes.AliasContextEntry {
 			continue
 		}
 
-		if _, exists := seen[entry.Name]; exists {
+		key := contextEntryKey(entry)
+		if _, exists := seen[key]; exists {
 			continue
 		}
 		if len(entries) >= aliasContextMaxEntries {
 			break
 		}
-		seen[entry.Name] = len(entries)
+		seen[key] = len(entries)
 		entries = append(entries, entry)
 	}
 
@@ -75,11 +80,31 @@ func parseAliasContextLine(line string) (itypes.AliasContextEntry, bool) {
 	if entry.Shell == "" || !aliasContextKinds[entry.Kind] {
 		return itypes.AliasContextEntry{}, false
 	}
+	if entry.Kind == "env" {
+		if !isSafeEnvName(entry.Name) {
+			return itypes.AliasContextEntry{}, false
+		}
+		if entry.Expansion == "" {
+			entry.Expansion = entry.Name
+		}
+		if !isSafeEnvName(entry.Expansion) {
+			return itypes.AliasContextEntry{}, false
+		}
+		return entry, true
+	}
 	if !isSafeAliasName(entry.Name) || !isSafeAliasExpansion(entry.Expansion) {
 		return itypes.AliasContextEntry{}, false
 	}
 
 	return entry, true
+}
+
+func contextEntryKey(entry itypes.AliasContextEntry) string {
+	return entry.Kind + "\x00" + entry.Name
+}
+
+func isSafeEnvName(name string) bool {
+	return safeEnvNamePattern.MatchString(strings.TrimSpace(name))
 }
 
 func isSafeAliasName(name string) bool {

@@ -350,6 +350,18 @@ _typo_append_alias_context_entry() {
     _typo_append_alias_context_entry "${expansion_tokens[1]}"
 }
 
+_typo_append_env_context() {
+    emulate -L zsh
+
+    local line=""
+    local name=""
+    while IFS= read -r line; do
+        name="${line%%=*}"
+        [[ "$name" =~ '^[A-Za-z_][A-Za-z0-9_]*$' ]] || continue
+        printf 'zsh\tenv\t%s\t%s\n' "$name" "$name" >> "$TYPO_ALIAS_CONTEXT"
+    done < <(env 2>/dev/null)
+}
+
 _typo_write_alias_context() {
     emulate -L zsh
 
@@ -364,6 +376,8 @@ _typo_write_alias_context() {
         [[ -n "$name" ]] || continue
         _typo_append_alias_context_entry "$name"
     done < <(_typo_collect_command_words "$raw")
+
+    _typo_append_env_context
 
     if [[ ! -s "$TYPO_ALIAS_CONTEXT" ]]; then
         : >| "$TYPO_ALIAS_CONTEXT" 2>/dev/null
