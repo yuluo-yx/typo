@@ -13,12 +13,15 @@ Typo corrects commands in this order:
 5. Built-in rules
 6. Subcommand repair
 7. Edit-distance matching
+8. Environment variable repair
+9. Tool option repair
 
 In practice, this means real command output and explicit user overrides win before fuzzy matching runs.
 
-## Shell alias context
+## Shell correction context
 
-Shell integration can pass the current session's aliases and simple wrappers to
+Shell integration can pass the current session's aliases, simple wrappers, and
+environment variable names to
 `typo fix --alias-context <file>`. Typo expands that context before the normal
 correction chain, then rewrites the corrected result back to the original alias
 when it is safe:
@@ -38,6 +41,21 @@ with pipes, redirects, conditionals, or multiple commands are ignored.
 The zsh shell integration only emits entries that are relevant to the current
 command, which keeps alias-aware fixes fast even in shells with large plugin
 setups.
+
+Environment variable names from the live shell session are also included in that
+same context file. Typo treats `$VAR` and simple `${VAR}` expansions as a
+separate correction scope and matches them only against known environment
+variable names, for example:
+
+```shell
+cd $HOEM/project
+
+# after pressing Esc Esc
+cd $HOME/project
+```
+
+To reduce false positives on short names such as `$PS1`, environment variable
+repair uses a stricter similarity threshold than the default command matcher.
 
 ## Error parsing
 

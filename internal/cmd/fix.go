@@ -25,7 +25,7 @@ func cmdFix(args []string) int {
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
 	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
 	noHistory := fs.Bool("no-history", false, "do not persist correction history")
-	aliasContextFile := fs.String("alias-context", "", "file containing shell alias context")
+	aliasContextFile := fs.String("alias-context", "", "file containing shell correction context")
 
 	_ = fs.Parse(args)
 

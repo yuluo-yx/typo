@@ -988,6 +988,24 @@ print -r -- "$BUFFER"
 	}
 }
 
+func TestE2EZshIntegrationEnvContext(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initZshScript(t)
+
+	result := env.runZsh(t, initScript, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+BUFFER='cd $HOEM/project && echo "$PAHT"'
+_typo_fix_command
+[[ "$BUFFER" == 'cd $HOME/project && echo "$PATH"' ]] || { print -r -- "$BUFFER"; exit 27; }
+print -r -- "$BUFFER"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, `cd $HOME/project && echo "$PATH"`) {
+		t.Fatalf("zsh env context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
 func TestE2EComplexFixFlows(t *testing.T) {
 	env := newE2EEnv(t)
 	gitStderr := env.writeTempFile(t, "complex-git.stderr", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
@@ -1118,6 +1136,7 @@ if (-not (Test-Path -LiteralPath $env:TYPO_STDERR_CACHE)) {
     throw "missing TYPO_STDERR_CACHE"
 }
 Set-Alias -Name k -Value kubectl -Scope Global
+$env:TYPO_TEST_ENV_CONTEXT = "1"
 $aliasContext = __typo_WriteAliasContext
 if (-not (Test-Path -LiteralPath $aliasContext)) {
     throw "missing alias context"
@@ -1127,11 +1146,33 @@ $expectedAlias = "powershell" + [char]9 + "alias" + [char]9 + "k" + [char]9 + "k
 if (-not $aliasContent.Contains($expectedAlias)) {
     throw "missing PowerShell alias context entry"
 }
+$expectedEnv = "powershell" + [char]9 + "env" + [char]9 + "TYPO_TEST_ENV_CONTEXT" + [char]9 + "TYPO_TEST_ENV_CONTEXT"
+if (-not $aliasContent.Contains($expectedEnv)) {
+    throw "missing PowerShell env context entry"
+}
 Write-Output "ok"
 `)
 
 	if result.code != 0 || !strings.Contains(result.stdout, "ok") {
 		t.Fatalf("PowerShell integration smoke test failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
+func TestE2EPowerShellIntegrationEnvContext(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initPowerShellScript(t)
+
+	result := env.runPwsh(t, initScript, `
+. $InitScriptPath
+$fixed = __typo_InvokeFix -command 'cd $HOEM/project' -useLastCommand:$false
+if ([string]$fixed -ne 'cd $HOME/project') {
+    throw "unexpected env fix result: $fixed"
+}
+Write-Output $fixed
+`)
+
+	if result.code != 0 || !strings.Contains(result.stdout, "cd $HOME/project") {
+		t.Fatalf("PowerShell env context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }
 
@@ -1203,6 +1244,23 @@ printf "%s\n" "$READLINE_LINE"
 `)
 	if result.code != 0 || !strings.Contains(result.stdout, "k logs && g status && ktf validate") {
 		t.Fatalf("bash alias context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
+func TestE2EBashIntegrationEnvContext(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initBashScript(t)
+
+	result := env.runBash(t, initScript, `
+source "$1"
+trap - DEBUG
+READLINE_LINE='cd $HOEM/project && echo "$PAHT"'
+_typo_fix_command
+[[ "$READLINE_LINE" == 'cd $HOME/project && echo "$PATH"' ]] || { printf "%s\n" "$READLINE_LINE"; exit 74; }
+printf "%s\n" "$READLINE_LINE"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, `cd $HOME/project && echo "$PATH"`) {
+		t.Fatalf("bash env context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }
 
@@ -1298,5 +1356,35 @@ printf "%s\n" "$TYPO_TEST_BUFFER"
 `)
 	if result.code != 0 || !strings.Contains(result.stdout, "k logs && ktf validate") {
 		t.Fatalf("fish alias context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
+func TestE2EFishIntegrationEnvContext(t *testing.T) {
+	env := newE2EEnv(t)
+	initScript := env.initFishScript(t)
+
+	result := env.runFish(t, initScript, `
+set -g TYPO_TEST_BUFFER 'cd $HOEM/project && echo "$PAHT"'
+
+function commandline
+    switch "$argv[1]"
+        case -b
+            printf "%s\n" "$TYPO_TEST_BUFFER"
+        case -r
+            set -g TYPO_TEST_BUFFER "$argv[2]"
+        case -C
+            true
+        case -f
+            true
+    end
+end
+
+source "$argv[1]"
+_typo_fix_command
+test "$TYPO_TEST_BUFFER" = 'cd $HOME/project && echo "$PATH"'; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 95; end
+printf "%s\n" "$TYPO_TEST_BUFFER"
+`)
+	if result.code != 0 || !strings.Contains(result.stdout, `cd $HOME/project && echo "$PATH"`) {
+		t.Fatalf("fish env context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }

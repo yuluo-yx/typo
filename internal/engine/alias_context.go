@@ -29,13 +29,11 @@ type rawRangeReplacement struct {
 func (e *Engine) fixWithAliasContext(input itypes.ParserContext) itypes.FixResult {
 	expanded, records, ok := expandCommandAliases(input.Command, input.AliasContext)
 	if !ok {
-		input.AliasContext = nil
 		return e.fixWithoutAliasContext(input)
 	}
 
 	expandedInput := input
 	expandedInput.Command = expanded
-	expandedInput.AliasContext = nil
 
 	result := e.fixWithoutAliasContext(expandedInput)
 	if !result.Fixed {
@@ -102,6 +100,9 @@ func newAliasResolver(entries []itypes.AliasContextEntry) *aliasResolver {
 
 	resolver := &aliasResolver{entries: make(map[string]itypes.AliasContextEntry, len(entries))}
 	for _, entry := range entries {
+		if entry.Kind != "alias" && entry.Kind != "abbr" && entry.Kind != "function" {
+			continue
+		}
 		entry.Name = strings.TrimSpace(entry.Name)
 		entry.Expansion = strings.TrimSpace(entry.Expansion)
 		if entry.Name == "" || entry.Expansion == "" {

@@ -19,11 +19,12 @@ typo fix "typo hsitory lsit"
 - `-s <file>`：从 shell 集成保存的 `stderr` 文件中读取真实报错。
 - `--exit-code <n>`：把上一条命令的退出码作为额外修正上下文。
 - `--no-history`：本次修正不写入历史记录。
-- `--alias-context <file>`：读取 shell 集成采集的别名上下文。
+- `--alias-context <file>`：读取 shell 集成采集的修正上下文。
 
 `--alias-context` 主要由 `typo init <shell>` 生成的脚本内部使用。该上下文是
-临时的、仅属于当前 shell 会话；Typo 会先展开 `k=kubectl` 这类别名，修正展开后的
-命令，再在安全时把结果输出回原始别名形态。
+临时的、仅属于当前 shell 会话；Typo 会先展开 `k=kubectl` 这类别名，再把 `$VAR`
+token 与当前会话里的环境变量名（例如 `$HOME`）进行匹配，最后在安全时把结果输出回
+原始别名形态。
 
 重复出现且被接受的修正会在达到阈值后静默提升为用户规则。可通过 `typo config set auto-learn-threshold 0` 关闭该行为。
 

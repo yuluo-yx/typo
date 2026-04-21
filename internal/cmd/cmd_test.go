@@ -683,6 +683,8 @@ func TestLoadAliasContext(t *testing.T) {
 		"not-a-valid-line",
 		"zsh\talias\tbad\tkubectl | rm",
 		"zsh\talias\tk\tkubectl",
+		"bash\tenv\tk\tk",
+		"bash\tenv\t1BAD\t1BAD",
 		"zsh\talias\tk\tkubctl",
 		"fish\tabbr\tg\tgit",
 		"bash\tfunction\twrap\tkubectl",
@@ -692,17 +694,20 @@ func TestLoadAliasContext(t *testing.T) {
 	}
 
 	entries := loadAliasContext(contextFile)
-	if len(entries) != 3 {
-		t.Fatalf("loadAliasContext() len = %d, want 3: %+v", len(entries), entries)
+	if len(entries) != 4 {
+		t.Fatalf("loadAliasContext() len = %d, want 4: %+v", len(entries), entries)
 	}
 	if entries[0].Name != "k" || entries[0].Expansion != "kubectl" {
 		t.Fatalf("Expected duplicate alias to keep first kubectl entry, got %+v", entries[0])
 	}
-	if entries[1].Kind != "abbr" || entries[1].Name != "g" || entries[1].Expansion != "git" {
-		t.Fatalf("Expected fish abbreviation entry, got %+v", entries[1])
+	if entries[1].Kind != "env" || entries[1].Name != "k" || entries[1].Expansion != "k" {
+		t.Fatalf("Expected env entry with the same name as alias to be preserved, got %+v", entries[1])
 	}
-	if entries[2].Kind != "function" || entries[2].Name != "wrap" || entries[2].Expansion != "kubectl" {
-		t.Fatalf("Expected simple function entry, got %+v", entries[2])
+	if entries[2].Kind != "abbr" || entries[2].Name != "g" || entries[2].Expansion != "git" {
+		t.Fatalf("Expected fish abbreviation entry, got %+v", entries[2])
+	}
+	if entries[3].Kind != "function" || entries[3].Name != "wrap" || entries[3].Expansion != "kubectl" {
+		t.Fatalf("Expected simple function entry, got %+v", entries[3])
 	}
 }
 
@@ -728,6 +733,19 @@ func TestFixWithAliasContextFile(t *testing.T) {
 	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--alias-context", contextFile, "k", "lgo"})
 	if code != 0 || stdout != "k logs\n" {
 		t.Fatalf("alias context fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
+func TestFixWithEnvContextFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	contextFile := filepath.Join(tmpDir, "aliases.tsv")
+	if err := os.WriteFile(contextFile, []byte("zsh\tenv\tHOME\tHOME\n"), 0600); err != nil {
+		t.Fatalf("failed to write env context: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--alias-context", contextFile, "cd", "$HOEM/project"})
+	if code != 0 || stdout != "cd $HOME/project\n" {
+		t.Fatalf("env context fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }
 
@@ -3292,6 +3310,7 @@ alias k=kubectl
 alias kk=k
 alias g=git
 alias d=docker
+export TYPO_TEST_ENV_CONTEXT=1
 ktf() { terraform "$@"; }
 unused_wrap() { docker "$@"; }
 
@@ -3303,6 +3322,7 @@ grep -q '^zsh	alias	g	git$' "$TYPO_ALIAS_CONTEXT" || exit 73
 grep -q '^zsh	function	ktf	terraform$' "$TYPO_ALIAS_CONTEXT" || exit 74
 grep -q '^zsh	alias	d	docker$' "$TYPO_ALIAS_CONTEXT" && exit 75
 grep -q '^zsh	function	unused_wrap	docker$' "$TYPO_ALIAS_CONTEXT" && exit 76
+grep -q '^zsh	env	TYPO_TEST_ENV_CONTEXT	TYPO_TEST_ENV_CONTEXT$' "$TYPO_ALIAS_CONTEXT" || exit 77
 true
 `)
 }
@@ -3383,6 +3403,21 @@ if ($env:TYPO_SHELL_INTEGRATION -ne "1") {
 }
 if (-not (Test-Path -LiteralPath $env:TYPO_STDERR_CACHE)) {
     throw "missing stderr cache"
+}
+$env:TYPO_TEST_ENV_CONTEXT = "1"
+Set-Alias -Name k -Value kubectl -Scope Global
+$aliasContext = __typo_WriteAliasContext
+if (-not (Test-Path -LiteralPath $aliasContext)) {
+    throw "missing alias context"
+}
+$aliasContent = Get-Content -LiteralPath $aliasContext -Raw
+$expectedAlias = "powershell" + [char]9 + "alias" + [char]9 + "k" + [char]9 + "kubectl"
+if (-not $aliasContent.Contains($expectedAlias)) {
+    throw "missing alias context entry"
+}
+$expectedEnv = "powershell" + [char]9 + "env" + [char]9 + "TYPO_TEST_ENV_CONTEXT" + [char]9 + "TYPO_TEST_ENV_CONTEXT"
+if (-not $aliasContent.Contains($expectedEnv)) {
+    throw "missing env context entry"
 }
 Write-Output "ok"
 `)
