@@ -1,13 +1,23 @@
 package cmd
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/yuluo-yx/typo/internal/config"
+	"github.com/yuluo-yx/typo/internal/engine"
 	itypes "github.com/yuluo-yx/typo/internal/types"
+)
+
+var (
+	autoLearnFixTimeout  = 150 * time.Millisecond
+	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) {
+		eng.MaybeAutoLearnFromHistory(ctx, from, to)
+	}
 )
 
 func cmdFix(args []string) int {
@@ -48,6 +58,7 @@ func cmdFix(args []string) int {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				return 1
 			}
+			runAutoLearnWithinTimeout(eng, cmd, result.Command)
 		}
 		fmt.Println(result.Command)
 		if result.Message != "" {
@@ -66,4 +77,24 @@ func shouldRecordHistory(original string, result itypes.FixResult) bool {
 	}
 
 	return result.Kind != itypes.FixKindPermissionSudo && !result.UsedParser
+}
+
+func runAutoLearnWithinTimeout(eng *engine.Engine, from, to string) {
+	if eng == nil || autoLearnFixTimeout <= 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), autoLearnFixTimeout)
+	defer cancel()
+
+	done := make(chan struct{}, 1)
+	go func() {
+		autoLearnFromHistory(ctx, eng, from, to)
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 }

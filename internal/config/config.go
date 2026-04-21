@@ -18,11 +18,13 @@ const (
 	defaultSimilarityThreshold = 0.6
 	defaultMaxEditDistance     = 2
 	defaultMaxFixPasses        = 32
+	defaultAutoLearnThreshold  = 3
 	defaultKeyboardLayout      = "qwerty"
 	minSimilarityThreshold     = 0.0
 	maxSimilarityThreshold     = 1.0
 	minMaxEditDistance         = 0
 	minMaxFixPasses            = 1
+	minAutoLearnThreshold      = 0
 )
 
 var (
@@ -66,6 +68,7 @@ type fileUserConfig struct {
 	SimilarityThreshold *float64                  `json:"similarity_threshold,omitempty"`
 	MaxEditDistance     *int                      `json:"max_edit_distance,omitempty"`
 	MaxFixPasses        *int                      `json:"max_fix_passes,omitempty"`
+	AutoLearnThreshold  *int                      `json:"auto_learn_threshold,omitempty"`
 	Keyboard            *string                   `json:"keyboard,omitempty"`
 	History             *fileHistoryConfig        `json:"history,omitempty"`
 	Rules               map[string]fileRuleConfig `json:"rules,omitempty"`
@@ -99,6 +102,7 @@ func DefaultUserConfig() itypes.UserConfig {
 		SimilarityThreshold: defaultSimilarityThreshold,
 		MaxEditDistance:     defaultMaxEditDistance,
 		MaxFixPasses:        defaultMaxFixPasses,
+		AutoLearnThreshold:  defaultAutoLearnThreshold,
 		Keyboard:            defaultKeyboardLayout,
 		History:             itypes.HistoryConfig{Enabled: true},
 		Rules:               rules,
@@ -171,11 +175,12 @@ func (c *Config) Generate(force bool) error {
 
 // ListSettings returns config items for `typo config list`.
 func (c *Config) ListSettings() []Setting {
-	settings := make([]Setting, 0, 5+len(c.User.Rules))
+	settings := make([]Setting, 0, 6+len(c.User.Rules))
 	settings = append(settings,
 		Setting{Key: "similarity-threshold", Value: formatFloat(c.User.SimilarityThreshold)},
 		Setting{Key: "max-edit-distance", Value: strconv.Itoa(c.User.MaxEditDistance)},
 		Setting{Key: "max-fix-passes", Value: strconv.Itoa(c.User.MaxFixPasses)},
+		Setting{Key: "auto-learn-threshold", Value: strconv.Itoa(c.User.AutoLearnThreshold)},
 		Setting{Key: "keyboard", Value: c.User.Keyboard},
 		Setting{Key: "history.enabled", Value: strconv.FormatBool(c.User.History.Enabled)},
 	)
@@ -199,6 +204,8 @@ func (c *Config) Get(key string) (string, error) {
 		return strconv.Itoa(c.User.MaxEditDistance), nil
 	case "max-fix-passes":
 		return strconv.Itoa(c.User.MaxFixPasses), nil
+	case "auto-learn-threshold":
+		return strconv.Itoa(c.User.AutoLearnThreshold), nil
 	case "keyboard":
 		return c.User.Keyboard, nil
 	case "history.enabled":
@@ -261,6 +268,12 @@ func (c *Config) updatedUserConfig(key, value string) (itypes.UserConfig, error)
 			return itypes.UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
 		}
 		next.MaxFixPasses = parsed
+	case "auto-learn-threshold":
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return itypes.UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
+		}
+		next.AutoLearnThreshold = parsed
 	case "keyboard":
 		normalized := strings.ToLower(strings.TrimSpace(value))
 		if !supportedKeyboardLayouts[normalized] {
@@ -305,6 +318,9 @@ func ValidateUserConfig(u itypes.UserConfig) error {
 	}
 	if u.MaxFixPasses < minMaxFixPasses {
 		return fmt.Errorf("max_fix_passes must be >= %d", minMaxFixPasses)
+	}
+	if u.AutoLearnThreshold < minAutoLearnThreshold {
+		return fmt.Errorf("auto_learn_threshold must be >= %d", minAutoLearnThreshold)
 	}
 
 	keyboard := strings.ToLower(strings.TrimSpace(u.Keyboard))
@@ -359,6 +375,9 @@ func applyFileConfig(dst *itypes.UserConfig, src fileUserConfig) {
 	}
 	if src.MaxFixPasses != nil {
 		dst.MaxFixPasses = *src.MaxFixPasses
+	}
+	if src.AutoLearnThreshold != nil {
+		dst.AutoLearnThreshold = *src.AutoLearnThreshold
 	}
 	if src.Keyboard != nil {
 		dst.Keyboard = strings.ToLower(strings.TrimSpace(*src.Keyboard))

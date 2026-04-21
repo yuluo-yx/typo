@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -372,6 +374,35 @@ func TestShouldRecordHistory(t *testing.T) {
 				t.Fatalf("shouldRecordHistory() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRunAutoLearnWithinTimeout(t *testing.T) {
+	oldTimeout := autoLearnFixTimeout
+	oldRunner := autoLearnFromHistory
+	defer func() {
+		autoLearnFixTimeout = oldTimeout
+		autoLearnFromHistory = oldRunner
+	}()
+
+	autoLearnFixTimeout = 20 * time.Millisecond
+	started := make(chan struct{}, 1)
+	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) {
+		started <- struct{}{}
+		<-ctx.Done()
+	}
+
+	start := time.Now()
+	runAutoLearnWithinTimeout(engine.NewEngine(), "gut status", "git status")
+	elapsed := time.Since(start)
+
+	select {
+	case <-started:
+	default:
+		t.Fatal("Expected auto learn worker to start")
+	}
+	if elapsed >= 250*time.Millisecond {
+		t.Fatalf("Expected auto learn wait to stop at timeout, got %v", elapsed)
 	}
 }
 
@@ -2718,6 +2749,98 @@ func TestFixWritesUsageHistory(t *testing.T) {
 	}
 }
 
+func TestFixAutoLearnsRepeatedHistoryWithoutPrompt(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		code, stdout, stderr := runCLI(t, []string{"typo", "fix", "gut", "status"})
+		if code != 0 {
+			t.Fatalf("fix #%d failed: code=%d stdout=%q stderr=%q", i+1, code, stdout, stderr)
+		}
+		if !strings.Contains(stdout, "git status") {
+			t.Fatalf("fix #%d should return git status, got %q", i+1, stdout)
+		}
+		if strings.Contains(stderr, "auto-learn") {
+			t.Fatalf("fix #%d should stay silent about auto learn, got %q", i+1, stderr)
+		}
+	}
+
+	cfg := config.Load()
+	data, err := os.ReadFile(filepath.Join(cfg.ConfigDir, "rules.json"))
+	if err != nil {
+		t.Fatalf("Read rules.json failed: %v", err)
+	}
+
+	var rules []itypes.Rule
+	if err := json.Unmarshal(data, &rules); err != nil {
+		t.Fatalf("Unmarshal rules.json failed: %v", err)
+	}
+
+	found := false
+	for _, rule := range rules {
+		if rule.From == "gut status" && rule.To == "git status" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Expected auto-learned full command rule, got %+v", rules)
+	}
+
+	history := engine.NewHistory(cfg.ConfigDir)
+	entry, ok := history.Lookup("gut status")
+	if !ok {
+		t.Fatal("Expected history entry to remain after auto-learn")
+	}
+	if !entry.RuleApplied {
+		t.Fatalf("Expected history entry to be frozen after auto-learn, got %+v", entry)
+	}
+}
+
+func TestFixAutoLearnDisabledByConfig(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	cfg := config.Load()
+	cfg.User.AutoLearnThreshold = 0
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		code, stdout, stderr := runCLI(t, []string{"typo", "fix", "gut", "status"})
+		if code != 0 {
+			t.Fatalf("fix #%d failed: code=%d stdout=%q stderr=%q", i+1, code, stdout, stderr)
+		}
+		if !strings.Contains(stdout, "git status") {
+			t.Fatalf("fix #%d should return git status, got %q", i+1, stdout)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(cfg.ConfigDir, "rules.json")); !os.IsNotExist(err) {
+		t.Fatalf("Expected auto learn disabled to keep rules.json absent, got %v", err)
+	}
+}
+
 func TestFixWithPermissionParser_DoesNotWriteUsageHistory(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
@@ -3807,12 +3930,25 @@ func TestConfigCommandLifecycle(t *testing.T) {
 		t.Fatalf("config set keyboard failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "set", "auto-learn-threshold", "5"})
+	if code != 0 {
+		t.Fatalf("config set auto-learn-threshold failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "auto-learn-threshold"})
+	if code != 0 || strings.TrimSpace(stdout) != "5" {
+		t.Fatalf("config get auto-learn-threshold failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
 	code, stdout, stderr = runCLI(t, []string{"typo", "config", "list"})
 	if code != 0 {
 		t.Fatalf("config list failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	if !strings.Contains(stdout, "keyboard=dvorak") {
 		t.Fatalf("config list should contain keyboard=dvorak, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "auto-learn-threshold=5") {
+		t.Fatalf("config list should contain auto-learn-threshold=5, got %q", stdout)
 	}
 
 	code, stdout, stderr = runCLI(t, []string{"typo", "config", "reset"})
@@ -3823,6 +3959,11 @@ func TestConfigCommandLifecycle(t *testing.T) {
 	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "keyboard"})
 	if code != 0 || strings.TrimSpace(stdout) != "qwerty" {
 		t.Fatalf("config get keyboard after reset failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "auto-learn-threshold"})
+	if code != 0 || strings.TrimSpace(stdout) != "3" {
+		t.Fatalf("config get auto-learn-threshold after reset failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }
 
@@ -3880,6 +4021,7 @@ func TestConfigCommandErrors(t *testing.T) {
 		{name: "unknown get key", args: []string{"typo", "config", "get", "unknown"}, wantIn: "unknown config key"},
 		{name: "missing set value", args: []string{"typo", "config", "set", "keyboard"}, wantIn: "<key> and <value> required"},
 		{name: "invalid set value", args: []string{"typo", "config", "set", "history.enabled", "maybe"}, wantIn: "invalid bool value"},
+		{name: "invalid auto learn threshold", args: []string{"typo", "config", "set", "auto-learn-threshold", "wat"}, wantIn: "invalid int value"},
 		{name: "gen positional args", args: []string{"typo", "config", "gen", "extra"}, wantIn: "does not accept positional arguments"},
 		{name: "gen invalid flag", args: []string{"typo", "config", "gen", "--wat"}, wantIn: "flag provided but not defined"},
 		{name: "unknown subcommand", args: []string{"typo", "config", "wat"}, wantIn: "Unknown subcommand"},

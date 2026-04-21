@@ -20,6 +20,8 @@ Useful flags:
 - `--exit-code <n>`: reuse the previous exit code as additional correction context.
 - `--no-history`: do not persist the accepted correction into history.
 
+Repeated accepted corrections can be promoted into silent user rules automatically once they reach the configured threshold. Set `typo config set auto-learn-threshold 0` to disable this behavior.
+
 ## `typo learn`
 
 Teach Typo a personal correction pair.
@@ -50,6 +52,7 @@ The current configurable keys are:
 - `similarity-threshold`
 - `max-edit-distance`
 - `max-fix-passes`
+- `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`

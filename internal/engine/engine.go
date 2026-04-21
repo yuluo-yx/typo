@@ -19,6 +19,7 @@ type Engine struct {
 	similarityThreshold float64
 	maxEditDistance     int
 	maxFixPasses        int
+	autoLearnThreshold  int
 	disabledCommands    map[string]bool
 	rules               *Rules
 	history             *History
@@ -61,6 +62,11 @@ func WithMaxEditDistance(distance int) Option {
 // WithMaxFixPasses sets the maximum number of passes allowed in one fix chain.
 func WithMaxFixPasses(passes int) Option {
 	return func(e *Engine) { e.maxFixPasses = passes }
+}
+
+// WithAutoLearnThreshold sets the minimum history count needed before promoting a pair to a user rule.
+func WithAutoLearnThreshold(threshold int) Option {
+	return func(e *Engine) { e.autoLearnThreshold = threshold }
 }
 
 // WithDisabledCommands excludes commands from the candidate command set.
@@ -120,6 +126,7 @@ func NewEngine(opts ...Option) *Engine {
 		similarityThreshold: 0.6,
 		maxEditDistance:     2,
 		maxFixPasses:        32,
+		autoLearnThreshold:  3,
 		disabledCommands:    make(map[string]bool),
 		rules:               NewRules(""),
 		history:             NewHistory(""),

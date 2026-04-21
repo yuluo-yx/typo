@@ -22,8 +22,9 @@ type Rule struct {
 // HistoryEntry is a stable data contract for a single correction history entry.
 // Recording, lookup, conflict cleanup, sorting, and persistence remain in the engine package.
 type HistoryEntry struct {
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Timestamp int64  `json:"timestamp,omitempty"`
-	Count     int    `json:"count,omitempty"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	Timestamp   int64  `json:"timestamp,omitempty"`
+	Count       int    `json:"count,omitempty"`
+	RuleApplied bool   `json:"rule_applied,omitempty"`
 }

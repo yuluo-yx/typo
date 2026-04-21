@@ -20,6 +20,8 @@ typo fix "typo hsitory lsit"
 - `--exit-code <n>`：把上一条命令的退出码作为额外修正上下文。
 - `--no-history`：本次修正不写入历史记录。
 
+重复出现且被接受的修正会在达到阈值后静默提升为用户规则。可通过 `typo config set auto-learn-threshold 0` 关闭该行为。
+
 ## `typo learn`
 
 教会 Typo 一条个人习惯修正规则。
@@ -50,6 +52,7 @@ typo config gen --force
 - `similarity-threshold`
 - `max-edit-distance`
 - `max-fix-passes`
+- `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`

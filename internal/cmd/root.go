@@ -238,6 +238,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithSimilarityThreshold(cfg.User.SimilarityThreshold),
 		engine.WithMaxEditDistance(cfg.User.MaxEditDistance),
 		engine.WithMaxFixPasses(cfg.User.MaxFixPasses),
+		engine.WithAutoLearnThreshold(cfg.User.AutoLearnThreshold),
 		engine.WithDisabledCommands(disabledCommands),
 		engine.WithRules(rules),
 		engine.WithHistory(engine.NewHistory(cfg.ConfigDir)),

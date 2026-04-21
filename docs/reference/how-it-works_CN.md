@@ -108,7 +108,7 @@ Typo 会把本地状态保存在 `~/.typo/`：
 
 - `config.json`：由 `typo config` 管理的运行配置
 - `rules.json`：learn 结果和用户自定义规则
-- `usage_history.json`：已接受修正的历史记录
+- `usage_history.json`：已接受修正的历史记录；当重复 pair 被提升为用户规则后，条目会带上 `rule_applied: true`
 - `subcommands.json`：动态发现到的子命令树缓存
 
 ## 配置模型
@@ -118,6 +118,7 @@ Typo 会把本地状态保存在 `~/.typo/`：
 - `similarity-threshold`
 - `max-edit-distance`
 - `max-fix-passes`
+- `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`

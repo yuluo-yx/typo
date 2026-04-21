@@ -261,6 +261,7 @@ func TestConfigSetGetAndReset(t *testing.T) {
 		"similarity-threshold": "0.7",
 		"max-edit-distance":    "3",
 		"max-fix-passes":       "40",
+		"auto-learn-threshold": "5",
 		"keyboard":             "colemak",
 		"rules.git.enabled":    "false",
 		"history.enabled":      "false",
@@ -271,8 +272,10 @@ func TestConfigSetGetAndReset(t *testing.T) {
 	assertConfigValue(t, cfg, "similarity-threshold", "0.7")
 	assertConfigValue(t, cfg, "max-edit-distance", "3")
 	assertConfigValue(t, cfg, "max-fix-passes", "40")
+	assertConfigValue(t, cfg, "auto-learn-threshold", "5")
 	assertConfigValue(t, cfg, "history.enabled", "false")
 	assertListSetting(t, cfg.ListSettings(), "rules.git.enabled", "false")
+	assertListSetting(t, cfg.ListSettings(), "auto-learn-threshold", "5")
 	assertResetConfig(t, cfg)
 }
 
@@ -322,6 +325,9 @@ func assertResetConfig(t *testing.T, cfg *Config) {
 	if cfg.User.Keyboard != "qwerty" {
 		t.Fatalf("Keyboard after reset = %q, want qwerty", cfg.User.Keyboard)
 	}
+	if cfg.User.AutoLearnThreshold != 3 {
+		t.Fatalf("AutoLearnThreshold after reset = %d, want 3", cfg.User.AutoLearnThreshold)
+	}
 	if !cfg.User.Rules["git"].Enabled {
 		t.Fatal("rules.git.enabled should reset to true")
 	}
@@ -363,6 +369,12 @@ func TestUserConfigValidate(t *testing.T) {
 	if err := ValidateUserConfig(cfg); err == nil {
 		t.Fatal("Validate should reject zero max fix passes")
 	}
+
+	cfg = DefaultUserConfig()
+	cfg.AutoLearnThreshold = -1
+	if err := ValidateUserConfig(cfg); err == nil {
+		t.Fatal("Validate should reject negative auto learn threshold")
+	}
 }
 
 func TestConfigGetAndSetErrors(t *testing.T) {
@@ -382,6 +394,7 @@ func TestConfigGetAndSetErrors(t *testing.T) {
 		{key: "similarity-threshold", value: "abc"},
 		{key: "max-edit-distance", value: "abc"},
 		{key: "max-fix-passes", value: "abc"},
+		{key: "auto-learn-threshold", value: "abc"},
 		{key: "history.enabled", value: "maybe"},
 		{key: "rules.git.enabled", value: "maybe"},
 		{key: "unknown", value: "1"},
@@ -422,6 +435,13 @@ func TestConfigSetValueLeavesConfigUnchangedOnFailure(t *testing.T) {
 
 	if err := cfg.SetValue("max-fix-passes", "0"); err == nil {
 		t.Fatal("SetValue() should fail validation for zero max fix passes")
+	}
+	if !reflect.DeepEqual(cfg.User, original) {
+		t.Fatalf("SetValue() mutated config on validation failure: got %+v want %+v", cfg.User, original)
+	}
+
+	if err := cfg.SetValue("auto-learn-threshold", "-1"); err == nil {
+		t.Fatal("SetValue() should fail validation for negative auto learn threshold")
 	}
 	if !reflect.DeepEqual(cfg.User, original) {
 		t.Fatalf("SetValue() mutated config on validation failure: got %+v want %+v", cfg.User, original)
