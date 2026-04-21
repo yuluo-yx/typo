@@ -117,6 +117,7 @@ The following top-level subcommands and their documented flags are stable:
 | `typo rules disable <scope>` | *(none)* |
 | `typo history list` | *(none)* |
 | `typo history clear` | *(none)* |
+| `typo stats` | `--since <days>`, `--top <n>` |
 | `typo init <shell>` | *(none)* |
 | `typo doctor` | *(none)* |
 | `typo version` | *(none)* |

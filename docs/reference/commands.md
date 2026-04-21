@@ -94,6 +94,21 @@ typo history list
 typo history clear
 ```
 
+## `typo stats`
+
+Analyze accepted correction history with a lightweight summary.
+
+```bash
+typo stats
+typo stats --since 7
+typo stats --top 5
+```
+
+Useful flags:
+
+- `--since <days>`: only include history pairs whose last accepted timestamp falls within the last N days. The displayed count remains the cumulative count stored for that pair.
+- `--top <n>`: limit the number of typo pairs shown in the summary.
+
 ## `typo init`
 
 Print the shell integration script for a supported shell.

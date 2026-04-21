@@ -271,6 +271,12 @@ func TestRun(t *testing.T) {
 			wantCode:   1,
 			wantOutput: "subcommand",
 		},
+		{
+			name:       "stats",
+			args:       []string{"typo", "stats"},
+			wantCode:   0,
+			wantOutput: "No accepted corrections",
+		},
 	}
 
 	for _, tt := range tests {
@@ -4037,6 +4043,36 @@ func assertFileExists(t *testing.T, path string, context string) {
 	}
 }
 
+func writeHistoryEntries(t *testing.T, configDir string, entries []itypes.HistoryEntry) {
+	t.Helper()
+
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Create config dir failed: %v", err)
+	}
+
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		t.Fatalf("Marshal history failed: %v", err)
+	}
+
+	historyFile := filepath.Join(configDir, "usage_history.json")
+	if err := os.WriteFile(historyFile, data, 0600); err != nil {
+		t.Fatalf("Write history failed: %v", err)
+	}
+}
+
+func seedStatsHistoryFixture(t *testing.T, reference time.Time) {
+	t.Helper()
+
+	cfg := config.Load()
+	writeHistoryEntries(t, cfg.ConfigDir, []itypes.HistoryEntry{
+		{From: "gti status", To: "git status", Timestamp: reference.AddDate(0, 0, -3).Unix(), Count: 7},
+		{From: "dcoker ps", To: "docker ps", Timestamp: reference.AddDate(0, 0, -10).Unix(), Count: 4},
+		{From: "gut commit", To: "git commit", Timestamp: reference.AddDate(0, 0, -1).Unix(), Count: 5},
+		{From: "stauts", To: "status", Timestamp: reference.AddDate(0, 0, -45).Unix(), Count: 9},
+	})
+}
+
 func TestConfigCommandLifecycle(t *testing.T) {
 	tmpHome := useTempHome(t)
 	assertCLISucceeds(t, []string{"typo", "config", "gen"}, "config gen")
@@ -4051,6 +4087,103 @@ func TestConfigCommandLifecycle(t *testing.T) {
 	assertCLISucceeds(t, []string{"typo", "config", "reset"}, "config reset")
 	assertConfigValue(t, "keyboard", "qwerty", "after config reset")
 	assertConfigValue(t, "auto-learn-threshold", "3", "after config reset")
+}
+
+func TestStatsCommandSummary(t *testing.T) {
+	useTempHome(t)
+
+	reference := time.Date(2026, time.April, 21, 12, 0, 0, 0, time.UTC)
+	oldStatsNow := statsNow
+	statsNow = func() time.Time { return reference }
+	defer func() { statsNow = oldStatsNow }()
+
+	seedStatsHistoryFixture(t, reference)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "stats"})
+	if code != 0 {
+		t.Fatalf("stats failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Top typos (last 30 days):") {
+		t.Fatalf("expected stats header, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "gti status -> git status") {
+		t.Fatalf("expected git status pair, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "dcoker ps -> docker ps") {
+		t.Fatalf("expected docker pair, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "gut commit -> git commit") {
+		t.Fatalf("expected git commit pair, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if strings.Contains(stdout, "stauts -> status") {
+		t.Fatalf("expected old entry to stay filtered out, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Total accepted corrections: 16") {
+		t.Fatalf("expected total corrections summary, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Most typoed tool: git (12)") {
+		t.Fatalf("expected most typoed tool summary, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestStatsCommandSummaryWithFlags(t *testing.T) {
+	useTempHome(t)
+
+	reference := time.Date(2026, time.April, 21, 12, 0, 0, 0, time.UTC)
+	oldStatsNow := statsNow
+	statsNow = func() time.Time { return reference }
+	defer func() { statsNow = oldStatsNow }()
+
+	seedStatsHistoryFixture(t, reference)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "stats", "--since", "7", "--top", "1"})
+	if code != 0 {
+		t.Fatalf("stats with flags failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Top typos (last 7 days):") {
+		t.Fatalf("expected custom stats header, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "gti status -> git status") {
+		t.Fatalf("expected top pair in filtered stats, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if strings.Contains(stdout, "gut commit -> git commit") {
+		t.Fatalf("expected --top 1 to truncate output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if strings.Contains(stdout, "dcoker ps -> docker ps") {
+		t.Fatalf("expected --since 7 to filter old docker entry, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Total accepted corrections: 12") {
+		t.Fatalf("expected filtered total corrections summary, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Most typoed tool: git (12)") {
+		t.Fatalf("expected filtered most typoed tool summary, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestStatsCommandErrors(t *testing.T) {
+	useTempHome(t)
+
+	tests := []struct {
+		name   string
+		args   []string
+		wantIn string
+	}{
+		{name: "since must be positive", args: []string{"typo", "stats", "--since", "0"}, wantIn: "--since must be greater than 0"},
+		{name: "top must be positive", args: []string{"typo", "stats", "--top", "0"}, wantIn: "--top must be greater than 0"},
+		{name: "no positional args", args: []string{"typo", "stats", "extra"}, wantIn: "stats does not accept positional arguments"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code == 0 {
+				t.Fatalf("expected stats error, got code=0 stdout=%q stderr=%q", stdout, stderr)
+			}
+			if !strings.Contains(stderr, tt.wantIn) {
+				t.Fatalf("expected stderr to contain %q, got stdout=%q stderr=%q", tt.wantIn, stdout, stderr)
+			}
+		})
+	}
 }
 
 func TestConfigGenRequiresForce(t *testing.T) {

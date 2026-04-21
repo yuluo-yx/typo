@@ -87,6 +87,7 @@ var builtinCommandTrees = []*itypes.CommandTree{
 				"list":    commandLeaf(),
 				"remove":  commandLeaf(),
 			}),
+			"stats":     commandLeaf(),
 			"uninstall": commandLeaf(),
 			"version":   commandLeaf(),
 		}),

@@ -94,6 +94,21 @@ typo history list
 typo history clear
 ```
 
+## `typo stats`
+
+以轻量摘要方式分析已接受的修正历史。
+
+```bash
+typo stats
+typo stats --since 7
+typo stats --top 5
+```
+
+常用参数：
+
+- `--since <days>`：只统计“最后一次被接受的时间戳”落在最近 N 天内的历史 pair；展示的 `count` 仍然是该 pair 当前保存的累计次数。
+- `--top <n>`：限制摘要里展示的 typo pair 数量。
+
 ## `typo init`
 
 打印指定 shell 的集成脚本。

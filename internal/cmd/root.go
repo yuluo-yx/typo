@@ -82,6 +82,8 @@ func Run() int {
 		return cmdRules(os.Args[2:])
 	case "history":
 		return cmdHistory(os.Args[2:])
+	case "stats":
+		return cmdStats(os.Args[2:])
 	case "init":
 		return cmdInit(os.Args[2:])
 	case "version":
@@ -124,6 +126,7 @@ Usage:
   typo rules disable <scope>              Disable a builtin rule scope
   typo history list                       List correction history
   typo history clear                      Clear correction history
+  typo stats [--since <days>] [--top <n>] Analyze accepted correction history
   typo init zsh                           Print zsh integration script
   typo init bash                          Print bash integration script
   typo init fish                          Print fish integration script
@@ -138,6 +141,7 @@ Examples:
   typo config set keyboard dvorak
   typo rules add "mytypo" "mycommand"
   typo rules disable git
+  typo stats --since 7
   eval "$(typo init zsh)"
 
 Zsh Integration:

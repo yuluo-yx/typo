@@ -173,6 +173,7 @@ func TestE2EInventory_TypoCommandTree(t *testing.T) {
 		{name: "root transposition typo", command: "tpyo doctro", want: "typo doctor\n"},
 		{name: "nested typo subcommands", command: "typo hsitory lsit", want: "typo history list\n"},
 		{name: "rules second level typo", command: "typo rulse lset", want: "typo rules list\n"},
+		{name: "stats second level typo", command: "typo sttas", want: "typo stats\n"},
 		{name: "init second level typo", command: "typo inti zsh", want: "typo init zsh\n"},
 		{name: "init fish second level typo", command: "typo inti fish", want: "typo init fish\n"},
 		{name: "config subcommand typo", command: "typo config gte keyboard", want: "typo config get keyboard\n"},

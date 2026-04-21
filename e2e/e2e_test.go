@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yuluo-yx/typo/internal/commands"
+	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 var (
@@ -304,6 +305,24 @@ func (e *e2eEnv) seedSubcommandCaches(t *testing.T, caches []*commands.ToolTreeC
 	cacheFile := filepath.Join(e.configDir(), "subcommands.json")
 	if err := os.WriteFile(cacheFile, data, 0600); err != nil {
 		t.Fatalf("failed to write subcommand cache: %v", err)
+	}
+}
+
+func (e *e2eEnv) seedHistoryEntries(t *testing.T, entries []itypes.HistoryEntry) {
+	t.Helper()
+
+	if err := os.MkdirAll(e.configDir(), 0755); err != nil {
+		t.Fatalf("failed to create config directory: %v", err)
+	}
+
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal history entries: %v", err)
+	}
+
+	historyFile := filepath.Join(e.configDir(), "usage_history.json")
+	if err := os.WriteFile(historyFile, data, 0600); err != nil {
+		t.Fatalf("failed to write history file: %v", err)
 	}
 }
 
@@ -718,6 +737,40 @@ func TestE2ELearnHistoryWorkflow(t *testing.T) {
 	fixAfterClear := env.run(t, "fix", "gut status")
 	if fixAfterClear.code != 0 || fixAfterClear.stdout != "mygit status\n" {
 		t.Fatalf("learned rule did not survive history clear: stdout=%q stderr=%q code=%d", fixAfterClear.stdout, fixAfterClear.stderr, fixAfterClear.code)
+	}
+}
+
+func TestE2EStatsCommand(t *testing.T) {
+	env := newE2EEnv(t)
+	now := time.Now()
+
+	env.seedHistoryEntries(t, []itypes.HistoryEntry{
+		{From: "gti status", To: "git status", Timestamp: now.Add(-72 * time.Hour).Unix(), Count: 9},
+		{From: "dcoker ps", To: "docker ps", Timestamp: now.Add(-5 * 24 * time.Hour).Unix(), Count: 4},
+		{From: "old typo", To: "git add", Timestamp: now.Add(-45 * 24 * time.Hour).Unix(), Count: 100},
+	})
+
+	stats := env.run(t, "stats", "--since", "7", "--top", "1")
+	if stats.code != 0 {
+		t.Fatalf("stats failed: stdout=%q stderr=%q code=%d", stats.stdout, stats.stderr, stats.code)
+	}
+	if !strings.Contains(stats.stdout, "Top typos (last 7 days):") {
+		t.Fatalf("expected stats header, got stdout=%q stderr=%q code=%d", stats.stdout, stats.stderr, stats.code)
+	}
+	if !strings.Contains(stats.stdout, "gti status -> git status") {
+		t.Fatalf("expected top pair, got stdout=%q stderr=%q code=%d", stats.stdout, stats.stderr, stats.code)
+	}
+	if strings.Contains(stats.stdout, "dcoker ps -> docker ps") {
+		t.Fatalf("expected --top 1 to hide second pair, got stdout=%q stderr=%q code=%d", stats.stdout, stats.stderr, stats.code)
+	}
+	if strings.Contains(stats.stdout, "old typo -> git add") {
+		t.Fatalf("expected old entry to stay filtered out, got stdout=%q stderr=%q code=%d", stats.stdout, stats.stderr, stats.code)
+	}
+	if !strings.Contains(stats.stdout, "Total accepted corrections: 13") {
+		t.Fatalf("expected total correction summary, got stdout=%q stderr=%q code=%d", stats.stdout, stats.stderr, stats.code)
+	}
+	if !strings.Contains(stats.stdout, "Most typoed tool: git (9)") {
+		t.Fatalf("expected most typoed tool summary, got stdout=%q stderr=%q code=%d", stats.stdout, stats.stderr, stats.code)
 	}
 }
 
