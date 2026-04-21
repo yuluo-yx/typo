@@ -248,57 +248,8 @@ func (c *Config) SetValue(key, value string) error {
 
 func (c *Config) updatedUserConfig(key, value string) (itypes.UserConfig, error) {
 	next := cloneUserConfig(c.User)
-
-	switch key {
-	case "similarity-threshold":
-		parsed, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			return itypes.UserConfig{}, fmt.Errorf("invalid float value %q for %s", value, key)
-		}
-		next.SimilarityThreshold = parsed
-	case "max-edit-distance":
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return itypes.UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
-		}
-		next.MaxEditDistance = parsed
-	case "max-fix-passes":
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return itypes.UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
-		}
-		next.MaxFixPasses = parsed
-	case "auto-learn-threshold":
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return itypes.UserConfig{}, fmt.Errorf("invalid int value %q for %s", value, key)
-		}
-		next.AutoLearnThreshold = parsed
-	case "keyboard":
-		normalized := strings.ToLower(strings.TrimSpace(value))
-		if !supportedKeyboardLayouts[normalized] {
-			return itypes.UserConfig{}, fmt.Errorf("unsupported keyboard layout: %s", normalized)
-		}
-		next.Keyboard = normalized
-	case "history.enabled":
-		parsed, err := strconv.ParseBool(value)
-		if err != nil {
-			return itypes.UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
-		}
-		next.History.Enabled = parsed
-	default:
-		scope, ok := parseRuleScopeKey(key)
-		if !ok {
-			return itypes.UserConfig{}, fmt.Errorf("unknown config key: %s", key)
-		}
-		parsed, err := strconv.ParseBool(value)
-		if err != nil {
-			return itypes.UserConfig{}, fmt.Errorf("invalid bool value %q for %s", value, key)
-		}
-		if _, exists := next.Rules[scope]; !exists {
-			return itypes.UserConfig{}, fmt.Errorf("unknown rule scope: %s", scope)
-		}
-		next.Rules[scope] = itypes.RuleSetConfig{Enabled: parsed}
+	if err := applyUserConfigValue(&next, key, value); err != nil {
+		return itypes.UserConfig{}, err
 	}
 
 	if err := ValidateUserConfig(next); err != nil {
@@ -306,6 +257,99 @@ func (c *Config) updatedUserConfig(key, value string) (itypes.UserConfig, error)
 	}
 
 	return next, nil
+}
+
+func applyUserConfigValue(next *itypes.UserConfig, key, value string) error {
+	switch key {
+	case "similarity-threshold":
+		parsed, err := parseConfigFloatValue(value, key)
+		if err != nil {
+			return err
+		}
+		next.SimilarityThreshold = parsed
+	case "max-edit-distance":
+		parsed, err := parseConfigIntValue(value, key)
+		if err != nil {
+			return err
+		}
+		next.MaxEditDistance = parsed
+	case "max-fix-passes":
+		parsed, err := parseConfigIntValue(value, key)
+		if err != nil {
+			return err
+		}
+		next.MaxFixPasses = parsed
+	case "auto-learn-threshold":
+		parsed, err := parseConfigIntValue(value, key)
+		if err != nil {
+			return err
+		}
+		next.AutoLearnThreshold = parsed
+	case "keyboard":
+		if err := applyKeyboardLayoutValue(next, value); err != nil {
+			return err
+		}
+	case "history.enabled":
+		parsed, err := parseConfigBoolValue(value, key)
+		if err != nil {
+			return err
+		}
+		next.History.Enabled = parsed
+	default:
+		return applyRuleScopeValue(next, key, value)
+	}
+
+	return nil
+}
+
+func parseConfigFloatValue(value, key string) (float64, error) {
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid float value %q for %s", value, key)
+	}
+	return parsed, nil
+}
+
+func parseConfigIntValue(value, key string) (int, error) {
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid int value %q for %s", value, key)
+	}
+	return parsed, nil
+}
+
+func parseConfigBoolValue(value, key string) (bool, error) {
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("invalid bool value %q for %s", value, key)
+	}
+	return parsed, nil
+}
+
+func applyKeyboardLayoutValue(next *itypes.UserConfig, value string) error {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if !supportedKeyboardLayouts[normalized] {
+		return fmt.Errorf("unsupported keyboard layout: %s", normalized)
+	}
+	next.Keyboard = normalized
+	return nil
+}
+
+func applyRuleScopeValue(next *itypes.UserConfig, key, value string) error {
+	scope, ok := parseRuleScopeKey(key)
+	if !ok {
+		return fmt.Errorf("unknown config key: %s", key)
+	}
+
+	parsed, err := parseConfigBoolValue(value, key)
+	if err != nil {
+		return err
+	}
+	if _, exists := next.Rules[scope]; !exists {
+		return fmt.Errorf("unknown rule scope: %s", scope)
+	}
+	next.Rules[scope] = itypes.RuleSetConfig{Enabled: parsed}
+	return nil
 }
 
 // ValidateUserConfig checks whether the user config matches allowed ranges and known enums.

@@ -3879,6 +3879,15 @@ func assertCLISucceedsWithOutput(t *testing.T, args []string, wantIn string, act
 	}
 }
 
+func assertCLISucceeds(t *testing.T, args []string, action string) {
+	t.Helper()
+
+	code, stdout, stderr := runCLI(t, args)
+	if code != 0 {
+		t.Fatalf("%s failed: code=%d stdout=%q stderr=%q", action, code, stdout, stderr)
+	}
+}
+
 func assertConfigValue(t *testing.T, key string, want string, context string) {
 	t.Helper()
 
@@ -3897,74 +3906,36 @@ func assertCLIDoesNotCorrect(t *testing.T, args []string, unexpected string, con
 	}
 }
 
-func TestConfigCommandLifecycle(t *testing.T) {
-	oldHome := os.Getenv("HOME")
-	defer func() {
-		if err := os.Setenv("HOME", oldHome); err != nil {
-			t.Fatalf("Restore HOME failed: %v", err)
-		}
-	}()
+func useTempHome(t *testing.T) string {
+	t.Helper()
 
 	tmpHome := t.TempDir()
-	if err := os.Setenv("HOME", tmpHome); err != nil {
-		t.Fatalf("Setenv HOME failed: %v", err)
-	}
+	t.Setenv("HOME", tmpHome)
+	return tmpHome
+}
 
-	code, stdout, stderr := runCLI(t, []string{"typo", "config", "gen"})
-	if code != 0 {
-		t.Fatalf("config gen failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
+func assertFileExists(t *testing.T, path string, context string) {
+	t.Helper()
 
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("%s: expected file %s to exist, got %v", context, path, err)
+	}
+}
+
+func TestConfigCommandLifecycle(t *testing.T) {
+	tmpHome := useTempHome(t)
+	assertCLISucceeds(t, []string{"typo", "config", "gen"}, "config gen")
 	configPath := filepath.Join(tmpHome, ".typo", "config.json")
-	if _, err := os.Stat(configPath); err != nil {
-		t.Fatalf("expected config file to exist, got %v", err)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "keyboard"})
-	if code != 0 || strings.TrimSpace(stdout) != "qwerty" {
-		t.Fatalf("config get keyboard failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "set", "keyboard", "dvorak"})
-	if code != 0 {
-		t.Fatalf("config set keyboard failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "set", "auto-learn-threshold", "5"})
-	if code != 0 {
-		t.Fatalf("config set auto-learn-threshold failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "auto-learn-threshold"})
-	if code != 0 || strings.TrimSpace(stdout) != "5" {
-		t.Fatalf("config get auto-learn-threshold failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "list"})
-	if code != 0 {
-		t.Fatalf("config list failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-	if !strings.Contains(stdout, "keyboard=dvorak") {
-		t.Fatalf("config list should contain keyboard=dvorak, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "auto-learn-threshold=5") {
-		t.Fatalf("config list should contain auto-learn-threshold=5, got %q", stdout)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "reset"})
-	if code != 0 {
-		t.Fatalf("config reset failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "keyboard"})
-	if code != 0 || strings.TrimSpace(stdout) != "qwerty" {
-		t.Fatalf("config get keyboard after reset failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-
-	code, stdout, stderr = runCLI(t, []string{"typo", "config", "get", "auto-learn-threshold"})
-	if code != 0 || strings.TrimSpace(stdout) != "3" {
-		t.Fatalf("config get auto-learn-threshold after reset failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
+	assertFileExists(t, configPath, "config gen")
+	assertConfigValue(t, "keyboard", "qwerty", "after config gen")
+	assertCLISucceeds(t, []string{"typo", "config", "set", "keyboard", "dvorak"}, "config set keyboard")
+	assertCLISucceeds(t, []string{"typo", "config", "set", "auto-learn-threshold", "5"}, "config set auto-learn-threshold")
+	assertConfigValue(t, "auto-learn-threshold", "5", "after config set")
+	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "keyboard=dvorak", "config list")
+	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "auto-learn-threshold=5", "config list")
+	assertCLISucceeds(t, []string{"typo", "config", "reset"}, "config reset")
+	assertConfigValue(t, "keyboard", "qwerty", "after config reset")
+	assertConfigValue(t, "auto-learn-threshold", "3", "after config reset")
 }
 
 func TestConfigGenRequiresForce(t *testing.T) {

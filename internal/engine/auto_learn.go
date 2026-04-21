@@ -22,23 +22,17 @@ func (e *Engine) MaybeAutoLearnFromHistory(ctx context.Context, from, to string)
 
 func (e *Engine) maybeAutoLearnFromHistory(ctx context.Context, from, to string) autoLearnResult {
 	result := autoLearnResult{}
-	if e == nil || e.autoLearnThreshold <= 0 {
+	if !autoLearnEnabled(e) {
 		return result
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	from = strings.TrimSpace(from)
-	to = strings.TrimSpace(to)
-	if from == "" || to == "" {
+	ctx = autoLearnContext(ctx)
+	from, to, ok := normalizeAutoLearnPair(from, to)
+	if !ok {
 		return result
 	}
 
 	if err := autoLearnContextErr(ctx); err != nil {
-		result.TimedOut = errors.Is(err, context.DeadlineExceeded)
-		result.Err = err
-		return result
+		return autoLearnResultWithErr(result, err)
 	}
 
 	entry, ok := e.history.Lookup(from)
@@ -46,24 +40,62 @@ func (e *Engine) maybeAutoLearnFromHistory(ctx context.Context, from, to string)
 		return result
 	}
 
-	if rule, ok := e.rules.MatchUser(from); ok {
-		if rule.To == to {
-			result.Triggered = true
-			persisted, err := e.history.MarkRuleApplied(from, to)
-			result.Persisted = persisted
-			result.Err = err
-		}
-		return result
+	if existingResult, handled := e.handleExistingAutoLearnRule(from, to); handled {
+		return existingResult
 	}
 
 	if entry.Count < e.autoLearnThreshold {
 		return result
 	}
 
+	return e.promoteAutoLearnHistory(ctx, from, to)
+}
+
+func autoLearnEnabled(e *Engine) bool {
+	return e != nil && e.autoLearnThreshold > 0
+}
+
+func autoLearnContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func normalizeAutoLearnPair(from, to string) (string, string, bool) {
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	if from == "" || to == "" {
+		return "", "", false
+	}
+	return from, to, true
+}
+
+func autoLearnResultWithErr(result autoLearnResult, err error) autoLearnResult {
+	result.TimedOut = errors.Is(err, context.DeadlineExceeded)
+	result.Err = err
+	return result
+}
+
+func (e *Engine) handleExistingAutoLearnRule(from, to string) (autoLearnResult, bool) {
+	rule, ok := e.rules.MatchUser(from)
+	if !ok {
+		return autoLearnResult{}, false
+	}
+
+	result := autoLearnResult{}
+	if rule.To != to {
+		return result, true
+	}
+
+	result.Triggered = true
+	return e.markAutoLearnRuleApplied(result, from, to), true
+}
+
+func (e *Engine) promoteAutoLearnHistory(ctx context.Context, from, to string) autoLearnResult {
+	result := autoLearnResult{}
 	if err := autoLearnContextErr(ctx); err != nil {
-		result.TimedOut = errors.Is(err, context.DeadlineExceeded)
-		result.Err = err
-		return result
+		return autoLearnResultWithErr(result, err)
 	}
 
 	result.Triggered = true
@@ -73,11 +105,13 @@ func (e *Engine) maybeAutoLearnFromHistory(ctx context.Context, from, to string)
 	}
 
 	if err := autoLearnContextErr(ctx); err != nil {
-		result.TimedOut = errors.Is(err, context.DeadlineExceeded)
-		result.Err = err
-		return result
+		return autoLearnResultWithErr(result, err)
 	}
 
+	return e.markAutoLearnRuleApplied(result, from, to)
+}
+
+func (e *Engine) markAutoLearnRuleApplied(result autoLearnResult, from, to string) autoLearnResult {
 	persisted, err := e.history.MarkRuleApplied(from, to)
 	result.Persisted = persisted
 	result.Err = err
