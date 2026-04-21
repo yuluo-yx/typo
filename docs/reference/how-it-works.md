@@ -138,7 +138,7 @@ File roles:
 
 - `config.json`: runtime settings managed by `typo config`
 - `rules.json`: learned and user-defined rules
-- `usage_history.json`: accepted correction history
+- `usage_history.json`: accepted correction history; entries may carry `rule_applied: true` after a repeated pair has been promoted into a user rule
 - `subcommands.json`: cached discovered subcommand trees
 
 ## Configuration model
@@ -148,6 +148,7 @@ The default configuration currently exposes:
 - `similarity-threshold`
 - `max-edit-distance`
 - `max-fix-passes`
+- `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`

@@ -5,6 +5,7 @@ type UserConfig struct {
 	SimilarityThreshold float64                  `json:"similarity_threshold"`
 	MaxEditDistance     int                      `json:"max_edit_distance"`
 	MaxFixPasses        int                      `json:"max_fix_passes"`
+	AutoLearnThreshold  int                      `json:"auto_learn_threshold"`
 	Keyboard            string                   `json:"keyboard"`
 	History             HistoryConfig            `json:"history"`
 	Rules               map[string]RuleSetConfig `json:"rules"`

@@ -42,22 +42,56 @@ func (h *History) Record(from, to string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	now := time.Now().Unix()
 	if entry, exists := h.entries[from]; exists {
-		entry.Count++
-		entry.To = to
-		entry.Timestamp = time.Now().Unix()
+		if entry.To != to {
+			entry = itypes.HistoryEntry{
+				From:      from,
+				To:        to,
+				Timestamp: now,
+				Count:     1,
+			}
+		} else {
+			entry.Timestamp = now
+			if !entry.RuleApplied {
+				if entry.Count < 0 {
+					entry.Count = 0
+				}
+				entry.Count++
+			}
+		}
 		h.entries[from] = entry
 	} else {
 		h.entries[from] = itypes.HistoryEntry{
 			From:      from,
 			To:        to,
-			Timestamp: time.Now().Unix(),
+			Timestamp: now,
 			Count:     1,
 		}
 	}
 
 	h.rebuildTargets()
 	return h.save()
+}
+
+// MarkRuleApplied freezes a history pair after it has been promoted to a rule.
+func (h *History) MarkRuleApplied(from, to string) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	entry, exists := h.entries[from]
+	if !exists || entry.To != to {
+		return false, nil
+	}
+	if entry.RuleApplied {
+		return true, nil
+	}
+
+	entry.RuleApplied = true
+	entry.Timestamp = time.Now().Unix()
+	h.entries[from] = entry
+	h.rebuildTargets()
+	return true, h.save()
 }
 
 // Lookup finds a historical correction for the given command.

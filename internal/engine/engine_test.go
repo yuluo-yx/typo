@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -772,6 +773,97 @@ func TestEngine_ListHistory(t *testing.T) {
 	entries := eng.ListHistory()
 	if len(entries) != 2 {
 		t.Errorf("Expected 2 history entries, got %d", len(entries))
+	}
+}
+
+func TestEngine_MaybeAutoLearnFromHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	rules := NewRules(tmpDir)
+	eng := NewEngine(
+		WithHistory(history),
+		WithRules(rules),
+		WithAutoLearnThreshold(2),
+	)
+
+	if err := eng.RecordHistory("mytypo", "mytool"); err != nil {
+		t.Fatalf("RecordHistory #1 failed: %v", err)
+	}
+	if err := eng.RecordHistory("mytypo", "mytool"); err != nil {
+		t.Fatalf("RecordHistory #2 failed: %v", err)
+	}
+
+	result := eng.maybeAutoLearnFromHistory(context.Background(), "mytypo", "mytool")
+	if !result.Triggered || !result.Persisted || result.Err != nil {
+		t.Fatalf("maybeAutoLearnFromHistory() = %+v", result)
+	}
+
+	rule, ok := rules.MatchUser("mytypo")
+	if !ok || rule.To != "mytool" {
+		t.Fatalf("Expected auto-learned user rule, got ok=%v rule=%+v", ok, rule)
+	}
+
+	entry, ok := history.Lookup("mytypo")
+	if !ok {
+		t.Fatal("Expected history entry to remain after auto-learn")
+	}
+	if !entry.RuleApplied {
+		t.Fatal("Expected history entry to be frozen after auto-learn")
+	}
+}
+
+func TestEngine_MaybeAutoLearnFromHistory_MarksExistingUserRule(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	rules := NewRules(tmpDir)
+	if err := rules.AddUserRule(itypes.Rule{From: "mytypo", To: "mytool"}); err != nil {
+		t.Fatalf("AddUserRule failed: %v", err)
+	}
+
+	eng := NewEngine(
+		WithHistory(history),
+		WithRules(rules),
+		WithAutoLearnThreshold(2),
+	)
+
+	if err := eng.RecordHistory("mytypo", "mytool"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
+
+	result := eng.maybeAutoLearnFromHistory(context.Background(), "mytypo", "mytool")
+	if !result.Triggered || !result.Persisted || result.Err != nil {
+		t.Fatalf("maybeAutoLearnFromHistory() = %+v", result)
+	}
+
+	entry, ok := history.Lookup("mytypo")
+	if !ok || !entry.RuleApplied {
+		t.Fatalf("Expected history entry to be marked as rule applied, got %+v ok=%v", entry, ok)
+	}
+}
+
+func TestEngine_MaybeAutoLearnFromHistory_RespectsContextDeadline(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	rules := NewRules(tmpDir)
+	eng := NewEngine(
+		WithHistory(history),
+		WithRules(rules),
+		WithAutoLearnThreshold(1),
+	)
+
+	if err := eng.RecordHistory("mytypo", "mytool"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	result := eng.maybeAutoLearnFromHistory(ctx, "mytypo", "mytool")
+	if !result.TimedOut {
+		t.Fatalf("Expected timed out result, got %+v", result)
+	}
+	if _, ok := rules.MatchUser("mytypo"); ok {
+		t.Fatal("Expected expired context to skip user rule creation")
 	}
 }
 

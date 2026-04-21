@@ -59,6 +59,7 @@ removed during v1.x:
 - `similarity_threshold`
 - `max_edit_distance`
 - `max_fix_passes`
+- `auto_learn_threshold`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`
@@ -69,6 +70,10 @@ settings; see [Command Reference](commands.md) for the CLI form.
 New keys may be added in minor releases. Unrecognized keys are ignored, so
 config files written by a newer v1.x release will still load in an older v1.x
 binary (unknown keys are silently skipped).
+
+`usage_history.json` entries may include `rule_applied: true` to indicate that
+the exact `(from, to)` pair has already been promoted into a user rule and
+should no longer grow its history count.
 
 ### Supported keyboard layouts
 

@@ -25,6 +25,8 @@ typo fix "typo hsitory lsit"
 临时的、仅属于当前 shell 会话；Typo 会先展开 `k=kubectl` 这类别名，修正展开后的
 命令，再在安全时把结果输出回原始别名形态。
 
+重复出现且被接受的修正会在达到阈值后静默提升为用户规则。可通过 `typo config set auto-learn-threshold 0` 关闭该行为。
+
 ## `typo learn`
 
 教会 Typo 一条个人习惯修正规则。
@@ -55,6 +57,7 @@ typo config gen --force
 - `similarity-threshold`
 - `max-edit-distance`
 - `max-fix-passes`
+- `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`

@@ -204,6 +204,38 @@ func TestHistory_UpdatePreference(t *testing.T) {
 	if entry.To != "correct2" {
 		t.Errorf("Expected updated preference 'correct2', got %q", entry.To)
 	}
+	if entry.Count != 1 {
+		t.Errorf("Expected updated preference count reset to 1, got %d", entry.Count)
+	}
+	if entry.RuleApplied {
+		t.Error("Expected updated preference to clear rule-applied marker")
+	}
+}
+
+func TestHistory_Record_DoesNotIncreaseFrozenPair(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHistory(tmpDir)
+
+	if err := h.Record("gut", "git"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+	if ok, err := h.MarkRuleApplied("gut", "git"); err != nil || !ok {
+		t.Fatalf("MarkRuleApplied failed: ok=%v err=%v", ok, err)
+	}
+	if err := h.Record("gut", "git"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+
+	entry, ok := h.Lookup("gut")
+	if !ok {
+		t.Fatal("Expected frozen entry to exist")
+	}
+	if entry.Count != 1 {
+		t.Fatalf("Expected frozen entry count to stay 1, got %d", entry.Count)
+	}
+	if !entry.RuleApplied {
+		t.Fatal("Expected frozen entry to keep rule-applied marker")
+	}
 }
 
 func TestHistory_LoadExisting(t *testing.T) {
@@ -229,6 +261,25 @@ func TestHistory_LoadExisting(t *testing.T) {
 	}
 	if entry.Count != 5 {
 		t.Errorf("Expected count 5, got %d", entry.Count)
+	}
+}
+
+func TestHistory_LoadExistingRuleApplied(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	historyFile := filepath.Join(tmpDir, usageHistoryFileName)
+	data := []byte(`[{"from":"existing","to":"correct","timestamp":100,"count":5,"rule_applied":true}]`)
+	if err := os.WriteFile(historyFile, data, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	h := NewHistory(tmpDir)
+	entry, ok := h.Lookup("existing")
+	if !ok {
+		t.Fatal("Expected existing entry to load")
+	}
+	if !entry.RuleApplied {
+		t.Fatal("Expected rule_applied marker to load")
 	}
 }
 

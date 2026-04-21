@@ -31,6 +31,7 @@ Typo 0.1.x 没有配置文件。如果从 0.1.x 升级，无需迁移 — v1 会
 - `similarity_threshold`
 - `max_edit_distance`
 - `max_fix_passes`
+- `auto_learn_threshold`
 - `keyboard`
 - `history.enabled`
 - `rules.<scope>.enabled`
