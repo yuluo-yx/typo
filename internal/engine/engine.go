@@ -152,6 +152,20 @@ func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 		return itypes.FixResult{Fixed: false}
 	}
 
+	if len(input.AliasContext) > 0 {
+		return e.fixWithAliasContext(input)
+	}
+
+	return e.fixWithoutAliasContext(input)
+}
+
+func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixResult {
+	input.Command = strings.TrimSpace(input.Command)
+	if input.Command == "" {
+		return itypes.FixResult{Fixed: false}
+	}
+	input.AliasContext = nil
+
 	originalCmd := input.Command
 	currentCmd := input.Command
 	messages := make([]string, 0)
@@ -1256,7 +1270,24 @@ func isGoodSubcommandMatch(original, candidate string, distance int, cfg distanc
 		return true
 	}
 
+	if isShortPluralTranspositionMatch(original, candidate) {
+		return true
+	}
+
 	return isShortBoundaryPreservingMatch(original, candidate, distance)
+}
+
+func isShortPluralTranspositionMatch(original, candidate string) bool {
+	originalRunes := []rune(original)
+	candidateRunes := []rune(candidate)
+	if len(originalRunes) < 3 || len(originalRunes) > 4 || len(candidateRunes) != len(originalRunes)+1 {
+		return false
+	}
+	if candidateRunes[len(candidateRunes)-1] != 's' {
+		return false
+	}
+
+	return utils.IsSingleAdjacentTransposition(original, string(candidateRunes[:len(candidateRunes)-1]))
 }
 
 func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {

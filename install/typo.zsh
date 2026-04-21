@@ -22,6 +22,8 @@ _typo_fix_command() {
     local fixed=""
     local last_exit_code="${TYPO_LAST_EXIT_CODE:-0}"
     local use_last_command=0
+    local alias_context_file=""
+    local -a alias_args
 
     # If buffer is empty, get last command from history
     if [[ -z "$cmd" ]]; then
@@ -31,14 +33,20 @@ _typo_fix_command() {
 
     [[ -z "$cmd" ]] && return
 
+    _typo_write_alias_context
+    if _typo_owns_alias_context && [[ -f "$TYPO_ALIAS_CONTEXT" ]]; then
+        alias_context_file="$TYPO_ALIAS_CONTEXT"
+        alias_args=(--alias-context "$alias_context_file")
+    fi
+
     if [[ "$use_last_command" -eq 1 && -f "$stderr_file" && -s "$stderr_file" ]]; then
-        fixed=$(typo fix --exit-code "$last_exit_code" -s "$stderr_file" "$cmd" 2>/dev/null)
+        fixed=$(typo fix "${alias_args[@]}" --exit-code "$last_exit_code" -s "$stderr_file" "$cmd" 2>/dev/null)
     elif [[ "$use_last_command" -eq 1 ]]; then
-        fixed=$(typo fix --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
+        fixed=$(typo fix "${alias_args[@]}" --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
     else
         # Preview fixes for the current buffer should not pollute history.
         # Only fixes applied after a failed command should be persisted.
-        fixed=$(typo fix --no-history "$cmd" 2>/dev/null)
+        fixed=$(typo fix "${alias_args[@]}" --no-history "$cmd" 2>/dev/null)
     fi
 
     if [[ -n "$fixed" && "$fixed" != "$cmd" ]]; then
@@ -59,6 +67,10 @@ _typo_current_shell_id() {
 
 _typo_owns_stderr_cache() {
     [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+}
+
+_typo_owns_alias_context() {
+    [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" == "$(_typo_current_shell_id)" ]]
 }
 
 _typo_owns_original_stderr_fd() {
@@ -100,6 +112,41 @@ _typo_init_stderr_cache() {
     TYPO_STDERR_CACHE_OWNER="$shell_id"
 }
 
+# Initialize the alias context file for the current shell session.
+_typo_init_alias_context() {
+    local tmp_dir="${TMPDIR:-/tmp}"
+    local shell_id
+    local alias_context=""
+
+    shell_id="$(_typo_current_shell_id)"
+
+    if [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" != "$shell_id" ]]; then
+        unset TYPO_ALIAS_CONTEXT
+        unset TYPO_ALIAS_CONTEXT_OWNER
+    fi
+
+    if _typo_owns_alias_context && [[ -f "$TYPO_ALIAS_CONTEXT" && -w "$TYPO_ALIAS_CONTEXT" ]]; then
+        return 0
+    fi
+
+    unset TYPO_ALIAS_CONTEXT
+    unset TYPO_ALIAS_CONTEXT_OWNER
+
+    if command -v mktemp >/dev/null 2>&1; then
+        alias_context=$(mktemp "$tmp_dir/typo-alias-XXXXXX" 2>/dev/null)
+    fi
+    if [[ -z "$alias_context" ]]; then
+        alias_context="$tmp_dir/typo-alias-$$"
+        : >| "$alias_context" 2>/dev/null || return 1
+    fi
+    if [[ ! -f "$alias_context" || ! -w "$alias_context" ]]; then
+        return 1
+    fi
+
+    TYPO_ALIAS_CONTEXT="$alias_context"
+    TYPO_ALIAS_CONTEXT_OWNER="$shell_id"
+}
+
 # Remove stale caches older than one day for the current user to avoid piling up in /tmp.
 _typo_cleanup_stale_caches() {
     emulate -L zsh
@@ -112,6 +159,60 @@ _typo_cleanup_stale_caches() {
         [[ -O "$file" ]] || continue
         [[ "$file" == "${TYPO_STDERR_CACHE:-}" ]] && continue
         rm -f -- "$file" 2>/dev/null
+    done
+
+    for file in "$tmp_dir"/typo-alias-*(.Nm+1); do
+        [[ -O "$file" ]] || continue
+        [[ "$file" == "${TYPO_ALIAS_CONTEXT:-}" ]] && continue
+        rm -f -- "$file" 2>/dev/null
+    done
+}
+
+_typo_simple_function_expansion() {
+    emulate -L zsh
+    setopt extended_glob
+
+    local definition="$1"
+    local line trimmed expansion suffix
+    local count=0
+
+    for line in "${(@f)definition}"; do
+        trimmed="${line##[[:space:]]##}"
+        trimmed="${trimmed%%[[:space:]]##}"
+        [[ -z "$trimmed" || "$trimmed" == "{" || "$trimmed" == "}" || "$trimmed" == *"() {"* || "$trimmed" == "function "* ]] && continue
+        expansion="$trimmed"
+        count=$((count + 1))
+    done
+
+    [[ "$count" -eq 1 ]] || return 1
+    expansion="${expansion%;}"
+    suffix=' "$@"'
+    [[ "$expansion" == *"$suffix" ]] && expansion="${expansion%$suffix}"
+    suffix=' $@'
+    [[ "$expansion" == *"$suffix" ]] && expansion="${expansion%$suffix}"
+    [[ -n "$expansion" ]] || return 1
+    [[ "$expansion" == *'|'* || "$expansion" == *'&'* || "$expansion" == *';'* || "$expansion" == *'<'* || "$expansion" == *'>'* || "$expansion" == *'$'* || "$expansion" == *'`'* || "$expansion" == *'('* || "$expansion" == *')'* || "$expansion" == *'{'* || "$expansion" == *'}'* || "$expansion" == *'['* || "$expansion" == *']'* ]] && return 1
+
+    print -r -- "$expansion"
+}
+
+_typo_write_alias_context() {
+    emulate -L zsh
+    _typo_init_alias_context || return
+    : >| "$TYPO_ALIAS_CONTEXT" 2>/dev/null || return
+
+    local name expansion definition
+    for name expansion in "${(@kv)aliases}"; do
+        [[ -n "$name" && -n "$expansion" ]] || continue
+        printf 'zsh\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+    done
+
+    for name in "${(@k)functions}"; do
+        [[ "$name" == _typo_* ]] && continue
+        definition="$(functions "$name" 2>/dev/null)" || continue
+        expansion="$(_typo_simple_function_expansion "$definition")" || continue
+        [[ -n "$expansion" ]] || continue
+        printf 'zsh\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
     done
 }
 
@@ -164,6 +265,12 @@ _typo_zshexit() {
     fi
     unset TYPO_STDERR_CACHE
     unset TYPO_STDERR_CACHE_OWNER
+
+    if _typo_owns_alias_context; then
+        rm -f -- "$TYPO_ALIAS_CONTEXT" 2>/dev/null
+    fi
+    unset TYPO_ALIAS_CONTEXT
+    unset TYPO_ALIAS_CONTEXT_OWNER
 }
 
 autoload -Uz add-zsh-hook
@@ -175,6 +282,7 @@ add-zsh-hook precmd _typo_precmd
 add-zsh-hook zshexit _typo_zshexit
 
 _typo_init_stderr_cache
+_typo_init_alias_context
 _typo_save_original_stderr
 _typo_cleanup_stale_caches
 

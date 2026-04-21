@@ -98,6 +98,117 @@ function global:__typo_RemoveCurrentCache {
     $env:TYPO_STDERR_CACHE_OWNER = ""
 }
 
+function global:__typo_NewAliasContext {
+    $tmpDir = [System.IO.Path]::GetTempPath()
+    $fileName = "typo-alias-$PID-$([guid]::NewGuid().ToString('N')).tsv"
+    $contextPath = [System.IO.Path]::Combine($tmpDir, $fileName)
+    New-Item -ItemType File -Path $contextPath -Force | Out-Null
+    return $contextPath
+}
+
+function global:__typo_EnsureAliasContext {
+    $currentShellPid = [string]$PID
+    $contextPath = [string]$env:TYPO_ALIAS_CONTEXT
+    $contextOwner = [string]$env:TYPO_ALIAS_CONTEXT_OWNER
+
+    if (-not [string]::IsNullOrWhiteSpace($contextOwner) -and $contextOwner -ne $currentShellPid) {
+        $env:TYPO_ALIAS_CONTEXT = ""
+        $env:TYPO_ALIAS_CONTEXT_OWNER = ""
+        $contextPath = ""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($contextPath) -and (Test-Path -LiteralPath $contextPath)) {
+        return $contextPath
+    }
+
+    $contextPath = __typo_NewAliasContext
+    $env:TYPO_ALIAS_CONTEXT = $contextPath
+    $env:TYPO_ALIAS_CONTEXT_OWNER = $currentShellPid
+
+    return $contextPath
+}
+
+function global:__typo_RemoveAliasContext {
+    $contextPath = [string]$env:TYPO_ALIAS_CONTEXT
+    if (-not [string]::IsNullOrWhiteSpace($contextPath) -and
+        [string]$env:TYPO_ALIAS_CONTEXT_OWNER -eq [string]$PID -and
+        (Test-Path -LiteralPath $contextPath)) {
+        Remove-Item -LiteralPath $contextPath -Force -ErrorAction SilentlyContinue
+    }
+
+    $env:TYPO_ALIAS_CONTEXT = ""
+    $env:TYPO_ALIAS_CONTEXT_OWNER = ""
+}
+
+function global:__typo_CleanupStaleAliasContexts {
+    $tmpDir = [System.IO.Path]::GetTempPath()
+    $cutoff = (Get-Date).AddDays(-1)
+    $currentContext = [string]$env:TYPO_ALIAS_CONTEXT
+
+    Get-ChildItem -Path $tmpDir -Filter "typo-alias-*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.FullName -eq $currentContext) {
+            return
+        }
+        if ($_.LastWriteTime -lt $cutoff) {
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function global:__typo_IsSafeAliasToken([string]$value) {
+    return -not [string]::IsNullOrWhiteSpace($value) -and $value -notmatch "[\t\r\n\0]"
+}
+
+function global:__typo_GetSimpleFunctionExpansion([string]$definition) {
+    if ([string]::IsNullOrWhiteSpace($definition)) {
+        return ""
+    }
+
+    $line = [string]$definition.Trim()
+    $line = $line -replace '\s+@args$', ''
+    $line = $line -replace '\s+\$args$', ''
+    if ($line.Contains("`n") -or $line.Contains(";") -or $line -match '[\|&<>`$(){}\[\]]') {
+        return ""
+    }
+
+    return $line.Trim()
+}
+
+function global:__typo_WriteAliasContext {
+    $contextPath = __typo_EnsureAliasContext
+    if ([string]::IsNullOrWhiteSpace($contextPath)) {
+        return ""
+    }
+
+    [System.IO.File]::WriteAllText($contextPath, "")
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    Get-Alias -ErrorAction SilentlyContinue | ForEach-Object {
+        $name = [string]$_.Name
+        $expansion = [string]$_.Definition
+        if ((__typo_IsSafeAliasToken $name) -and (__typo_IsSafeAliasToken $expansion)) {
+            $lines.Add("powershell`talias`t$name`t$expansion")
+        }
+    }
+
+    Get-Command -CommandType Function -ErrorAction SilentlyContinue | ForEach-Object {
+        $name = [string]$_.Name
+        if ($name.StartsWith("__typo_")) {
+            return
+        }
+        $expansion = __typo_GetSimpleFunctionExpansion ([string]$_.Definition)
+        if ((__typo_IsSafeAliasToken $name) -and (__typo_IsSafeAliasToken $expansion)) {
+            $lines.Add("powershell`tfunction`t$name`t$expansion")
+        }
+    }
+
+    if ($lines.Count -gt 0) {
+        [System.IO.File]::WriteAllLines($contextPath, $lines)
+    }
+
+    return $contextPath
+}
+
 function global:__typo_GetBufferState {
     $line = ""
     $cursor = 0
@@ -166,16 +277,22 @@ function global:__typo_InvokeFix([string]$command, [bool]$useLastCommand) {
         $lastExitCode = [int]$global:TYPO_PS_STATE.LastExitCode
     }
 
+    $aliasArgs = @()
+    $aliasContextPath = __typo_WriteAliasContext
+    if (-not [string]::IsNullOrWhiteSpace($aliasContextPath) -and (Test-Path -LiteralPath $aliasContextPath)) {
+        $aliasArgs = @("--alias-context", $aliasContextPath)
+    }
+
     if ($useLastCommand) {
         $cachePath = __typo_EnsureStderrCache
         $hasStderr = (Test-Path -LiteralPath $cachePath) -and ((Get-Item -LiteralPath $cachePath).Length -gt 0)
         if ($hasStderr) {
-            $fixed = & typo fix --exit-code $lastExitCode -s $cachePath $command 2>$null
+            $fixed = & typo fix @aliasArgs --exit-code $lastExitCode -s $cachePath $command 2>$null
         } else {
-            $fixed = & typo fix --exit-code $lastExitCode $command 2>$null
+            $fixed = & typo fix @aliasArgs --exit-code $lastExitCode $command 2>$null
         }
      } else {
-        $fixed = & typo fix --no-history $command 2>$null
+        $fixed = & typo fix @aliasArgs --no-history $command 2>$null
     }
 
     if ($null -eq $fixed) {
@@ -397,6 +514,7 @@ if ($global:TYPO_PS_STATE.ExitSubscriptionId) {
 
 $subscription = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
     __typo_RemoveCurrentCache
+    __typo_RemoveAliasContext
 }
 $global:TYPO_PS_STATE.ExitSubscriptionId = $subscription.SubscriptionId
 
@@ -411,4 +529,6 @@ $env:TYPO_SHELL_INTEGRATION = "1"
 $env:TYPO_LAST_EXIT_CODE = "0"
 
 __typo_EnsureStderrCache | Out-Null
+__typo_EnsureAliasContext | Out-Null
 __typo_CleanupStaleCaches
+__typo_CleanupStaleAliasContexts

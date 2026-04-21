@@ -15,6 +15,7 @@ func cmdFix(args []string) int {
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
 	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
 	noHistory := fs.Bool("no-history", false, "do not persist correction history")
+	aliasContextFile := fs.String("alias-context", "", "file containing shell alias context")
 
 	_ = fs.Parse(args)
 
@@ -37,9 +38,10 @@ func cmdFix(args []string) int {
 	eng := createEngine(cfg)
 
 	result := eng.FixWithContext(itypes.ParserContext{
-		Command:  cmd,
-		Stderr:   stderr,
-		ExitCode: *exitCode,
+		Command:      cmd,
+		Stderr:       stderr,
+		ExitCode:     *exitCode,
+		AliasContext: loadAliasContext(*aliasContextFile),
 	})
 
 	if result.Fixed {

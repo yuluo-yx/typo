@@ -98,7 +98,7 @@ The following top-level subcommands and their documented flags are stable:
 
 | Command | Stable flags |
 |---------|-------------|
-| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history` |
+| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history`, `--alias-context <file>` |
 | `typo learn <from> <to>` | *(none)* |
 | `typo config list` | *(none)* |
 | `typo config get <key>` | *(none)* |
@@ -146,6 +146,10 @@ contract:
   `typo-stderr-*` files for passing real error output to `typo fix -s`. This
   mechanism will remain available throughout v1.x, though internal file naming
   may change.
+- **Alias context**: supported shell integrations may pass a temporary
+  `typo-alias-*` context file to `typo fix --alias-context`. The flag is stable;
+  the internal environment variable name and temporary file naming are not part
+  of the public API.
 
 ### What may change
 

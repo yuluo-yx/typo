@@ -19,6 +19,11 @@ typo fix "typo hsitory lsit"
 - `-s <file>`：从 shell 集成保存的 `stderr` 文件中读取真实报错。
 - `--exit-code <n>`：把上一条命令的退出码作为额外修正上下文。
 - `--no-history`：本次修正不写入历史记录。
+- `--alias-context <file>`：读取 shell 集成采集的别名上下文。
+
+`--alias-context` 主要由 `typo init <shell>` 生成的脚本内部使用。该上下文是
+临时的、仅属于当前 shell 会话；Typo 会先展开 `k=kubectl` 这类别名，修正展开后的
+命令，再在安全时把结果输出回原始别名形态。
 
 ## `typo learn`
 
@@ -30,7 +35,7 @@ typo learn "gst" "git status"
 
 日常添加规则优先用 `learn`。`typo learn` 和 `typo rules add` 都会写入同一类用户规则，持久化到 `~/.typo/rules.json`，并清理冲突历史；`learn` 更偏“教会 typo 一个习惯”。
 
-当最短路径匹配难以推断特别离谱的拼写错误时，`learn` 也可以作为最后一道兜底，例如教会 `gitsss` -> `git`。它同样适合学习个人 alias。比如你的 shell 里有 `alias k=kubectl`，就可以教 Typo 识别 `k` 等价于 `kubectl`。
+当最短路径匹配难以推断特别离谱的拼写错误时，`learn` 也可以作为最后一道兜底，例如教会 `gitsss` -> `git`。对于 shell alias，优先使用 shell 集成：zsh、bash、fish 和 PowerShell 会自动传递当前会话的别名上下文。只有当你希望脱离当前 shell 会话持久化一条手动规则时，才需要用 `learn` 记录 alias。
 
 ## `typo config`
 

@@ -9,6 +9,7 @@ type ParserContext struct {
 	HasRedirection      bool
 	HasPrivilegeWrapper bool
 	ShellParseFailed    bool
+	AliasContext        []AliasContextEntry
 }
 
 // ParserResult represents the result of error parsing.
@@ -17,6 +18,14 @@ type ParserResult struct {
 	Command string // The corrected command.
 	Message string // Optional message to display.
 	Kind    string // Internal result tag used to distinguish fix categories.
+}
+
+// AliasContextEntry describes one shell-local command shorthand captured by shell integration.
+type AliasContextEntry struct {
+	Shell     string
+	Kind      string
+	Name      string
+	Expansion string
 }
 
 const (

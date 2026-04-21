@@ -6,14 +6,35 @@ English | [简体中文](how-it-works_CN.md)
 
 Typo corrects commands in this order:
 
-1. Error parsing
-2. User rules
-3. History
-4. Built-in rules
-5. Subcommand repair
-6. Edit-distance matching
+1. Shell alias context expansion, when provided by shell integration
+2. Error parsing
+3. User rules
+4. History
+5. Built-in rules
+6. Subcommand repair
+7. Edit-distance matching
 
 In practice, this means real command output and explicit user overrides win before fuzzy matching runs.
+
+## Shell alias context
+
+Shell integration can pass the current session's aliases and simple wrappers to
+`typo fix --alias-context <file>`. Typo expands that context before the normal
+correction chain, then rewrites the corrected result back to the original alias
+when it is safe:
+
+```shell
+alias k=kubectl
+k lgo
+
+# after pressing Esc Esc
+k logs
+```
+
+The context is temporary and not stored in `~/.typo/`. zsh and bash aliases,
+fish abbreviations, PowerShell aliases, and simple one-command function wrappers
+are supported. Typo does not execute arbitrary function bodies; complex functions
+with pipes, redirects, conditionals, or multiple commands are ignored.
 
 ## Error parsing
 

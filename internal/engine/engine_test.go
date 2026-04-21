@@ -1247,6 +1247,78 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 	)
 }
 
+func TestEngine_FixWithAliasContext(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	aliases := []itypes.AliasContextEntry{
+		{Shell: "zsh", Kind: "alias", Name: "k", Expansion: "kubectl"},
+		{Shell: "zsh", Kind: "alias", Name: "g", Expansion: "git"},
+		{Shell: "zsh", Kind: "alias", Name: "tf", Expansion: "terraform"},
+		{Shell: "zsh", Kind: "alias", Name: "kk", Expansion: "k"},
+	}
+
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "kubectl alias subcommand", command: "k lgo", want: "k logs"},
+		{name: "git alias subcommand", command: "g stauts", want: "g status"},
+		{name: "terraform alias subcommand", command: "tf valdiate", want: "tf validate"},
+		{name: "compound aliases", command: "k lgo && g stauts", want: "k logs && g status"},
+		{name: "chained alias", command: "kk lgo", want: "kk logs"},
+		{name: "wrapper emits canonical command", command: "sudo k lgo", want: "sudo kubectl logs"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eng.FixWithContext(itypes.ParserContext{
+				Command:      tt.command,
+				AliasContext: aliases,
+			})
+			if !got.Fixed || got.Command != tt.want {
+				t.Fatalf("FixWithContext(%q) = %+v, want %q", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEngine_FixWithAliasContextParser(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command:      "g remove -v",
+		Stderr:       "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n",
+		AliasContext: []itypes.AliasContextEntry{{Shell: "bash", Kind: "alias", Name: "g", Expansion: "git"}},
+	})
+	if !got.Fixed || got.Command != "g remote -v" || !got.UsedParser {
+		t.Fatalf("Expected parser fix to be re-aliased, got %+v", got)
+	}
+}
+
+func TestEngine_FixWithAliasContextNoVisibleChange(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command:      "k logs",
+		AliasContext: []itypes.AliasContextEntry{{Shell: "fish", Kind: "abbr", Name: "k", Expansion: "kubectl"}},
+	})
+	if got.Fixed {
+		t.Fatalf("Expected alias expansion alone to stay invisible, got %+v", got)
+	}
+}
+
+func TestEngine_FixWithAliasContextLoopFallsBack(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	got := eng.FixWithContext(itypes.ParserContext{
+		Command: "aa lgo",
+		AliasContext: []itypes.AliasContextEntry{
+			{Shell: "zsh", Kind: "alias", Name: "aa", Expansion: "bb"},
+			{Shell: "zsh", Kind: "alias", Name: "bb", Expansion: "aa"},
+		},
+	})
+	if got.Fixed {
+		t.Fatalf("Expected cyclic alias context to be ignored, got %+v", got)
+	}
+}
+
 func toolTreeCache(tool string, children map[string]*commands.TreeNode) *commands.ToolTreeCache {
 	return &commands.ToolTreeCache{
 		Tool:      tool,
