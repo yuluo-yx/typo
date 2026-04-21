@@ -35,6 +35,9 @@ The context is temporary and not stored in `~/.typo/`. zsh and bash aliases,
 fish abbreviations, PowerShell aliases, and simple one-command function wrappers
 are supported. Typo does not execute arbitrary function bodies; complex functions
 with pipes, redirects, conditionals, or multiple commands are ignored.
+The zsh shell integration only emits entries that are relevant to the current
+command, which keeps alias-aware fixes fast even in shells with large plugin
+setups.
 
 ## Error parsing
 

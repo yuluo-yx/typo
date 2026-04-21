@@ -3159,6 +3159,31 @@ _typo_zshexit
 `)
 }
 
+func TestZshIntegrationWritesTargetedAliasContext(t *testing.T) {
+	runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+
+alias k=kubectl
+alias kk=k
+alias g=git
+alias d=docker
+ktf() { terraform "$@"; }
+unused_wrap() { docker "$@"; }
+
+_typo_write_alias_context 'sudo kk lgo && g stauts && ktf valdiate'
+
+grep -q '^zsh	alias	kk	k$' "$TYPO_ALIAS_CONTEXT" || exit 71
+grep -q '^zsh	alias	k	kubectl$' "$TYPO_ALIAS_CONTEXT" || exit 72
+grep -q '^zsh	alias	g	git$' "$TYPO_ALIAS_CONTEXT" || exit 73
+grep -q '^zsh	function	ktf	terraform$' "$TYPO_ALIAS_CONTEXT" || exit 74
+grep -q '^zsh	alias	d	docker$' "$TYPO_ALIAS_CONTEXT" && exit 75
+grep -q '^zsh	function	unused_wrap	docker$' "$TYPO_ALIAS_CONTEXT" && exit 76
+true
+`)
+}
+
 func TestBashIntegrationCleansAndRotatesStderrCache(t *testing.T) {
 	runBashIntegrationScript(t, `
 source "$1"

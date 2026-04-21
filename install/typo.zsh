@@ -33,7 +33,7 @@ _typo_fix_command() {
 
     [[ -z "$cmd" ]] && return
 
-    _typo_write_alias_context
+    _typo_write_alias_context "$cmd"
     if _typo_owns_alias_context && [[ -f "$TYPO_ALIAS_CONTEXT" ]]; then
         alias_context_file="$TYPO_ALIAS_CONTEXT"
         alias_args=(--alias-context "$alias_context_file")
@@ -196,24 +196,178 @@ _typo_simple_function_expansion() {
     print -r -- "$expansion"
 }
 
+_typo_is_command_separator() {
+    [[ "$1" == '&&' || "$1" == '||' || "$1" == '|' || "$1" == ';' || "$1" == '&' ]]
+}
+
+_typo_collect_command_words() {
+    emulate -L zsh
+
+    local raw="$1"
+    local -a tokens results
+    local idx=1
+    local token=""
+    local expect_value=0
+
+    tokens=(${(z)raw})
+    while (( idx <= $#tokens )); do
+        while (( idx <= $#tokens )) && _typo_is_command_separator "${tokens[idx]}"; do
+            (( idx++ ))
+        done
+        (( idx > $#tokens )) && break
+
+        while (( idx <= $#tokens )); do
+            token="${tokens[idx]}"
+            if _typo_is_command_separator "$token"; then
+                break
+            fi
+
+            case "$token" in
+                builtin|nocorrect|noglob)
+                    (( idx++ ))
+                    continue
+                    ;;
+                command)
+                    (( idx++ ))
+                    while (( idx <= $#tokens )); do
+                        token="${tokens[idx]}"
+                        [[ "$token" == '--' ]] && { (( idx++ )); break; }
+                        [[ "$token" == -* ]] || break
+                        (( idx++ ))
+                    done
+                    continue
+                    ;;
+                env)
+                    (( idx++ ))
+                    expect_value=0
+                    while (( idx <= $#tokens )); do
+                        token="${tokens[idx]}"
+                        if (( expect_value )); then
+                            expect_value=0
+                            (( idx++ ))
+                            continue
+                        fi
+                        [[ "$token" == '--' ]] && { (( idx++ )); break; }
+                        case "$token" in
+                            *=*|--debug|-v|--ignore-environment|-i|--null|-0)
+                                (( idx++ ))
+                                continue
+                                ;;
+                            --argv0=*|--chdir=*|--default-signal=*|--ignore-signal=*|--block-signal=*|--signal=*|--unset=*|--split-string=*)
+                                (( idx++ ))
+                                continue
+                                ;;
+                            --argv0|--chdir|--default-signal|--ignore-signal|--block-signal|--signal|--unset|--split-string|-C|-S|-u)
+                                expect_value=1
+                                (( idx++ ))
+                                continue
+                                ;;
+                        esac
+                        break
+                    done
+                    continue
+                    ;;
+                sudo)
+                    (( idx++ ))
+                    expect_value=0
+                    while (( idx <= $#tokens )); do
+                        token="${tokens[idx]}"
+                        if (( expect_value )); then
+                            expect_value=0
+                            (( idx++ ))
+                            continue
+                        fi
+                        [[ "$token" == '--' ]] && { (( idx++ )); break; }
+                        case "$token" in
+                            --close-from=*|--group=*|--host=*|--other-user=*|--preserve-env=*|--prompt=*|--role=*|--user=*|--chdir=*)
+                                (( idx++ ))
+                                continue
+                                ;;
+                            --askpass|--background|--non-interactive|--preserve-env|--remove-timestamp|--reset-timestamp|--set-home|--shell|--stdin|--validate|--login|-A|-b|-E|-e|-H|-i|-k|-K|-l|-n|-P|-s|-v)
+                                (( idx++ ))
+                                continue
+                                ;;
+                            --close-from|--group|--host|--other-user|--preserve-env|--prompt|--role|--user|--chdir|-C|-g|-h|-p|-R|-r|-T|-u)
+                                expect_value=1
+                                (( idx++ ))
+                                continue
+                                ;;
+                        esac
+                        break
+                    done
+                    continue
+                    ;;
+                time)
+                    (( idx++ ))
+                    while (( idx <= $#tokens )) && [[ "${tokens[idx]}" == -p ]]; do
+                        (( idx++ ))
+                    done
+                    continue
+                    ;;
+            esac
+
+            results+=("$token")
+            break
+        done
+
+        while (( idx <= $#tokens )) && ! _typo_is_command_separator "${tokens[idx]}"; do
+            (( idx++ ))
+        done
+    done
+
+    printf '%s\n' "${results[@]}"
+}
+
+_typo_append_alias_context_entry() {
+    emulate -L zsh
+
+    local name="$1"
+    local expansion=""
+    local definition=""
+    local -a expansion_tokens
+
+    [[ -n "$name" ]] || return
+    if [[ -n "${_TYPO_ALIAS_CONTEXT_SEEN[$name]:-}" ]]; then
+        return
+    fi
+    _TYPO_ALIAS_CONTEXT_SEEN[$name]=1
+
+    if (( ${+aliases[$name]} )); then
+        expansion="${aliases[$name]}"
+        [[ -n "$expansion" ]] || return
+        printf 'zsh\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+    elif (( ${+functions[$name]} )); then
+        definition="$(functions "$name" 2>/dev/null)" || return
+        expansion="$(_typo_simple_function_expansion "$definition")" || return
+        [[ -n "$expansion" ]] || return
+        printf 'zsh\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+    else
+        return
+    fi
+
+    expansion_tokens=(${(z)expansion})
+    (( $#expansion_tokens > 0 )) || return
+    _typo_append_alias_context_entry "${expansion_tokens[1]}"
+}
+
 _typo_write_alias_context() {
     emulate -L zsh
+
+    local raw="$1"
+    local name=""
+    local -A _TYPO_ALIAS_CONTEXT_SEEN
+
     _typo_init_alias_context || return
     : >| "$TYPO_ALIAS_CONTEXT" 2>/dev/null || return
 
-    local name expansion definition
-    for name expansion in "${(@kv)aliases}"; do
-        [[ -n "$name" && -n "$expansion" ]] || continue
-        printf 'zsh\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
-    done
+    while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        _typo_append_alias_context_entry "$name"
+    done < <(_typo_collect_command_words "$raw")
 
-    for name in "${(@k)functions}"; do
-        [[ "$name" == _typo_* ]] && continue
-        definition="$(functions "$name" 2>/dev/null)" || continue
-        expansion="$(_typo_simple_function_expansion "$definition")" || continue
-        [[ -n "$expansion" ]] || continue
-        printf 'zsh\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
-    done
+    if [[ ! -s "$TYPO_ALIAS_CONTEXT" ]]; then
+        : >| "$TYPO_ALIAS_CONTEXT" 2>/dev/null
+    fi
 }
 
 # Save the original stderr so repeated commands do not keep chaining shell file descriptors.
