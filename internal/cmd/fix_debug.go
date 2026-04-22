@@ -15,20 +15,23 @@ func printFixDebug(w io.Writer, result itypes.FixResult) {
 
 	debug := result.Debug
 	var builder strings.Builder
+	writef := func(format string, args ...any) {
+		_, _ = fmt.Fprintf(&builder, format, args...)
+	}
 
 	builder.WriteString("typo: debug\n")
-	builder.WriteString(fmt.Sprintf("typo:   input=%q fixed=%s", debug.InputCommand, yesNo(result.Fixed)))
+	writef("typo:   input=%q fixed=%s", debug.InputCommand, yesNo(result.Fixed))
 	if result.Fixed {
-		builder.WriteString(fmt.Sprintf(" final=%q source=%s", result.Command, debugValue(result.Source)))
+		writef(" final=%q source=%s", result.Command, debugValue(result.Source))
 	}
 	builder.WriteString("\n")
-	builder.WriteString(fmt.Sprintf(
+	writef(
 		"typo:   alias-context provided=%s used=%s entries=%d\n",
 		yesNo(debug.AliasContextProvided),
 		yesNo(debug.AliasContextUsed),
 		debug.AliasContextEntries,
-	))
-	builder.WriteString(fmt.Sprintf(
+	)
+	writef(
 		"typo:   features alias=%s parser=%s history=%s rule=%s tree=%s subcommand=%s distance=%s env=%s option=%s\n",
 		yesNo(debug.UsedAlias),
 		yesNo(debug.UsedParser),
@@ -39,32 +42,32 @@ func printFixDebug(w io.Writer, result itypes.FixResult) {
 		yesNo(debug.UsedDistance),
 		yesNo(debug.UsedEnv),
 		yesNo(debug.UsedOption),
-	))
-	builder.WriteString(fmt.Sprintf(
+	)
+	writef(
 		"typo:   path-commands-loaded=%s discovered=%d\n",
 		yesNo(debug.LoadedPATHCommands),
 		debug.LoadedPATHCommandCount,
-	))
-	builder.WriteString(fmt.Sprintf(
+	)
+	writef(
 		"typo:   timing total=%s engine=%s auto-learn=%s\n",
 		debugDuration(debug.TotalDuration),
 		debugDuration(debug.EngineDuration),
 		debugDuration(debug.AutoLearn.Duration),
-	))
+	)
 
 	if len(debug.Events) == 0 {
 		builder.WriteString("typo:   matched-stages=none\n")
 	} else {
 		for _, event := range debug.Events {
-			builder.WriteString(fmt.Sprintf(
+			writef(
 				"typo:   stage pass=%d stage=%s before=%q after=%q",
 				event.Pass,
 				debugValue(event.Stage),
 				event.Before,
 				event.After,
-			))
+			)
 			if event.Message != "" {
-				builder.WriteString(fmt.Sprintf(" message=%q", event.Message))
+				writef(" message=%q", event.Message)
 			}
 			builder.WriteString("\n")
 		}
@@ -74,7 +77,7 @@ func printFixDebug(w io.Writer, result itypes.FixResult) {
 		builder.WriteString("typo:   rejected-candidates=none\n")
 	} else {
 		for _, candidate := range debug.RejectedCandidates {
-			builder.WriteString(fmt.Sprintf(
+			writef(
 				"typo:   rejected stage=%s input=%q candidate=%q distance=%d similarity=%.2f reason=%q\n",
 				debugValue(candidate.Stage),
 				candidate.Input,
@@ -82,22 +85,22 @@ func printFixDebug(w io.Writer, result itypes.FixResult) {
 				candidate.Distance,
 				candidate.Similarity,
 				candidate.Reason,
-			))
+			)
 		}
 	}
 
-	builder.WriteString(fmt.Sprintf(
+	writef(
 		"typo:   auto-learn attempted=%s triggered=%s persisted=%s timed-out=%s",
 		yesNo(debug.AutoLearn.Attempted),
 		yesNo(debug.AutoLearn.Triggered),
 		yesNo(debug.AutoLearn.Persisted),
 		yesNo(debug.AutoLearn.TimedOut),
-	))
+	)
 	if debug.AutoLearn.Reason != "" {
-		builder.WriteString(fmt.Sprintf(" reason=%q", debug.AutoLearn.Reason))
+		writef(" reason=%q", debug.AutoLearn.Reason)
 	}
 	if debug.AutoLearn.Error != "" {
-		builder.WriteString(fmt.Sprintf(" error=%q", debug.AutoLearn.Error))
+		writef(" error=%q", debug.AutoLearn.Error)
 	}
 	builder.WriteString("\n")
 
