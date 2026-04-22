@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
@@ -33,6 +34,8 @@ type Engine struct {
 	commandsFullyLoad   bool
 	toolTrees           *commands.ToolTreeRegistry
 	commandTrees        *commands.CommandTreeRegistry
+	debugEnabled        bool
+	currentDebug        *itypes.FixDebugInfo
 }
 
 type distanceMatchConfig struct {
@@ -143,6 +146,21 @@ func NewEngine(opts ...Option) *Engine {
 	return e
 }
 
+// EnableDebug enables per-fix debug tracing.
+func (e *Engine) EnableDebug() {
+	if e != nil {
+		e.debugEnabled = true
+	}
+}
+
+// DisableDebug disables per-fix debug tracing.
+func (e *Engine) DisableDebug() {
+	if e != nil {
+		e.debugEnabled = false
+		e.currentDebug = nil
+	}
+}
+
 // Fix attempts to fix the given command.
 // stderr is optional and used for error parsing.
 func (e *Engine) Fix(cmd, stderr string) itypes.FixResult {
@@ -155,15 +173,128 @@ func (e *Engine) Fix(cmd, stderr string) itypes.FixResult {
 // FixWithContext attempts to fix the given command with parser context.
 func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 	input.Command = strings.TrimSpace(input.Command)
+	debugInfo := e.beginDebugTrace(input)
+	startedAt := time.Now()
+	defer e.clearDebugTrace()
+
 	if input.Command == "" {
-		return itypes.FixResult{Fixed: false}
+		return e.attachDebug(itypes.FixResult{Fixed: false}, debugInfo, startedAt)
 	}
 
 	if len(input.AliasContext) > 0 {
-		return e.fixWithAliasContext(input)
+		return e.attachDebug(e.fixWithAliasContext(input), debugInfo, startedAt)
 	}
 
-	return e.fixWithoutAliasContext(input)
+	return e.attachDebug(e.fixWithoutAliasContext(input), debugInfo, startedAt)
+}
+
+func (e *Engine) beginDebugTrace(input itypes.ParserContext) *itypes.FixDebugInfo {
+	if e == nil || !e.debugEnabled {
+		return nil
+	}
+
+	debugInfo := &itypes.FixDebugInfo{
+		InputCommand:         input.Command,
+		AliasContextProvided: len(input.AliasContext) > 0,
+		AliasContextEntries:  len(input.AliasContext),
+	}
+	e.currentDebug = debugInfo
+	return debugInfo
+}
+
+func (e *Engine) clearDebugTrace() {
+	if e != nil {
+		e.currentDebug = nil
+	}
+}
+
+func (e *Engine) attachDebug(result itypes.FixResult, debugInfo *itypes.FixDebugInfo, startedAt time.Time) itypes.FixResult {
+	if debugInfo != nil {
+		debugInfo.EngineDuration = time.Since(startedAt)
+		result.Debug = debugInfo
+	}
+	return result
+}
+
+func (e *Engine) debugTrace() *itypes.FixDebugInfo {
+	if e == nil {
+		return nil
+	}
+	return e.currentDebug
+}
+
+func (e *Engine) markDebugFeature(stage string) {
+	debug := e.debugTrace()
+	if debug == nil {
+		return
+	}
+
+	switch stage {
+	case "alias":
+		debug.UsedAlias = true
+		debug.AliasContextUsed = true
+	case "parser":
+		debug.UsedParser = true
+	case "history":
+		debug.UsedHistory = true
+	case "rule":
+		debug.UsedRule = true
+	case "tree":
+		debug.UsedCommandTree = true
+	case "subcommand":
+		debug.UsedSubcommand = true
+	case "distance":
+		debug.UsedDistance = true
+	case "env":
+		debug.UsedEnv = true
+	case "option":
+		debug.UsedOption = true
+	}
+}
+
+func (e *Engine) recordAcceptedFix(pass int, before string, result itypes.FixResult) {
+	debug := e.debugTrace()
+	if debug == nil || !result.Fixed {
+		return
+	}
+
+	e.markDebugFeature(result.Source)
+	if result.UsedParser {
+		debug.UsedParser = true
+	}
+
+	debug.Events = append(debug.Events, itypes.FixDebugEvent{
+		Pass:    pass,
+		Stage:   result.Source,
+		Before:  before,
+		After:   result.Command,
+		Message: result.Message,
+	})
+}
+
+func (e *Engine) recordRejectedCandidate(stage, input, candidate string, distance int, similarity float64, reason string) {
+	debug := e.debugTrace()
+	if debug == nil || input == "" || candidate == "" || reason == "" {
+		return
+	}
+
+	for _, existing := range debug.RejectedCandidates {
+		if existing.Stage == stage && existing.Input == input && existing.Candidate == candidate {
+			return
+		}
+	}
+	if len(debug.RejectedCandidates) >= 5 {
+		return
+	}
+
+	debug.RejectedCandidates = append(debug.RejectedCandidates, itypes.FixDebugCandidate{
+		Stage:      stage,
+		Input:      input,
+		Candidate:  candidate,
+		Distance:   distance,
+		Similarity: similarity,
+		Reason:     reason,
+	})
 }
 
 func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixResult {
@@ -184,13 +315,14 @@ func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixRe
 		passes = 1
 	}
 
-	for range passes {
+	for pass := 1; pass <= passes; pass++ {
 		input.Command = currentCmd
 		result := e.fixOnePass(input)
 		if !isMeaningfulFix(currentCmd, result) {
 			break
 		}
 
+		e.recordAcceptedFix(pass, currentCmd, result)
 		currentCmd = result.Command
 		lastSource = result.Source
 		if result.Message != "" && !slices.Contains(messages, result.Message) {
@@ -550,6 +682,7 @@ func (e *Engine) tryBuiltinRules(cmd string) itypes.FixResult {
 
 func (e *Engine) fixSubcommandInResult(result itypes.FixResult) itypes.FixResult {
 	if fixed := e.trySubcommandFixWithSource(result.Command, result.Source); fixed.Fixed {
+		e.markDebugFeature("subcommand")
 		return fixed
 	}
 	return result
@@ -626,6 +759,7 @@ func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 
 	// Find best match from known commands
 	bestMatch, bestDistance := e.closestKnownCommand(cmdWord)
+	bestSimilarity := SimilarityFromDistance(len(cmdWord), len(bestMatch), bestDistance)
 
 	// Check if match is good enough
 	// Threshold: distance <= 2 and similarity > 60%
@@ -648,6 +782,9 @@ func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 
 		return result
 	}
+	if bestMatch != "" && bestMatch != cmdWord {
+		e.recordRejectedCandidate("distance", cmdWord, bestMatch, bestDistance, bestSimilarity, "did not pass command distance threshold")
+	}
 
 	return itypes.FixResult{Fixed: false}
 }
@@ -666,7 +803,11 @@ func (e *Engine) tryDistanceWithShell(cmd string) (itypes.FixResult, bool) {
 		}
 
 		bestMatch, bestDistance := e.closestKnownCommand(line.commandWord())
+		bestSimilarity := SimilarityFromDistance(len(line.commandWord()), len(bestMatch), bestDistance)
 		if !isGoodCommandDistanceMatch(line.commandWord(), bestMatch, bestDistance, matchCfg) {
+			if bestMatch != "" && bestMatch != line.commandWord() {
+				e.recordRejectedCandidate("distance", line.commandWord(), bestMatch, bestDistance, bestSimilarity, "did not pass command distance threshold")
+			}
 			continue
 		}
 		if bestMatch == line.commandWord() {
@@ -973,6 +1114,10 @@ func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, 
 
 		match, distance := closestSubcommand(token, subcommands, cfg)
 		if !isGoodSubcommandMatch(token, match, distance, cfg) {
+			if match != "" && match != token {
+				similarity := SimilarityFromDistance(len(token), len(match), distance)
+				e.recordRejectedCandidate("subcommand", token, match, distance, similarity, "did not pass subcommand distance threshold")
+			}
 			break
 		}
 
@@ -1170,7 +1315,12 @@ func (e *Engine) loadCommands() {
 			return
 		}
 
-		e.commands = utils.MergeUniqueStrings(e.commands, e.filterDisabledCommands(e.commandLoader())...)
+		loaded := e.commandLoader()
+		if debug := e.debugTrace(); debug != nil {
+			debug.LoadedPATHCommands = true
+			debug.LoadedPATHCommandCount = len(loaded)
+		}
+		e.commands = utils.MergeUniqueStrings(e.commands, e.filterDisabledCommands(loaded)...)
 		e.refreshAvailableCommands()
 		e.commandsFullyLoad = true
 	})

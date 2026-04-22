@@ -1815,3 +1815,56 @@ func TestEngineAvailableCommandsUsesCachedSlice(t *testing.T) {
 		t.Fatalf("availableCommands() allocs = %v, want 0", allocs)
 	}
 }
+
+func TestEngineFixDebugTracksPathLoad(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git"}),
+		WithCommandLoader(func() []string {
+			return []string{"mytool"}
+		}),
+	)
+	eng.EnableDebug()
+
+	result := eng.Fix("mytol", "")
+	if !result.Fixed || result.Command != "mytool" {
+		t.Fatalf("expected path-loaded command fix, got %+v", result)
+	}
+	if result.Debug == nil {
+		t.Fatal("expected debug info to be attached")
+	}
+	if result.Debug.EngineDuration < 0 {
+		t.Fatalf("expected non-negative engine duration, got %+v", result.Debug)
+	}
+	if !result.Debug.LoadedPATHCommands || result.Debug.LoadedPATHCommandCount != 1 {
+		t.Fatalf("expected PATH load to be recorded, got %+v", result.Debug)
+	}
+	if len(result.Debug.Events) == 0 || result.Debug.Events[0].Stage != "distance" {
+		t.Fatalf("expected distance stage in debug events, got %+v", result.Debug.Events)
+	}
+}
+
+func TestEngineFixDebugTracksRejectedCandidate(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"mytool"}),
+		WithSimilarityThreshold(0.95),
+	)
+	eng.EnableDebug()
+
+	result := eng.Fix("mytol", "")
+	if result.Fixed {
+		t.Fatalf("expected fix to be rejected by strict threshold, got %+v", result)
+	}
+	if result.Debug == nil {
+		t.Fatal("expected debug info to be attached")
+	}
+	if result.Debug.EngineDuration < 0 {
+		t.Fatalf("expected non-negative engine duration, got %+v", result.Debug)
+	}
+	if len(result.Debug.RejectedCandidates) == 0 {
+		t.Fatalf("expected rejected candidate trace, got %+v", result.Debug)
+	}
+	candidate := result.Debug.RejectedCandidates[0]
+	if candidate.Stage != "distance" || candidate.Candidate != "mytool" {
+		t.Fatalf("unexpected rejected candidate: %+v", candidate)
+	}
+}

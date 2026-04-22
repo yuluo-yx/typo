@@ -20,6 +20,7 @@ typo fix "typo hsitory lsit"
 - `--exit-code <n>`：把上一条命令的退出码作为额外修正上下文。
 - `--no-history`：本次修正不写入历史记录。
 - `--alias-context <file>`：读取 shell 集成采集的修正上下文。
+- `--debug`：把本次修正链路的调试信息输出到 stderr，不影响 stdout 上的修正命令。
 
 `--alias-context` 主要由 `typo init <shell>` 生成的脚本内部使用。该上下文是
 临时的、仅属于当前 shell 会话；Typo 会先展开 `k=kubectl` 这类别名，再把 `$VAR`
@@ -27,6 +28,16 @@ token 与当前会话里的环境变量名（例如 `$HOME`）进行匹配，最
 原始别名形态。
 
 重复出现且被接受的修正会在达到阈值后静默提升为用户规则。可通过 `typo config set auto-learn-threshold 0` 关闭该行为。
+
+`--debug` 输出当前会话内的可观测信息，包括：
+
+- 命中的修正阶段和每一轮 pass 的前后命令。
+- 是否使用了 alias 上下文、parser、history、subcommand 等链路。
+- 是否按需加载了 PATH 命令集。
+- 被拒绝的高分候选（如果有）。
+- auto-learn 是否触发、是否超时，以及原因。
+- 总耗时、引擎修正耗时，以及 auto-learn 等待耗时。
+- 总耗时、引擎修正耗时，以及 auto-learn 等待耗时。
 
 ## `typo learn`
 
