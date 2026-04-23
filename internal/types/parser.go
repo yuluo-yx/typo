@@ -18,6 +18,7 @@ type ParserResult struct {
 	Command string // The corrected command.
 	Message string // Optional message to display.
 	Kind    string // Internal result tag used to distinguish fix categories.
+	Parser  string // The parser that produced the result, when available.
 }
 
 // AliasContextEntry describes one shell-local correction context entry captured by shell integration.

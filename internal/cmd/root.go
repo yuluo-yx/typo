@@ -113,6 +113,7 @@ Usage:
   typo fix --exit-code <n> <command>      Fix command with previous exit code
   typo fix --alias-context <file> <command>
                                            Fix command with shell correction context
+  typo fix --debug <command>              Print fix debug trace to stderr
   typo learn <from> <to>                  Learn a correction
   typo config list                        List current configuration values
   typo config get <key>                   Show a single configuration value

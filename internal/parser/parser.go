@@ -27,6 +27,9 @@ func (r *Registry) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	for _, p := range r.parsers {
 		result := p.Parse(ctx)
 		if result.Fixed {
+			if result.Parser == "" {
+				result.Parser = p.Name()
+			}
 			return result
 		}
 	}

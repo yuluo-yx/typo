@@ -393,13 +393,14 @@ func TestRunAutoLearnWithinTimeout(t *testing.T) {
 
 	autoLearnFixTimeout = 20 * time.Millisecond
 	started := make(chan struct{}, 1)
-	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) {
+	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) itypes.AutoLearnDebugInfo {
 		started <- struct{}{}
 		<-ctx.Done()
+		return itypes.AutoLearnDebugInfo{Attempted: true, TimedOut: true, Reason: ctx.Err().Error()}
 	}
 
 	start := time.Now()
-	runAutoLearnWithinTimeout(engine.NewEngine(), "gut status", "git status")
+	info := runAutoLearnWithinTimeout(engine.NewEngine(), "gut status", "git status")
 	elapsed := time.Since(start)
 
 	select {
@@ -407,8 +408,61 @@ func TestRunAutoLearnWithinTimeout(t *testing.T) {
 	default:
 		t.Fatal("Expected auto learn worker to start")
 	}
+	if !info.Attempted || !info.TimedOut {
+		t.Fatalf("Expected timeout debug info, got %+v", info)
+	}
 	if elapsed >= 250*time.Millisecond {
 		t.Fatalf("Expected auto learn wait to stop at timeout, got %v", elapsed)
+	}
+}
+
+func TestFixCommandDebugOutput(t *testing.T) {
+	tmpHome := useTempHome(t)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--debug", "gut", "status"})
+	if code != 0 {
+		t.Fatalf("debug fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if strings.TrimSpace(stdout) != "git status" {
+		t.Fatalf("expected fixed command in stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "typo: debug") {
+		t.Fatalf("expected debug header, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "stage pass=1 stage=rule") {
+		t.Fatalf("expected rule stage in debug output, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "timing total=") {
+		t.Fatalf("expected timing line in debug output, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "auto-learn attempted=yes") {
+		t.Fatalf("expected auto-learn attempt in debug output, got %q", stderr)
+	}
+	historyFile := filepath.Join(tmpHome, ".typo", "usage_history.json")
+	assertFileExists(t, historyFile, "debug fix should still record history")
+}
+
+func TestFixCommandDebugOutputNoMatch(t *testing.T) {
+	useTempHome(t)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--debug", "xyzabc"})
+	if code != 1 {
+		t.Fatalf("expected no-match exit code, got code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected empty stdout for no-match debug run, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "typo: no correction found") {
+		t.Fatalf("expected no correction message, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "matched-stages=none") {
+		t.Fatalf("expected empty stage summary, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "timing total=") {
+		t.Fatalf("expected timing line in no-match debug output, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "auto-learn attempted=no") {
+		t.Fatalf("expected auto-learn skipped summary, got %q", stderr)
 	}
 }
 
