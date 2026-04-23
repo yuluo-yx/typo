@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0](https://github.com/yuluo-yx/typo/compare/v1.0.0...v1.1.0) (2026-04-23)
+
+
+### Features
+
+* **cmd:** add fix debug command ([#129](https://github.com/yuluo-yx/typo/issues/129)) ([fd14c6a](https://github.com/yuluo-yx/typo/commit/fd14c6a59e30b99a0aad1e6886e1eaa4c8ce5ac8))
+* **cmd:** add typo stats command ([642daf1](https://github.com/yuluo-yx/typo/commit/642daf19452c60a5ac2a800e13d3f0cb59874b83))
+* **enginee:** add env alias support ([#124](https://github.com/yuluo-yx/typo/issues/124)) ([d921b4d](https://github.com/yuluo-yx/typo/commit/d921b4d355d480699e9ffbc5b01477e97228ee01))
+* **enginee:** add shell env context,  style ([#128](https://github.com/yuluo-yx/typo/issues/128)) ([0e6abbb](https://github.com/yuluo-yx/typo/commit/0e6abbb92d893992ff4e06029d46b4e443d49809))
+* **hisroty:** add auto learn from usage history ([#127](https://github.com/yuluo-yx/typo/issues/127)) ([c26d2d0](https://github.com/yuluo-yx/typo/commit/c26d2d0c38af6a3c2e2075878cad974c41617871))
+
+
+### Bug Fixes
+
+* **enginee:** correct transposed nested subcommands ([#119](https://github.com/yuluo-yx/typo/issues/119)) ([7ce978c](https://github.com/yuluo-yx/typo/commit/7ce978c7cfdfcc97e0532f2e3d307f25411b90ee))
+
 ## [1.0.0](https://github.com/yuluo-yx/typo/compare/v0.2.0...v1.0.0) (2026-04-18)
 
 
