@@ -8,11 +8,22 @@ type UserConfig struct {
 	AutoLearnThreshold  int                      `json:"auto_learn_threshold"`
 	Keyboard            string                   `json:"keyboard"`
 	History             HistoryConfig            `json:"history"`
+	Experimental        ExperimentalConfig       `json:"experimental"`
 	Rules               map[string]RuleSetConfig `json:"rules"`
 }
 
 // HistoryConfig controls persistence for correction history.
 type HistoryConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+// ExperimentalConfig groups opt-in experimental behavior switches.
+type ExperimentalConfig struct {
+	LongOptionCorrection LongOptionCorrectionConfig `json:"long_option_correction"`
+}
+
+// LongOptionCorrectionConfig controls experimental long-option typo correction.
+type LongOptionCorrectionConfig struct {
 	Enabled bool `json:"enabled"`
 }
 

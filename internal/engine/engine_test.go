@@ -1135,7 +1135,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 		SchemaVersion int                       `json:"schema_version"`
 		Tools         []*commands.ToolTreeCache `json:"tools"`
 	}{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		Tools: []*commands.ToolTreeCache{
 			toolTreeCache("git", map[string]*commands.TreeNode{
 				"status": {}, "remote": {}, "rev-parse": {}, "ls-files": {},
@@ -1334,6 +1334,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git", "docker", "npm", "yarn", "cargo", "go", "pip", "pip3", "composer", "kubectl", "brew", "terraform", "helm", "typo", "aws", "gcloud", "az"}),
 		WithKeyboard(NewQWERTYKeyboard()),
+		WithExperimentalLongOptionFix(true),
 		WithToolTrees(subcmdRegistry),
 		WithCommandTrees(commands.NewCommandTreeRegistry()),
 	)
@@ -1535,6 +1536,21 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			wantCmd: "cargo --version",
 		},
 		{
+			name:    "git long option typo",
+			cmd:     "git commit " + misspelledLongAmendOption(),
+			wantCmd: "git commit --amend",
+		},
+		{
+			name:    "docker long option typo after positional",
+			cmd:     "docker run alpine --rmr",
+			wantCmd: "docker run alpine --rm",
+		},
+		{
+			name:    "cargo subcommand long option typo",
+			cmd:     "cargo build --realse",
+			wantCmd: "cargo build --release",
+		},
+		{
 			name:    "kubectl main command and subcommand typo",
 			cmd:     "kubctl desribe pod/nginx",
 			wantCmd: "kubectl describe pod/nginx",
@@ -1592,6 +1608,21 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 				t.Errorf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
 			}
 		})
+	}
+}
+
+func TestEngine_ExperimentalLongOptionFixCanBeDisabled(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	eng.longOptionFixEnabled = false
+
+	for _, cmd := range []string{
+		"git commit " + misspelledLongAmendOption(),
+		"docker run alpine --rmr",
+		"cargo build --realse",
+	} {
+		if got := eng.Fix(cmd, ""); got.Fixed {
+			t.Fatalf("Expected experimental long-option fix to stay disabled for %q, got %+v", cmd, got)
+		}
 	}
 }
 

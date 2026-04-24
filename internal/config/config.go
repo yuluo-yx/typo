@@ -71,10 +71,19 @@ type fileUserConfig struct {
 	AutoLearnThreshold  *int                      `json:"auto_learn_threshold,omitempty"`
 	Keyboard            *string                   `json:"keyboard,omitempty"`
 	History             *fileHistoryConfig        `json:"history,omitempty"`
+	Experimental        *fileExperimentalConfig   `json:"experimental,omitempty"`
 	Rules               map[string]fileRuleConfig `json:"rules,omitempty"`
 }
 
 type fileHistoryConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type fileExperimentalConfig struct {
+	LongOptionCorrection *fileLongOptionCorrectionConfig `json:"long_option_correction,omitempty"`
+}
+
+type fileLongOptionCorrectionConfig struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
@@ -105,7 +114,10 @@ func DefaultUserConfig() itypes.UserConfig {
 		AutoLearnThreshold:  defaultAutoLearnThreshold,
 		Keyboard:            defaultKeyboardLayout,
 		History:             itypes.HistoryConfig{Enabled: true},
-		Rules:               rules,
+		Experimental: itypes.ExperimentalConfig{
+			LongOptionCorrection: itypes.LongOptionCorrectionConfig{Enabled: false},
+		},
+		Rules: rules,
 	}
 }
 
@@ -175,7 +187,7 @@ func (c *Config) Generate(force bool) error {
 
 // ListSettings returns config items for `typo config list`.
 func (c *Config) ListSettings() []Setting {
-	settings := make([]Setting, 0, 6+len(c.User.Rules))
+	settings := make([]Setting, 0, 7+len(c.User.Rules))
 	settings = append(settings,
 		Setting{Key: "similarity-threshold", Value: formatFloat(c.User.SimilarityThreshold)},
 		Setting{Key: "max-edit-distance", Value: strconv.Itoa(c.User.MaxEditDistance)},
@@ -183,6 +195,10 @@ func (c *Config) ListSettings() []Setting {
 		Setting{Key: "auto-learn-threshold", Value: strconv.Itoa(c.User.AutoLearnThreshold)},
 		Setting{Key: "keyboard", Value: c.User.Keyboard},
 		Setting{Key: "history.enabled", Value: strconv.FormatBool(c.User.History.Enabled)},
+		Setting{
+			Key:   "experimental.long-option-correction.enabled",
+			Value: strconv.FormatBool(c.User.Experimental.LongOptionCorrection.Enabled),
+		},
 	)
 
 	for _, scope := range sortedRuleScopes(c.User.Rules) {
@@ -210,6 +226,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.User.Keyboard, nil
 	case "history.enabled":
 		return strconv.FormatBool(c.User.History.Enabled), nil
+	case "experimental.long-option-correction.enabled":
+		return strconv.FormatBool(c.User.Experimental.LongOptionCorrection.Enabled), nil
 	default:
 		scope, ok := parseRuleScopeKey(key)
 		if !ok {
@@ -295,6 +313,12 @@ func applyUserConfigValue(next *itypes.UserConfig, key, value string) error {
 			return err
 		}
 		next.History.Enabled = parsed
+	case "experimental.long-option-correction.enabled":
+		parsed, err := parseConfigBoolValue(value, key)
+		if err != nil {
+			return err
+		}
+		next.Experimental.LongOptionCorrection.Enabled = parsed
 	default:
 		return applyRuleScopeValue(next, key, value)
 	}
@@ -428,6 +452,11 @@ func applyFileConfig(dst *itypes.UserConfig, src fileUserConfig) {
 	}
 	if src.History != nil && src.History.Enabled != nil {
 		dst.History.Enabled = *src.History.Enabled
+	}
+	if src.Experimental != nil &&
+		src.Experimental.LongOptionCorrection != nil &&
+		src.Experimental.LongOptionCorrection.Enabled != nil {
+		dst.Experimental.LongOptionCorrection.Enabled = *src.Experimental.LongOptionCorrection.Enabled
 	}
 	for scope, rule := range src.Rules {
 		if rule.Enabled == nil {

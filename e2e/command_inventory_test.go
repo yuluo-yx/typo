@@ -2,6 +2,10 @@ package e2e
 
 import "testing"
 
+func e2eMisspelledLongAmendOption() string {
+	return "--am" + "mend"
+}
+
 func TestE2EInventory_BuiltinsAndSystemCommands(t *testing.T) {
 	env := newE2EEnv(t)
 
@@ -119,7 +123,6 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 		{name: "cargo main command", command: "crago build", want: "cargo build\n"},
 		{name: "cargo subcommand", command: "cargo chcek", want: "cargo check\n"},
 		{name: "cargo help subcommand", command: "cargo helpd", want: "cargo help\n"},
-		{name: "cargo global option", command: "cargo --versino", want: "cargo --version\n"},
 		{name: "go main command", command: "og test ./...", want: "go test ./...\n"},
 		{name: "go subcommand", command: "go biuld ./...", want: "go build ./...\n"},
 		{name: "pip main command", command: "pi list", want: "pip list\n"},
@@ -158,6 +161,101 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 			}
 		})
+	}
+}
+
+func TestE2EInventory_ExperimentalLongOptions(t *testing.T) {
+	env := newE2EEnv(t)
+
+	result := env.run(t, "config", "set", "experimental.long-option-correction.enabled", "true")
+	if result.code != 0 {
+		t.Fatalf("failed to enable experimental long-option correction: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "cargo global option", command: "cargo --versino", want: "cargo --version\n"},
+		{name: "git commit long option", command: "git commit " + e2eMisspelledLongAmendOption(), want: "git commit --amend\n"},
+		{name: "docker run option after positional argument", command: "docker run alpine --rmr", want: "docker run alpine --rm\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := env.run(t, "fix", "--no-history", tt.command)
+			if result.code != 0 || result.stdout != tt.want {
+				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+			}
+		})
+	}
+}
+
+func TestE2EInventory_ExperimentalLongOptions_DefaultDisabled(t *testing.T) {
+	env := newE2EEnv(t)
+
+	result := env.run(t, "fix", "--no-history", "cargo --versino")
+	if result.code == 0 {
+		t.Fatalf("expected experimental long-option fix to stay disabled by default, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if result.stdout != "" || result.stderr != "typo: no correction found\n" {
+		t.Fatalf("unexpected default-disabled result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
+func TestE2EInventory_ExperimentalLongOptions_DoNotTouchShortFlags(t *testing.T) {
+	env := newE2EEnv(t)
+
+	result := env.run(t, "config", "set", "experimental.long-option-correction.enabled", "true")
+	if result.code != 0 {
+		t.Fatalf("failed to enable experimental long-option correction: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+
+	result = env.run(t, "fix", "--no-history", "grep -Q 5 app.log")
+	if result.code == 0 {
+		t.Fatalf("expected short-flag typo to remain untouched, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if result.stdout != "" || result.stderr != "typo: no correction found\n" {
+		t.Fatalf("unexpected short-flag result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
+func TestE2EInventory_ExperimentalLongOptions_RespectMaxEditDistance(t *testing.T) {
+	env := newE2EEnv(t)
+
+	result := env.run(t, "config", "set", "experimental.long-option-correction.enabled", "true")
+	if result.code != 0 {
+		t.Fatalf("failed to enable experimental long-option correction: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+	result = env.run(t, "config", "set", "max-edit-distance", "0")
+	if result.code != 0 {
+		t.Fatalf("failed to set max-edit-distance=0: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+
+	result = env.run(t, "fix", "--no-history", "cargo --versino")
+	if result.code == 0 {
+		t.Fatalf("expected max-edit-distance=0 to disable long-option fix, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if result.stdout != "" || result.stderr != "typo: no correction found\n" {
+		t.Fatalf("unexpected max-edit-distance=0 result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+}
+
+func TestE2EInventory_ExperimentalLongOptions_DoNotConsumeSubcommandAsValue(t *testing.T) {
+	env := newE2EEnv(t)
+
+	result := env.run(t, "config", "set", "experimental.long-option-correction.enabled", "true")
+	if result.code != 0 {
+		t.Fatalf("failed to enable experimental long-option correction: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+
+	result = env.run(t, "fix", "--no-history", "docker --contex run")
+	if result.code == 0 {
+		t.Fatalf("expected value-taking option typo to stay unfixed when next token is a subcommand, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if result.stdout != "" || result.stderr != "typo: no correction found\n" {
+		t.Fatalf("unexpected swallowed-subcommand result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }
 

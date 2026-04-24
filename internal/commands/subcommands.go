@@ -33,14 +33,18 @@ type ToolTreeCache struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// TreeNode is the JSON tree node used by the v2 subcommand cache.
+// TreeNode is the JSON tree node used by the current subcommand cache schema.
 type TreeNode struct {
-	Children    map[string]*TreeNode `json:"children,omitempty"`
-	Terminal    bool                 `json:"terminal,omitempty"`
-	Passthrough bool                 `json:"passthrough,omitempty"`
-	Alias       string               `json:"alias,omitempty"`
+	Children              map[string]*TreeNode `json:"children,omitempty"`
+	Terminal              bool                 `json:"terminal,omitempty"`
+	Passthrough           bool                 `json:"passthrough,omitempty"`
+	Alias                 string               `json:"alias,omitempty"`
+	LongOptions           []string             `json:"long_options,omitempty"`
+	LongOptionsWithValues []string             `json:"long_options_with_values,omitempty"`
 
-	childTokensCache []string `json:"-"`
+	childTokensCache            []string        `json:"-"`
+	longOptionSetCache          map[string]bool `json:"-"`
+	longOptionWithValueSetCache map[string]bool `json:"-"`
 }
 
 // ToCommandTreeNode converts a cached JSON tree node into an engine command tree node.
@@ -68,9 +72,11 @@ func (n *TreeNode) clone() *TreeNode {
 	}
 
 	cloned := &TreeNode{
-		Terminal:    n.Terminal,
-		Passthrough: n.Passthrough,
-		Alias:       n.Alias,
+		Terminal:              n.Terminal,
+		Passthrough:           n.Passthrough,
+		Alias:                 n.Alias,
+		LongOptions:           append([]string(nil), n.LongOptions...),
+		LongOptionsWithValues: append([]string(nil), n.LongOptionsWithValues...),
 	}
 	if len(n.Children) > 0 {
 		cloned.Children = make(map[string]*TreeNode, len(n.Children))
@@ -104,6 +110,11 @@ func (n *TreeNode) refreshChildTokens() {
 		return
 	}
 
+	n.LongOptions = normalizeLongOptions(n.LongOptions)
+	n.LongOptionsWithValues = normalizeLongOptions(n.LongOptionsWithValues)
+	n.longOptionSetCache = utils.StringSet(n.LongOptions)
+	n.longOptionWithValueSetCache = utils.StringSet(n.LongOptionsWithValues)
+
 	if len(n.Children) == 0 {
 		n.childTokensCache = nil
 		return
@@ -118,6 +129,36 @@ func (n *TreeNode) refreshChildTokens() {
 	n.childTokensCache = tokens
 }
 
+func (n *TreeNode) longOptions() []string {
+	if n == nil || len(n.LongOptions) == 0 {
+		return nil
+	}
+	if len(n.longOptionSetCache) != len(n.LongOptions) {
+		n.refreshChildTokens()
+	}
+	return append([]string(nil), n.LongOptions...)
+}
+
+func (n *TreeNode) hasLongOption(option string) bool {
+	if n == nil || option == "" {
+		return false
+	}
+	if len(n.longOptionSetCache) != len(n.LongOptions) {
+		n.refreshChildTokens()
+	}
+	return n.longOptionSetCache[option]
+}
+
+func (n *TreeNode) longOptionTakesValue(option string) bool {
+	if n == nil || option == "" {
+		return false
+	}
+	if len(n.longOptionWithValueSetCache) != len(n.LongOptionsWithValues) {
+		n.refreshChildTokens()
+	}
+	return n.longOptionWithValueSetCache[option]
+}
+
 // ToolTreeRegistry manages tree-shaped subcommands for external tools.
 type ToolTreeRegistry struct {
 	mu          sync.RWMutex
@@ -129,12 +170,12 @@ type ToolTreeRegistry struct {
 }
 
 const (
-	subcommandCacheSchemaVersion   = 2
+	subcommandCacheSchemaVersion   = 3
 	defaultHelpTimeout             = 1000 * time.Millisecond
 	maxHierarchicalSubcommandDepth = 3
 )
 
-// NewToolTreeRegistry creates and loads the v2 tree-shaped subcommand cache.
+// NewToolTreeRegistry creates and loads the current tree-shaped subcommand cache.
 func NewToolTreeRegistry(cacheDir string) *ToolTreeRegistry {
 	r := &ToolTreeRegistry{
 		trees:       make(map[string]*ToolTreeCache),
@@ -251,6 +292,21 @@ func (r *ToolTreeRegistry) cachedChildren(tool string, prefix []string) []string
 	return children
 }
 
+func (r *ToolTreeRegistry) cachedPathNodesLocked(tool string, prefix []string) []*TreeNode {
+	if r == nil {
+		return nil
+	}
+
+	cache := r.trees[tool]
+	if cache == nil || cache.Tree == nil {
+		return nil
+	}
+	if !cache.UpdatedAt.IsZero() && time.Since(cache.UpdatedAt) >= r.expiry() {
+		return nil
+	}
+	return collectTreePathNodes(cache.Tree, prefix)
+}
+
 // cachedNodeLocked returns a cache node while r.mu is held by the caller.
 func (r *ToolTreeRegistry) cachedNodeLocked(tool string, prefix []string) *TreeNode {
 	if r == nil {
@@ -284,6 +340,46 @@ func mergeChildTokens(primary, fallback *TreeNode) []string {
 	return utils.MergeUniqueStrings(primaryTokens, fallbackTokens...)
 }
 
+func normalizeLongOptions(options []string) []string {
+	if len(options) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool, len(options))
+	normalized := make([]string, 0, len(options))
+	for _, option := range options {
+		option = strings.TrimSpace(option)
+		if option == "" || !strings.HasPrefix(option, "--") || option == "--" || seen[option] {
+			continue
+		}
+		seen[option] = true
+		normalized = append(normalized, option)
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
+func collectTreePathNodes(root *TreeNode, prefix []string) []*TreeNode {
+	if root == nil {
+		return nil
+	}
+
+	nodes := []*TreeNode{root}
+	node := root
+	for _, token := range prefix {
+		if node == nil || len(node.Children) == 0 {
+			break
+		}
+		child, ok := node.Children[token]
+		if !ok {
+			break
+		}
+		node = child
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
 func (r *ToolTreeRegistry) pathStopsAtTerminal(tool string, prefix []string) bool {
 	if len(prefix) == 0 {
 		return false
@@ -300,6 +396,71 @@ func (r *ToolTreeRegistry) pathStopsAtTerminal(tool string, prefix []string) boo
 	}
 
 	return isTerminalLeaf(builtinNodeForPath(tool, prefix))
+}
+
+// LongOptionsInScope returns inherited long options visible at the given tool path.
+func (r *ToolTreeRegistry) LongOptionsInScope(tool string, prefix []string) []string {
+	if tool == "" {
+		return nil
+	}
+
+	options := make([]string, 0)
+	if r != nil {
+		r.ensureTrees()
+		r.mu.RLock()
+		for _, node := range r.cachedPathNodesLocked(tool, prefix) {
+			options = utils.MergeUniqueStrings(options, node.longOptions()...)
+		}
+		r.mu.RUnlock()
+	}
+
+	for _, node := range collectTreePathNodes(builtinTreeForTool(tool), prefix) {
+		options = utils.MergeUniqueStrings(options, node.longOptions()...)
+	}
+
+	return options
+}
+
+// LongOptionTakesValue reports whether any in-scope long option consumes the next token.
+func (r *ToolTreeRegistry) LongOptionTakesValue(tool string, prefix []string, option string) bool {
+	return r.anyLongOptionInScope(tool, prefix, func(node *TreeNode) bool {
+		return node.longOptionTakesValue(option)
+	})
+}
+
+// HasLongOptionInScope reports whether the given long option is known at the tool path.
+func (r *ToolTreeRegistry) HasLongOptionInScope(tool string, prefix []string, option string) bool {
+	return r.anyLongOptionInScope(tool, prefix, func(node *TreeNode) bool {
+		return node.hasLongOption(option)
+	})
+}
+
+func (r *ToolTreeRegistry) anyLongOptionInScope(tool string, prefix []string, match func(*TreeNode) bool) bool {
+	if tool == "" {
+		return false
+	}
+	if match == nil {
+		return false
+	}
+
+	if r != nil {
+		r.ensureTrees()
+		r.mu.RLock()
+		for _, node := range r.cachedPathNodesLocked(tool, prefix) {
+			if match(node) {
+				r.mu.RUnlock()
+				return true
+			}
+		}
+		r.mu.RUnlock()
+	}
+
+	for _, node := range collectTreePathNodes(builtinTreeForTool(tool), prefix) {
+		if match(node) {
+			return true
+		}
+	}
+	return false
 }
 
 func isTerminalLeaf(node *TreeNode) bool {

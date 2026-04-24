@@ -72,6 +72,7 @@ typo config gen --force
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `experimental.long-option-correction.enabled` *（实验性；默认：`false`）*
 - `rules.<scope>.enabled`
 
 ## `typo rules`

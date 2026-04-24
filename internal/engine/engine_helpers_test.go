@@ -622,12 +622,12 @@ func mixedPrefixVersionOption() string {
 	return "-ver" + "soin"
 }
 
+func misspelledLongAmendOption() string {
+	return "--am" + "mend"
+}
+
 func TestEngine_TryToolOptionFix_FallbackBranches(t *testing.T) {
-	eng := NewEngine(
-		WithCommands([]string{"cargo"}),
-		WithKeyboard(NewQWERTYKeyboard()),
-	)
-	versionOptionTypo := misspelledLongVersionOption()
+	eng := newEngineWithCommonToolSubcommands(t)
 
 	tests := []struct {
 		name      string
@@ -635,16 +635,18 @@ func TestEngine_TryToolOptionFix_FallbackBranches(t *testing.T) {
 		wantFixed bool
 		wantCmd   string
 	}{
-		{name: "shell path with long option", cmd: "cargo " + versionOptionTypo + " build", wantFixed: true, wantCmd: "cargo --version build"},
-		{name: "shell path skips option value", cmd: "cargo -C repo --colro always", wantFixed: true, wantCmd: "cargo -C repo --color always"},
-		{name: "fallback path resolves command", cmd: "crago " + versionOptionTypo + " '", wantFixed: true, wantCmd: "cargo --version '"},
-		{name: "fallback path skips option value", cmd: "cargo -C repo --colro '", wantFixed: true, wantCmd: "cargo -C repo --color '"},
-		{name: "known option continues before fixing", cmd: "cargo --frozen " + versionOptionTypo + " '", wantFixed: true, wantCmd: "cargo --frozen --version '"},
+		{name: "root long option before subcommand", cmd: "docker --contex prod run", wantFixed: true, wantCmd: "docker --context prod run"},
+		{name: "subcommand scoped option", cmd: "cargo build --realse", wantFixed: true, wantCmd: "cargo build --release"},
+		{name: "suffix preserved", cmd: "docker run --detatch=false", wantFixed: true, wantCmd: "docker run --detach=false"},
+		{name: "positionals do not stop scan", cmd: "docker run alpine --rmr", wantFixed: true, wantCmd: "docker run alpine --rm"},
+		{name: "known long option with value skips payload", cmd: "gcloud compute --zone us-east1 --qiuet", wantFixed: true, wantCmd: "gcloud compute --zone us-east1 --quiet"},
+		{name: "value-taking replacement does not swallow subcommand", cmd: "docker --contex run", wantFixed: false},
+		{name: "value-taking replacement does not swallow fuzzy subcommand", cmd: "docker --contex rn", wantFixed: false},
 		{name: "too short to inspect", cmd: "cargo", wantFixed: false},
-		{name: "unresolved command stays unchanged", cmd: "unknown " + versionOptionTypo + " build", wantFixed: false},
-		{name: "unknown option without close match", cmd: "cargo --zzzzz '", wantFixed: false},
-		{name: "non option stops scanning", cmd: "cargo build " + versionOptionTypo, wantFixed: false},
-		{name: "double dash stops option scan", cmd: "cargo -- " + versionOptionTypo, wantFixed: false},
+		{name: "unresolved command stays unchanged", cmd: "unknown --realse build", wantFixed: false},
+		{name: "unknown option without close match", cmd: "cargo build --zzzzz", wantFixed: false},
+		{name: "short option stays untouched", cmd: "grep -A 5 app.log", wantFixed: false},
+		{name: "double dash stops option scan", cmd: "git commit -- " + misspelledLongAmendOption(), wantFixed: false},
 	}
 
 	for _, tt := range tests {
@@ -658,6 +660,41 @@ func TestEngine_TryToolOptionFix_FallbackBranches(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEngine_TryToolOptionFix_Guardrails(t *testing.T) {
+	t.Run("no tool tree registry", func(t *testing.T) {
+		eng := NewEngine(
+			WithCommands([]string{"git"}),
+			WithExperimentalLongOptionFix(true),
+		)
+		if got := eng.tryToolOptionFix("git commit " + misspelledLongAmendOption()); got.Fixed {
+			t.Fatalf("Expected no fix without tool tree registry, got %+v", got)
+		}
+	})
+
+	t.Run("resolved command and root option", func(t *testing.T) {
+		eng := newEngineWithCommonToolSubcommands(t)
+		got := eng.tryToolOptionFix("dcoker --contex prod run")
+		if !got.Fixed || got.Command != "docker --context prod run" {
+			t.Fatalf("Expected resolved command long-option fix, got %+v", got)
+		}
+	})
+
+	t.Run("option out of scope", func(t *testing.T) {
+		eng := newEngineWithCommonToolSubcommands(t)
+		if got := eng.tryToolOptionFix("git status " + misspelledLongAmendOption()); got.Fixed {
+			t.Fatalf("Expected commit-only option to stay out of scope for git status, got %+v", got)
+		}
+	})
+
+	t.Run("respects configured max edit distance", func(t *testing.T) {
+		eng := newEngineWithCommonToolSubcommands(t)
+		eng.maxEditDistance = 0
+		if got := eng.tryToolOptionFix("cargo --versino"); got.Fixed {
+			t.Fatalf("Expected maxEditDistance=0 to disable long-option fuzzy fix, got %+v", got)
+		}
+	})
 }
 
 func TestToolOptionHelpers(t *testing.T) {
@@ -698,6 +735,64 @@ func TestToolOptionHelpers(t *testing.T) {
 	}
 	if got := closestToolOption("unknown", misspelledLongVersionOption(), matchCfg); got != "" {
 		t.Fatalf("closestToolOption() unknown command = %q, want empty", got)
+	}
+
+	if name, suffix, ok := splitLongOptionToken("--detach=false"); !ok || name != "--detach" || suffix != "=false" {
+		t.Fatalf("splitLongOptionToken() = (%q, %q, %v), want (--detach, =false, true)", name, suffix, ok)
+	}
+	if _, _, ok := splitLongOptionToken("-A"); ok {
+		t.Fatal("splitLongOptionToken(-A) should reject short options")
+	}
+	if got := closestLongOption([]string{"--detach", "--rm"}, "--detatch", distanceMatchConfig{
+		keyboard:            NewQWERTYKeyboard(),
+		maxEditDistance:     2,
+		similarityThreshold: 0.8,
+	}); got != "--detach" {
+		t.Fatalf("closestLongOption() = %q, want --detach", got)
+	}
+}
+
+func TestLongOptionBoundaryPreservingMatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		original  string
+		candidate string
+		want      bool
+	}{
+		{name: "release boundary match", original: "--realse", candidate: "--release", want: true},
+		{name: "too short", original: "--rma", candidate: "--rm", want: false},
+		{name: "different prefix", original: "--xelease", candidate: "--release", want: false},
+		{name: "different suffix", original: "--releasz", candidate: "--release", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isLongBoundaryPreservingMatch(tt.original, tt.candidate); got != tt.want {
+				t.Fatalf("isLongBoundaryPreservingMatch(%q, %q) = %v, want %v", tt.original, tt.candidate, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLongOptionHeuristicDistance(t *testing.T) {
+	tests := []struct {
+		name      string
+		original  string
+		candidate string
+		want      int
+	}{
+		{name: "exact", original: "--context", candidate: "--context", want: 0},
+		{name: "adjacent transposition", original: "--qiuet", candidate: "--quiet", want: 1},
+		{name: "missing rune plus transposition", original: "--realse", candidate: "--release", want: 2},
+		{name: "unsupported shape", original: "--relxasez", candidate: "--release", want: 999},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := longOptionHeuristicDistance(tt.original, tt.candidate); got != tt.want {
+				t.Fatalf("longOptionHeuristicDistance(%q, %q) = %d, want %d", tt.original, tt.candidate, got, tt.want)
+			}
+		})
 	}
 }
 
