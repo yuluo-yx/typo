@@ -724,3 +724,152 @@ func TestNpmParser_ParseJustSuggestionNoParts(t *testing.T) {
 		t.Error("Expected not to fix when npm has no subcommand to replace")
 	}
 }
+
+func TestGenericParser_Name(t *testing.T) {
+	p := NewGenericParser()
+	if p.Name() != "generic" {
+		t.Errorf("Name() = %q, want 'generic'", p.Name())
+	}
+}
+
+func TestGenericParser_Parse(t *testing.T) {
+	p := NewGenericParser()
+
+	tests := []struct {
+		name    string
+		cmd     string
+		stderr  string
+		wantFix bool
+		wantCmd string
+	}{
+		{
+			// rustup: single-quoted inline hint
+			name:    "rustup did you mean",
+			cmd:     "rustup taget list",
+			stderr:  "error: Unknown command 'taget'. Did you mean 'target'?",
+			wantFix: true,
+			wantCmd: "rustup target list",
+		},
+		{
+			// cargo: backtick-quoted inline hint with indentation
+			name:    "cargo did you mean",
+			cmd:     "cargo buid",
+			stderr:  "error: no such subcommand: `buid`\n\n\tDid you mean `build`?\n",
+			wantFix: true,
+			wantCmd: "cargo build",
+		},
+		{
+			// helm: next-line hint after "Did you mean this?"
+			name:    "helm did you mean this",
+			cmd:     "helm upgraed myrelease ./chart",
+			stderr:  "Error: unknown command \"upgraed\" for \"helm\"\n\nDid you mean this?\n\tupgrade\n\nRun 'helm --help' for usage.",
+			wantFix: true,
+			wantCmd: "helm upgrade myrelease ./chart",
+		},
+		{
+			// gh: next-line hint after "Did you mean this?" — wrong token at position 1
+			name:    "gh did you mean this",
+			cmd:     "gh pr-lst",
+			stderr:  "unknown command \"pr-lst\" for \"gh\"\n\nDid you mean this?\n\tpr-list\n",
+			wantFix: true,
+			wantCmd: "gh pr-list",
+		},
+		{
+			// kubectl: next-line hint after "Did you mean this?"
+			name:    "kubectl did you mean this",
+			cmd:     "kubectl appli -f pod.yaml",
+			stderr:  "Error: unknown command \"appli\" for \"kubectl\"\n\nDid you mean this?\n\tapply\n",
+			wantFix: true,
+			wantCmd: "kubectl apply -f pod.yaml",
+		},
+		{
+			// poetry: next-line hint after "Did you mean one of these?"
+			name:    "poetry did you mean one of these",
+			cmd:     "poetry addd requests",
+			stderr:  "The command \"addd\" is not defined.\nDid you mean one of these?\n    add\n    addr\n",
+			wantFix: true,
+			wantCmd: "poetry add requests",
+		},
+		{
+			// pip: "maybe you meant" double-quoted inline hint
+			name:    "pip maybe you meant",
+			cmd:     "pip insatll requests",
+			stderr:  "ERROR: unknown command \"insatll\" - maybe you meant \"install\"\n",
+			wantFix: true,
+			wantCmd: "pip install requests",
+		},
+		{
+			// Flag suggestion should be ignored — not a subcommand fix
+			name:    "pnpm flag suggestion ignored",
+			cmd:     "pnpm install --savde",
+			stderr:  "ERR_PNPM_UNKNOWN_OPTIONS  Unknown option: '--savde'\nDid you mean '--save'?\n",
+			wantFix: false,
+		},
+		{
+			// No stderr hint at all
+			name:    "no hint in stderr",
+			cmd:     "sometool badcmd",
+			stderr:  "error: unrecognized command\n",
+			wantFix: false,
+		},
+		{
+			// Single-word command with no subcommand to replace
+			name:    "command with no subcommand",
+			cmd:     "rustup",
+			stderr:  "Did you mean 'target'?",
+			wantFix: false,
+		},
+		{
+			// Git commands should not be double-handled — git parser runs first,
+			// but even if it fell through, we verify generic produces a valid fix
+			name:    "generic does not break on git-style stderr",
+			cmd:     "git comit -m 'msg'",
+			stderr:  "git: 'comit' is not a git command.\nDid you mean 'commit'?\n",
+			wantFix: true,
+			wantCmd: "git commit -m 'msg'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
+			if result.Fixed != tt.wantFix {
+				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Errorf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestGenericParser_RegisteredLast(t *testing.T) {
+	r := NewRegistry()
+
+	// A git error must still be handled by the git parser (not the generic one)
+	result := r.Parse(itypes.ParserContext{
+		Command: "git comit -m 'msg'",
+		Stderr:  "git: 'comit' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tcommit\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected registry to fix git error")
+	}
+	if result.Parser != "git" {
+		t.Errorf("Expected git parser to handle git error, got %q", result.Parser)
+	}
+
+	// An unknown CLI with a generic hint must be handled by the generic parser
+	result = r.Parse(itypes.ParserContext{
+		Command: "rustup taget list",
+		Stderr:  "error: Unknown command 'taget'. Did you mean 'target'?",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected registry to fix rustup error via generic parser")
+	}
+	if result.Command != "rustup target list" {
+		t.Errorf("Expected 'rustup target list', got %q", result.Command)
+	}
+	if result.Parser != "generic" {
+		t.Errorf("Expected generic parser to handle rustup error, got %q", result.Parser)
+	}
+}
