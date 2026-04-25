@@ -138,6 +138,44 @@ func TestLoadCache_LoadsExistingCache(t *testing.T) {
 	}
 }
 
+func TestLoadCache_PreservesLongOptionMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, "subcommands.json")
+
+	wrapper := struct {
+		SchemaVersion int              `json:"schema_version"`
+		Tools         []*ToolTreeCache `json:"tools"`
+	}{
+		SchemaVersion: subcommandCacheSchemaVersion,
+		Tools: []*ToolTreeCache{
+			{
+				Tool: "git",
+				Tree: withLongOptions(treeBranch(map[string]*TreeNode{
+					"commit": withLongOptions(treeLeafPassthrough(), []string{"--amend"}, nil),
+				}), []string{"--work-tree"}, []string{"--work-tree"}),
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(wrapper, "", "  ")
+	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
+		t.Fatalf("Failed to write cache file: %v", err)
+	}
+
+	r := &ToolTreeRegistry{
+		trees:    make(map[string]*ToolTreeCache),
+		cacheDir: tmpDir,
+	}
+	r.loadCache()
+
+	if !r.HasLongOptionInScope("git", []string{"commit"}, "--amend") {
+		t.Fatal("Expected cached git commit scope to preserve --amend")
+	}
+	if !r.LongOptionTakesValue("git", nil, "--work-tree") {
+		t.Fatal("Expected cached git root scope to preserve --work-tree value semantics")
+	}
+}
+
 func TestLoadCache_NonexistentCacheFile(t *testing.T) {
 	r := &ToolTreeRegistry{
 		trees:    make(map[string]*ToolTreeCache),
@@ -415,6 +453,45 @@ func TestToolTreeRegistry_BuiltinNestedSemantics(t *testing.T) {
 	}
 	if got := r.GetChildren("git", []string{"commit"}); len(got) != 0 {
 		t.Fatalf("Expected passthrough git commit to have no child candidates, got %v", got)
+	}
+}
+
+func TestToolTreeRegistry_LongOptionsInScope(t *testing.T) {
+	r := &ToolTreeRegistry{cacheExpiry: 7 * 24 * time.Hour}
+
+	rootOptions := r.LongOptionsInScope("docker", nil)
+	if !hasString(rootOptions, "--context") {
+		t.Fatalf("Expected docker root long options to include --context, got %v", rootOptions)
+	}
+
+	runOptions := r.LongOptionsInScope("docker", []string{"run"})
+	for _, want := range []string{"--context", "--detach", "--rm"} {
+		if !hasString(runOptions, want) {
+			t.Fatalf("Expected docker run long options to include %q, got %v", want, runOptions)
+		}
+	}
+
+	if !r.HasLongOptionInScope("git", []string{"commit"}, "--amend") {
+		t.Fatal("Expected git commit scope to know --amend")
+	}
+	if !r.LongOptionTakesValue("gcloud", []string{"compute"}, "--zone") {
+		t.Fatal("Expected gcloud compute --zone to take a value")
+	}
+	if r.HasLongOptionInScope("docker", []string{"run"}, "-p") {
+		t.Fatal("Expected short option -p to stay outside long-option scope")
+	}
+	if got := r.LongOptionsInScope("unknown", nil); len(got) != 0 {
+		t.Fatalf("Expected unknown tool to have no long options, got %v", got)
+	}
+	if r.LongOptionTakesValue("unknown", nil, "--context") {
+		t.Fatal("Expected unknown tool value lookup to be false")
+	}
+}
+
+func TestNormalizeLongOptions(t *testing.T) {
+	got := normalizeLongOptions([]string{"--context", "", "--context", "-C", "--", "--config"})
+	if len(got) != 2 || got[0] != "--config" || got[1] != "--context" {
+		t.Fatalf("normalizeLongOptions() = %v, want [--config --context]", got)
 	}
 }
 

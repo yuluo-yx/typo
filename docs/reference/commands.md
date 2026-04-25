@@ -71,6 +71,7 @@ The current configurable keys are:
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `experimental.long-option-correction.enabled` *(Experimental; default: `false`)*
 - `rules.<scope>.enabled`
 
 ## `typo rules`

@@ -156,6 +156,7 @@ Typo 会把本地状态保存在 `~/.typo/`：
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `experimental.long-option-correction.enabled` *（实验性；默认：`false`）*
 - `rules.<scope>.enabled`
 
 支持的键盘布局：

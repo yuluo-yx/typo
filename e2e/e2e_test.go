@@ -294,7 +294,7 @@ func (e *e2eEnv) seedSubcommandCaches(t *testing.T, caches []*commands.ToolTreeC
 		SchemaVersion int                       `json:"schema_version"`
 		Tools         []*commands.ToolTreeCache `json:"tools"`
 	}{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		Tools:         normalized,
 	}
 	data, err := json.MarshalIndent(wrapper, "", "  ")

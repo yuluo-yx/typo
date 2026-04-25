@@ -140,10 +140,15 @@ Examples:
   typo fix "gut stattus"
   typo learn "gut" "git"
   typo config set keyboard dvorak
+  typo config set experimental.long-option-correction.enabled true
   typo rules add "mytypo" "mycommand"
   typo rules disable git
   typo stats --since 7
   eval "$(typo init zsh)"
+
+Experimental:
+  experimental.long-option-correction.enabled
+                                           Enable experimental --long-option typo correction
 
 Zsh Integration:
   After running 'eval "$(typo init zsh)"', press <Esc><Esc> to fix the current command.
@@ -246,6 +251,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithMaxEditDistance(cfg.User.MaxEditDistance),
 		engine.WithMaxFixPasses(cfg.User.MaxFixPasses),
 		engine.WithAutoLearnThreshold(cfg.User.AutoLearnThreshold),
+		engine.WithExperimentalLongOptionFix(cfg.User.Experimental.LongOptionCorrection.Enabled),
 		engine.WithDisabledCommands(disabledCommands),
 		engine.WithRules(rules),
 		engine.WithHistory(engine.NewHistory(cfg.ConfigDir)),

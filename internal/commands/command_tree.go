@@ -100,17 +100,17 @@ func buildBuiltinToolTrees() map[string]*TreeNode {
 	return map[string]*TreeNode{
 		"git":       gitBuiltinTree(),
 		"docker":    dockerBuiltinTree(),
-		"npm":       flatToolTree("ci", "install", "list", "login", "publish", "run", "test", "uninstall", "update"),
+		"npm":       npmBuiltinTree(),
 		"yarn":      flatToolTree("add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade"),
 		"kubectl":   kubectlBuiltinTree(),
-		"cargo":     flatToolTree("bench", "build", "check", "clean", "doc", "fmt", "help", "run", "test", "update"),
+		"cargo":     cargoBuiltinTree(),
 		"go":        flatToolTree("build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool"),
 		"brew":      flatToolTree("cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"),
 		"terraform": flatToolTree("apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"),
-		"helm":      flatToolTree("dependency", "get", "install", "lint", "list", "package", "pull", "repo", "search", "template", "upgrade"),
-		"aws":       flatToolTree("cloudwatch", "configure", "dynamodb", "ec2", "iam", "lambda", "rds", "s3", "sns", "sqs", "sts"),
-		"gcloud":    flatToolTree("bigquery", "compute", "config", "functions", "iam", "kubernetes", "pubsub", "services", "storage"),
-		"az":        flatToolTree("account", "aks", "functionapp", "group", "network", "storage", "vm", "webapp"),
+		"helm":      helmBuiltinTree(),
+		"aws":       awsBuiltinTree(),
+		"gcloud":    gcloudBuiltinTree(),
+		"az":        azBuiltinTree(),
 	}
 }
 
@@ -195,6 +195,16 @@ func treeLeafAlias(target string) *TreeNode {
 	return &TreeNode{Terminal: true, Alias: target}
 }
 
+func withLongOptions(node *TreeNode, options []string, optionsWithValues []string) *TreeNode {
+	if node == nil {
+		node = &TreeNode{}
+	}
+	node.LongOptions = append(node.LongOptions, options...)
+	node.LongOptionsWithValues = append(node.LongOptionsWithValues, optionsWithValues...)
+	node.refreshChildTokens()
+	return node
+}
+
 func flatToolTree(subcommands ...string) *TreeNode {
 	children := make(map[string]*TreeNode, len(subcommands))
 	for _, subcommand := range subcommands {
@@ -206,8 +216,92 @@ func flatToolTree(subcommands ...string) *TreeNode {
 	return treeBranch(children)
 }
 
+func npmBuiltinTree() *TreeNode {
+	root := withLongOptions(
+		flatToolTree("ci", "install", "list", "login", "publish", "run", "test", "uninstall", "update"),
+		[]string{"--cache", "--global", "--help", "--prefix", "--silent", "--userconfig", "--version"},
+		[]string{"--cache", "--prefix", "--userconfig"},
+	)
+	return root
+}
+
+func cargoBuiltinTree() *TreeNode {
+	root := withLongOptions(
+		flatToolTree("bench", "build", "check", "clean", "doc", "fmt", "help", "run", "test", "update"),
+		[]string{"--color", "--config", "--explain", "--frozen", "--help", "--list", "--locked", "--offline", "--quiet", "--verbose", "--version"},
+		[]string{"--color", "--config", "--explain"},
+	)
+	withLongOptions(
+		root.Children["build"],
+		[]string{"--bin", "--example", "--features", "--help", "--jobs", "--manifest-path", "--package", "--profile", "--quiet", "--release", "--target", "--target-dir", "--timings", "--verbose"},
+		[]string{"--bin", "--example", "--features", "--jobs", "--manifest-path", "--package", "--profile", "--target", "--target-dir", "--timings"},
+	)
+	return root
+}
+
+func helmBuiltinTree() *TreeNode {
+	return withLongOptions(
+		flatToolTree("dependency", "get", "install", "lint", "list", "package", "pull", "repo", "search", "template", "upgrade"),
+		[]string{
+			"--burst-limit", "--debug", "--help", "--host", "--kube-apiserver", "--kube-as-group", "--kube-as-user",
+			"--kube-ca-file", "--kube-context", "--kube-token", "--kubeconfig", "--namespace", "--qps",
+			"--registry-config", "--repository-cache", "--repository-config",
+		},
+		[]string{
+			"--burst-limit", "--host", "--kube-apiserver", "--kube-as-group", "--kube-as-user", "--kube-ca-file",
+			"--kube-context", "--kube-token", "--kubeconfig", "--namespace", "--qps", "--registry-config",
+			"--repository-cache", "--repository-config",
+		},
+	)
+}
+
+func awsBuiltinTree() *TreeNode {
+	return withLongOptions(
+		flatToolTree("cloudwatch", "configure", "dynamodb", "ec2", "iam", "lambda", "rds", "s3", "sns", "sqs", "sts"),
+		[]string{
+			"--ca-bundle", "--cli-binary-format", "--cli-connect-timeout", "--cli-read-timeout", "--color", "--debug",
+			"--endpoint-url", "--help", "--no-paginate", "--no-verify-ssl", "--output", "--profile", "--query",
+			"--region", "--version",
+		},
+		[]string{
+			"--ca-bundle", "--cli-binary-format", "--cli-connect-timeout", "--cli-read-timeout", "--color",
+			"--endpoint-url", "--output", "--profile", "--query", "--region",
+		},
+	)
+}
+
+func gcloudBuiltinTree() *TreeNode {
+	root := withLongOptions(
+		flatToolTree("bigquery", "compute", "config", "functions", "iam", "kubernetes", "pubsub", "services", "storage"),
+		[]string{
+			"--access-token-file", "--account", "--billing-project", "--configuration", "--filter", "--flags-file",
+			"--flatten", "--format", "--help", "--impersonate-service-account", "--project", "--quiet",
+			"--trace-token", "--user-output-enabled-log-file", "--verbosity",
+		},
+		[]string{
+			"--access-token-file", "--account", "--billing-project", "--configuration", "--filter", "--flags-file",
+			"--flatten", "--format", "--impersonate-service-account", "--project", "--trace-token",
+			"--user-output-enabled-log-file", "--verbosity",
+		},
+	)
+	withLongOptions(
+		root.Children["compute"],
+		[]string{"--help", "--project", "--quiet", "--region", "--zone"},
+		[]string{"--project", "--region", "--zone"},
+	)
+	return root
+}
+
+func azBuiltinTree() *TreeNode {
+	return withLongOptions(
+		flatToolTree("account", "aks", "functionapp", "group", "network", "storage", "vm", "webapp"),
+		[]string{"--debug", "--help", "--only-show-errors", "--output", "--query", "--subscription", "--tenant", "--verbose"},
+		[]string{"--output", "--query", "--subscription", "--tenant"},
+	)
+}
+
 func gitBuiltinTree() *TreeNode {
-	return treeBranch(map[string]*TreeNode{
+	root := treeBranch(map[string]*TreeNode{
 		"add":      treeLeafPassthrough(),
 		"branch":   treeLeafPassthrough(),
 		"checkout": treeLeafPassthrough(),
@@ -251,10 +345,24 @@ func gitBuiltinTree() *TreeNode {
 		}),
 		"switch": treeLeafPassthrough(),
 	})
+	withLongOptions(
+		root,
+		[]string{
+			"--bare", "--config-env", "--exec-path", "--git-dir", "--help", "--namespace",
+			"--no-pager", "--super-prefix", "--version", "--work-tree",
+		},
+		[]string{"--config-env", "--exec-path", "--git-dir", "--namespace", "--super-prefix", "--work-tree"},
+	)
+	withLongOptions(
+		root.Children["commit"],
+		[]string{"--all", "--amend", "--file", "--help", "--message", "--no-edit", "--reedit-message", "--reuse-message", "--signoff", "--template"},
+		[]string{"--file", "--message", "--reedit-message", "--reuse-message", "--template"},
+	)
+	return root
 }
 
 func dockerBuiltinTree() *TreeNode {
-	return treeBranch(map[string]*TreeNode{
+	root := treeBranch(map[string]*TreeNode{
 		"build":   treeLeafPassthrough(),
 		"compose": treeLeafPassthrough(),
 		"container": treeBranch(map[string]*TreeNode{
@@ -305,6 +413,22 @@ func dockerBuiltinTree() *TreeNode {
 			"rm":      treeLeaf(),
 		}),
 	})
+	withLongOptions(
+		root,
+		[]string{"--config", "--context", "--debug", "--help", "--host", "--log-level", "--tls", "--tlsverify", "--version"},
+		[]string{"--config", "--context", "--host", "--log-level"},
+	)
+	runOptions := []string{
+		"--cpus", "--detach", "--entrypoint", "--env", "--help", "--interactive", "--memory",
+		"--name", "--network", "--platform", "--publish", "--rm", "--tty", "--user", "--volume", "--workdir",
+	}
+	runOptionsWithValues := []string{
+		"--cpus", "--entrypoint", "--env", "--memory", "--name", "--network", "--platform",
+		"--publish", "--user", "--volume", "--workdir",
+	}
+	withLongOptions(root.Children["run"], runOptions, runOptionsWithValues)
+	withLongOptions(root.Children["container"].Children["run"], runOptions, runOptionsWithValues)
+	return root
 }
 
 func dockerImageTree() *TreeNode {
@@ -327,7 +451,7 @@ func dockerImageTree() *TreeNode {
 
 func kubectlBuiltinTree() *TreeNode {
 	resourceTree := kubectlResourceTree()
-	return treeBranch(map[string]*TreeNode{
+	root := treeBranch(map[string]*TreeNode{
 		"api-resources": treeLeaf(),
 		"apply":         treeLeafPassthrough(),
 		"config": treeBranch(map[string]*TreeNode{
@@ -349,6 +473,25 @@ func kubectlBuiltinTree() *TreeNode {
 			"restart": treeLeaf(),
 		}),
 	})
+	withLongOptions(
+		root,
+		[]string{
+			"--as", "--as-group", "--as-uid", "--cache-dir", "--certificate-authority", "--client-certificate",
+			"--client-key", "--cluster", "--context", "--help", "--kubeconfig", "--namespace", "--password",
+			"--profile", "--request-timeout", "--server", "--token", "--user", "--username",
+		},
+		[]string{
+			"--as", "--as-group", "--as-uid", "--cache-dir", "--certificate-authority", "--client-certificate",
+			"--client-key", "--cluster", "--context", "--kubeconfig", "--namespace", "--password", "--profile",
+			"--request-timeout", "--server", "--token", "--user", "--username",
+		},
+	)
+	withLongOptions(
+		root.Children["apply"],
+		[]string{"--dry-run", "--filename", "--help", "--namespace", "--prune", "--recursive", "--selector", "--server-side"},
+		[]string{"--dry-run", "--filename", "--namespace", "--selector"},
+	)
+	return root
 }
 
 func kubectlResourceTree() *TreeNode {

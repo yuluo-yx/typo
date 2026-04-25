@@ -1699,6 +1699,9 @@ func TestPrintUsage(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("typo")) {
 		t.Error("Expected usage to contain 'typo'")
 	}
+	if !bytes.Contains([]byte(output), []byte("experimental.long-option-correction.enabled")) {
+		t.Error("Expected usage to mention experimental long-option correction")
+	}
 }
 
 func TestCmdVersion(t *testing.T) {
@@ -4135,12 +4138,16 @@ func TestConfigCommandLifecycle(t *testing.T) {
 	assertConfigValue(t, "keyboard", "qwerty", "after config gen")
 	assertCLISucceeds(t, []string{"typo", "config", "set", "keyboard", "dvorak"}, "config set keyboard")
 	assertCLISucceeds(t, []string{"typo", "config", "set", "auto-learn-threshold", "5"}, "config set auto-learn-threshold")
+	assertCLISucceeds(t, []string{"typo", "config", "set", "experimental.long-option-correction.enabled", "true"}, "config set experimental long option")
 	assertConfigValue(t, "auto-learn-threshold", "5", "after config set")
+	assertConfigValue(t, "experimental.long-option-correction.enabled", "true", "after config set")
 	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "keyboard=dvorak", "config list")
 	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "auto-learn-threshold=5", "config list")
+	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "experimental.long-option-correction.enabled=true", "config list")
 	assertCLISucceeds(t, []string{"typo", "config", "reset"}, "config reset")
 	assertConfigValue(t, "keyboard", "qwerty", "after config reset")
 	assertConfigValue(t, "auto-learn-threshold", "3", "after config reset")
+	assertConfigValue(t, "experimental.long-option-correction.enabled", "false", "after config reset")
 }
 
 func TestStatsCommandSummary(t *testing.T) {
@@ -4294,6 +4301,7 @@ func TestConfigCommandErrors(t *testing.T) {
 		{name: "unknown get key", args: []string{"typo", "config", "get", "unknown"}, wantIn: "unknown config key"},
 		{name: "missing set value", args: []string{"typo", "config", "set", "keyboard"}, wantIn: "<key> and <value> required"},
 		{name: "invalid set value", args: []string{"typo", "config", "set", "history.enabled", "maybe"}, wantIn: "invalid bool value"},
+		{name: "invalid experimental set value", args: []string{"typo", "config", "set", "experimental.long-option-correction.enabled", "maybe"}, wantIn: "invalid bool value"},
 		{name: "invalid auto learn threshold", args: []string{"typo", "config", "set", "auto-learn-threshold", "wat"}, wantIn: "invalid int value"},
 		{name: "gen positional args", args: []string{"typo", "config", "gen", "extra"}, wantIn: "does not accept positional arguments"},
 		{name: "gen invalid flag", args: []string{"typo", "config", "gen", "--wat"}, wantIn: "flag provided but not defined"},
@@ -4387,6 +4395,34 @@ func TestFixUsesGlobalHistoryDisabledConfig(t *testing.T) {
 	historyFile := filepath.Join(cfg.ConfigDir, "usage_history.json")
 	if _, err := os.Stat(historyFile); !os.IsNotExist(err) {
 		t.Fatalf("expected history file to stay absent, got %v", err)
+	}
+}
+
+func TestDoctorPrintsExperimentalLongOptionConfig(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	cfg := config.Load()
+	cfg.User.Experimental.LongOptionCorrection.Enabled = true
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "doctor"})
+	if code != 1 && code != 0 {
+		t.Fatalf("doctor failed unexpectedly: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "experimental.long-option-correction.enabled=true") {
+		t.Fatalf("expected doctor output to show experimental config, got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
 
