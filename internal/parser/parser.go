@@ -14,6 +14,7 @@ func NewRegistry() *Registry {
 	r.Register(NewDockerParser())
 	r.Register(NewNpmParser())
 	r.Register(NewPermissionParser())
+	r.Register(NewGenericParser())
 	return r
 }
 
