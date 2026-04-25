@@ -11,6 +11,11 @@ on:
       - '**.mod'
       - '**.sum'
       - 'Makefile'
+      - 'e2e/**'
+      - 'install/**'
+      - 'tools/github-setup-deps/**'
+      - 'tools/make/**'
+      - 'tools/scripts/**'
       - '.github/workflows/**'
   pull_request:
     branches: [main]
@@ -19,6 +24,11 @@ on:
       - '**.mod'
       - '**.sum'
       - 'Makefile'
+      - 'e2e/**'
+      - 'install/**'
+      - 'tools/github-setup-deps/**'
+      - 'tools/make/**'
+      - 'tools/scripts/**'
       - '.github/workflows/**'
 
 jobs:
@@ -53,6 +63,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./tools/github-setup-deps
       - run: make build
+      - run: make verify-version-metadata VERSION=9.9.9
 
   e2e-docker:
     name: E2E Docker

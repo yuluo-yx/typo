@@ -812,6 +812,29 @@ func TestEngine_MaybeAutoLearnFromHistory(t *testing.T) {
 	}
 }
 
+func TestEngine_MaybeAutoLearnFromHistoryDebugInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	rules := NewRules(tmpDir)
+	eng := NewEngine(
+		WithHistory(history),
+		WithRules(rules),
+		WithAutoLearnThreshold(1),
+	)
+
+	if err := eng.RecordHistory("mytypo", "mytool"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
+
+	info := eng.MaybeAutoLearnFromHistory(context.Background(), "mytypo", "mytool")
+	if !info.Triggered || !info.Persisted || info.TimedOut || info.Error != "" {
+		t.Fatalf("MaybeAutoLearnFromHistory() = %+v", info)
+	}
+	if info.Reason != "promoted history pair into user rule" {
+		t.Fatalf("Expected promoted reason, got %q", info.Reason)
+	}
+}
+
 func TestEngine_MaybeAutoLearnFromHistory_MarksExistingUserRule(t *testing.T) {
 	tmpDir := t.TempDir()
 	history := NewHistory(tmpDir)
@@ -1871,6 +1894,23 @@ func TestEngineFixDebugTracksPathLoad(t *testing.T) {
 	}
 	if len(result.Debug.Events) == 0 || result.Debug.Events[0].Stage != "distance" {
 		t.Fatalf("expected distance stage in debug events, got %+v", result.Debug.Events)
+	}
+}
+
+func TestEngineDisableDebugClearsCurrentTrace(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+	eng.EnableDebug()
+
+	if result := eng.Fix("gut", ""); result.Debug == nil {
+		t.Fatalf("expected debug info before disabling debug, got %+v", result)
+	}
+
+	eng.DisableDebug()
+	if result := eng.Fix("gut", ""); result.Debug != nil {
+		t.Fatalf("expected debug info to be disabled, got %+v", result.Debug)
+	}
+	if eng.debugTrace() != nil {
+		t.Fatal("expected current debug trace to be cleared")
 	}
 }
 

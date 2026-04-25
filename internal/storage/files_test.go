@@ -34,6 +34,34 @@ func TestWriteFileAtomic(t *testing.T) {
 	}
 }
 
+func TestWriteFileAtomic_OverwritesExistingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "data.json")
+	if err := os.WriteFile(target, []byte("old"), 0644); err != nil {
+		t.Fatalf("failed to seed target file: %v", err)
+	}
+
+	if err := WriteFileAtomic(target, []byte("new"), 0600); err != nil {
+		t.Fatalf("WriteFileAtomic overwrite failed: %v", err)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("failed to read overwritten target: %v", err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("unexpected overwritten content: %q", data)
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("failed to stat overwritten target: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("unexpected overwritten permission: %v", info.Mode().Perm())
+	}
+}
+
 func TestWriteFileAtomic_CreateTempFailure(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "missing", "data.json")
 	if err := WriteFileAtomic(target, []byte("x"), 0600); err == nil {

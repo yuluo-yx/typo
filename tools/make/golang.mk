@@ -3,13 +3,26 @@
 # Supported platforms
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none") -X main.date=$(shell date -u +%Y-%m-%d 2>/dev/null || echo "unknown")
+CMD_PACKAGE := github.com/yuluo-yx/typo/internal/cmd
+LDFLAGS := -s -w -X $(CMD_PACKAGE).version=$(VERSION) -X $(CMD_PACKAGE).commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none") -X $(CMD_PACKAGE).date=$(shell date -u +%Y-%m-%d 2>/dev/null || echo "unknown")
 
 .PHONY: build
 build: ## Build the binary for the current platform
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)
 	$(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)/$(BINARY_NAME) ./cmd/typo
+
+.PHONY: verify-version-metadata
+verify-version-metadata: ## Verify build-time version metadata is injected into the binary
+	@$(LOG_TARGET)
+	@tmp_dir="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp_dir"' EXIT; \
+	$(GO) build -ldflags="$(LDFLAGS)" -o "$$tmp_dir/$(BINARY_NAME)" ./cmd/typo; \
+	output="$$("$$tmp_dir/$(BINARY_NAME)" version)"; \
+	case "$$output" in \
+		*"typo $(VERSION) "*) ;; \
+		*) echo "expected version output to contain 'typo $(VERSION) ', got: $$output" >&2; exit 1 ;; \
+	esac
 
 .PHONY: install
 install: ## Install the binary to GOPATH/bin
@@ -91,6 +104,17 @@ coverage: ## Run tests with coverage
 	@$(LOG_TARGET)
 	$(GO) test ./... -race -coverprofile=coverage.out -covermode=atomic
 	$(GO) tool cover -func=coverage.out | tail -1
+
+.PHONY: coverage-check
+coverage-check: ## Run tests and fail when total coverage is below 90%
+	@$(LOG_TARGET)
+	$(GO) test ./... -race -coverprofile=coverage.out -covermode=atomic
+	@coverage="$$($(GO) tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $$3); print $$3 }')"; \
+	echo "total coverage: $$coverage%"; \
+	awk -v coverage="$$coverage" 'BEGIN { exit !(coverage + 0 >= 90.0) }' || { \
+		echo "total coverage must be at least 90.0%" >&2; \
+		exit 1; \
+	}
 
 .PHONY: benchmark
 benchmark: ## Run benchmarks

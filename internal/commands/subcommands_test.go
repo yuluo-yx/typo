@@ -37,6 +37,73 @@ func TestNewToolTreeRegistry_EmptyCacheDir(t *testing.T) {
 	}
 }
 
+func TestCommandTreeRegistry(t *testing.T) {
+	registry := NewCommandTreeRegistry()
+	if registry == nil {
+		t.Fatal("Expected non-nil command tree registry")
+	}
+	if !registry.HasRoot("typo") {
+		t.Fatal("Expected typo root to be registered")
+	}
+	if registry.HasRoot("") {
+		t.Fatal("Expected empty root lookup to fail")
+	}
+	if registry.HasRoot("git") {
+		t.Fatal("Expected external tool root to be absent from builtin command registry")
+	}
+
+	trees := registry.Trees()
+	if len(trees) == 0 {
+		t.Fatal("Expected registered command trees")
+	}
+	trees[0] = nil
+	if registry.Trees()[0] == nil {
+		t.Fatal("Expected Trees to return a defensive slice copy")
+	}
+
+	var nilRegistry *CommandTreeRegistry
+	if nilRegistry.Trees() != nil {
+		t.Fatal("Expected nil registry Trees to return nil")
+	}
+	if nilRegistry.HasRoot("typo") {
+		t.Fatal("Expected nil registry HasRoot to fail")
+	}
+}
+
+func TestTreeNodeToCommandTreeNode(t *testing.T) {
+	tree := &TreeNode{
+		Terminal:    true,
+		Passthrough: false,
+		Alias:       "canonical",
+		Children: map[string]*TreeNode{
+			"child": {Terminal: true, Passthrough: true},
+		},
+	}
+
+	node := tree.ToCommandTreeNode()
+	if node == nil {
+		t.Fatal("Expected command tree node")
+	}
+	if !node.StopAfterMatch {
+		t.Fatal("Expected terminal non-passthrough node to stop after match")
+	}
+	if node.Alias != "canonical" {
+		t.Fatalf("Expected alias to be preserved, got %q", node.Alias)
+	}
+	child, ok := node.Child("child")
+	if !ok {
+		t.Fatal("Expected converted child node")
+	}
+	if child.StopAfterMatch {
+		t.Fatal("Expected passthrough child not to stop after match")
+	}
+
+	var nilTree *TreeNode
+	if nilTree.ToCommandTreeNode() != nil {
+		t.Fatal("Expected nil TreeNode conversion to return nil")
+	}
+}
+
 func TestHasBuiltinSubcommand(t *testing.T) {
 	if !HasBuiltinSubcommand("git", "status") {
 		t.Fatal("Expected builtin git subcommand lookup to find status")
@@ -740,6 +807,24 @@ func TestParseGitHelp_Empty(t *testing.T) {
 	subcommands := parseGitHelp("")
 	if len(subcommands) != 0 {
 		t.Errorf("Expected 0 subcommands for empty output, got %d", len(subcommands))
+	}
+}
+
+func TestParseGitNestedHelpUsageForms(t *testing.T) {
+	output := `usage: git remote add [<options>] <name> <url>
+   or: git remote rename <old> <new>
+   or: git remote (set-head|set-branches) [<options>]
+`
+
+	subcommands := parseGitNestedHelp(output)
+	want := []string{"add", "rename", "set-head", "set-branches"}
+	if len(subcommands) != len(want) {
+		t.Fatalf("Expected %d nested git subcommands, got %d: %v", len(want), len(subcommands), subcommands)
+	}
+	for i := range want {
+		if subcommands[i] != want[i] {
+			t.Fatalf("Expected nested git subcommands[%d] = %q, got %q", i, want[i], subcommands[i])
+		}
 	}
 }
 
