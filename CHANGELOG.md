@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0](https://github.com/yuluo-yx/typo/compare/v1.1.0...v1.2.0) (2026-04-27)
+
+
+### Features
+
+* **engine:** add command options params support ([#130](https://github.com/yuluo-yx/typo/issues/130)) ([6d90d52](https://github.com/yuluo-yx/typo/commit/6d90d52a23444bc86e87ba88abd5bb30546451a8))
+* **parser:** add generic stderr parser for broad CLI coverage ([#131](https://github.com/yuluo-yx/typo/issues/131)) ([712bb07](https://github.com/yuluo-yx/typo/commit/712bb07544159372f9e9379962feff67dad1bee0))
+
+
+### Bug Fixes
+
+* **codespell:** ignore test spell ([d8b2af4](https://github.com/yuluo-yx/typo/commit/d8b2af475e6dd204124433b72651df2731cabf62))
+
+
+### Performance Improvements
+
+* optimize perf ([#135](https://github.com/yuluo-yx/typo/issues/135)) ([91b30b9](https://github.com/yuluo-yx/typo/commit/91b30b9f3c3006a89ca15bae96040a9b712bf965))
+
 ## [1.1.0](https://github.com/yuluo-yx/typo/compare/v1.0.0...v1.1.0) (2026-04-23)
 
 
