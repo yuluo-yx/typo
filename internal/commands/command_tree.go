@@ -1,6 +1,10 @@
 package commands
 
-import itypes "github.com/yuluo-yx/typo/internal/types"
+import (
+	"sync"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
+)
 
 // CommandTreeRegistry stores builtin command trees.
 type CommandTreeRegistry struct {
@@ -94,25 +98,33 @@ var builtinCommandTrees = []*itypes.CommandTree{
 	},
 }
 
-var builtinToolTrees = buildBuiltinToolTrees()
-
-func buildBuiltinToolTrees() map[string]*TreeNode {
-	return map[string]*TreeNode{
-		"git":       gitBuiltinTree(),
-		"docker":    dockerBuiltinTree(),
-		"npm":       npmBuiltinTree(),
-		"yarn":      flatToolTree("add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade"),
-		"kubectl":   kubectlBuiltinTree(),
-		"cargo":     cargoBuiltinTree(),
-		"go":        flatToolTree("build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool"),
-		"brew":      flatToolTree("cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade"),
-		"terraform": flatToolTree("apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate"),
-		"helm":      helmBuiltinTree(),
-		"aws":       awsBuiltinTree(),
-		"gcloud":    gcloudBuiltinTree(),
-		"az":        azBuiltinTree(),
+var (
+	builtinToolTreesMu   sync.RWMutex
+	builtinToolTrees     map[string]*TreeNode
+	builtinToolFactories = map[string]func() *TreeNode{
+		"git":    gitBuiltinTree,
+		"docker": dockerBuiltinTree,
+		"npm":    npmBuiltinTree,
+		"yarn": func() *TreeNode {
+			return flatToolTree("add", "build", "cache", "create", "exec", "info", "init", "install", "remove", "run", "test", "upgrade")
+		},
+		"kubectl": kubectlBuiltinTree,
+		"cargo":   cargoBuiltinTree,
+		"go": func() *TreeNode {
+			return flatToolTree("build", "clean", "env", "fmt", "generate", "get", "install", "list", "mod", "run", "test", "tool")
+		},
+		"brew": func() *TreeNode {
+			return flatToolTree("cleanup", "doctor", "info", "install", "list", "search", "tap", "uninstall", "update", "upgrade")
+		},
+		"terraform": func() *TreeNode {
+			return flatToolTree("apply", "destroy", "fmt", "import", "init", "output", "plan", "show", "state", "validate")
+		},
+		"helm":   helmBuiltinTree,
+		"aws":    awsBuiltinTree,
+		"gcloud": gcloudBuiltinTree,
+		"az":     azBuiltinTree,
 	}
-}
+)
 
 var dynamicOnlySubcommandTools = map[string]bool{
 	"pip":      true,
@@ -124,14 +136,40 @@ var dynamicOnlySubcommandTools = map[string]bool{
 var prefetchSubcommandTools = []string{"git", "docker", "npm", "yarn", "kubectl", "cargo", "go", "aws", "gcloud", "az"}
 
 func builtinTreeForTool(tool string) *TreeNode {
-	return builtinToolTrees[tool]
+	factory, ok := builtinToolFactories[tool]
+	if !ok {
+		return nil
+	}
+
+	builtinToolTreesMu.RLock()
+	tree := builtinToolTrees[tool]
+	builtinToolTreesMu.RUnlock()
+	if tree != nil {
+		return tree
+	}
+
+	tree = factory()
+
+	builtinToolTreesMu.Lock()
+	if builtinToolTrees == nil {
+		builtinToolTrees = make(map[string]*TreeNode, len(builtinToolFactories))
+	}
+	if cached := builtinToolTrees[tool]; cached != nil {
+		tree = cached
+	} else {
+		builtinToolTrees[tool] = tree
+	}
+	builtinToolTreesMu.Unlock()
+
+	return tree
 }
 
 func isKnownSubcommandTool(tool string) bool {
 	if tool == "" {
 		return false
 	}
-	return builtinTreeForTool(tool) != nil || dynamicOnlySubcommandTools[tool]
+	_, hasBuiltin := builtinToolFactories[tool]
+	return hasBuiltin || dynamicOnlySubcommandTools[tool]
 }
 
 func prefetchSubcommandToolNames() []string {

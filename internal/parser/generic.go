@@ -3,6 +3,7 @@ package parser
 import (
 	"regexp"
 	"strings"
+	"sync"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
@@ -10,27 +11,30 @@ import (
 // GenericParser catches "did you mean" hints emitted by any CLI, covering tools
 // that do not have a dedicated parser (e.g. rustup, cargo, helm, gh, kubectl,
 // pnpm, poetry, pip).
-type GenericParser struct {
-	// inlineRegex matches suggestions on the same line as the hint phrase,
-	// e.g. "Did you mean 'target'?" or "maybe you meant `build`".
-	inlineRegex *regexp.Regexp
-	// nextLineRegex matches suggestions that appear on the line immediately
-	// following "Did you mean this?" or "Did you mean one of these?",
-	// e.g. helm, gh, kubectl, poetry.
-	nextLineRegex *regexp.Regexp
-}
+type GenericParser struct{}
+
+var (
+	genericParserRegexOnce sync.Once
+	genericInlineRegex     *regexp.Regexp
+	genericNextLineRegex   *regexp.Regexp
+)
 
 // NewGenericParser creates a new GenericParser.
 func NewGenericParser() *GenericParser {
-	return &GenericParser{
-		inlineRegex: regexp.MustCompile(
+	return &GenericParser{}
+}
+
+func genericParserRegexes() (*regexp.Regexp, *regexp.Regexp) {
+	genericParserRegexOnce.Do(func() {
+		genericInlineRegex = regexp.MustCompile(
 			"(?i)(?:did you mean|maybe you meant|perhaps you meant)" +
 				`\s+['` + "`" + `"]([\w][\w-]*)['` + "`" + `"][?!.]?`,
-		),
-		nextLineRegex: regexp.MustCompile(
+		)
+		genericNextLineRegex = regexp.MustCompile(
 			`(?i)did you mean (?:this|one of these)\?[^\n]*\n[ \t]+([\w][\w-]*)`,
-		),
-	}
+		)
+	})
+	return genericInlineRegex, genericNextLineRegex
 }
 
 // Name returns the parser name.
@@ -42,6 +46,9 @@ func (p *GenericParser) Name() string {
 func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	cmd := ctx.Command
 	stderr := ctx.Stderr
+	if stderr == "" {
+		return itypes.ParserResult{Fixed: false}
+	}
 
 	suggested := p.extractSuggestion(stderr)
 	if suggested == "" {
@@ -90,10 +97,11 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 // extractSuggestion returns the first plausible correction found in stderr,
 // or an empty string if none is found.
 func (p *GenericParser) extractSuggestion(stderr string) string {
-	if m := p.inlineRegex.FindStringSubmatch(stderr); len(m) >= 2 {
+	inlineRegex, nextLineRegex := genericParserRegexes()
+	if m := inlineRegex.FindStringSubmatch(stderr); len(m) >= 2 {
 		return m[1]
 	}
-	if m := p.nextLineRegex.FindStringSubmatch(stderr); len(m) >= 2 {
+	if m := nextLineRegex.FindStringSubmatch(stderr); len(m) >= 2 {
 		return m[1]
 	}
 	return ""
