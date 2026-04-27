@@ -26,7 +26,6 @@ func NewGenericParser() *GenericParser {
 
 func genericParserRegexes() (*regexp.Regexp, *regexp.Regexp) {
 	genericParserRegexOnce.Do(func() {
-		// 仅在真正解析 stderr 时编译正则，避免普通 CLI 启动路径为 generic parser 付费。
 		genericInlineRegex = regexp.MustCompile(
 			"(?i)(?:did you mean|maybe you meant|perhaps you meant)" +
 				`\s+['` + "`" + `"]([\w][\w-]*)['` + "`" + `"][?!.]?`,
