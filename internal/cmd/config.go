@@ -114,24 +114,16 @@ func cmdRules(args []string) int {
 	}
 
 	cfg := config.Load()
-	eng := createEngine(cfg)
 
 	switch args[0] {
 	case "list":
-		rules := eng.ListRules()
-		for _, r := range rules {
-			status := "enabled"
-			if !r.Enable {
-				status = "disabled"
-			}
-			fmt.Printf("%s -> %s [%s] (%s)\n", r.From, r.To, r.Scope, status)
-		}
-		return 0
+		return cmdRulesList(cfg)
 	case "add":
 		if len(args) < 3 {
 			fmt.Fprintln(os.Stderr, "Error: <from> and <to> required")
 			return 1
 		}
+		eng := createEngine(cfg)
 		if err := eng.AddRule(args[1], args[2]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
@@ -163,6 +155,24 @@ func cmdRules(args []string) int {
 		fmt.Fprintf(os.Stderr, "Unknown subcommand: %s\n", args[0])
 		return 1
 	}
+}
+
+func cmdRulesList(cfg *config.Config) int {
+	rulesStore := engine.NewRules(cfg.ConfigDir)
+	for scope, ruleCfg := range cfg.User.Rules {
+		if !ruleCfg.Enabled {
+			_ = rulesStore.EnableRuleSet(scope, false)
+		}
+	}
+
+	for _, r := range rulesStore.ListRules() {
+		status := "enabled"
+		if !r.Enable {
+			status = "disabled"
+		}
+		fmt.Printf("%s -> %s [%s] (%s)\n", r.From, r.To, r.Scope, status)
+	}
+	return 0
 }
 
 func cmdRulesSetScopeEnabled(cfg *config.Config, args []string, enabled bool) int {
