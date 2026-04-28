@@ -683,6 +683,7 @@ func TestE2EReadmeExamples(t *testing.T) {
 	}
 
 	gitStderr := env.writeTempFile(t, "git.stderr", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
+	gitPullRebaseStderr := env.writeTempFile(t, "git-pull-rebase.stderr", "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n")
 	dockerStderr := env.writeTempFile(t, "docker.stderr", "unknown command: imagesa\n\nDid you mean: images?")
 	npmStderr := env.writeTempFile(t, "npm.stderr", "npm ERR! Did you mean list?")
 	permissionStderr := env.writeTempFile(t, "permission.stderr", "mkdir: 1: Permission denied\n")
@@ -694,6 +695,7 @@ func TestE2EReadmeExamples(t *testing.T) {
 		want       string
 	}{
 		{name: "git stderr parser", command: "git remove -v", stderrFile: gitStderr, want: "git remote -v\n"},
+		{name: "git pull rebase stderr parser", command: "git pull", stderrFile: gitPullRebaseStderr, want: "git pull --rebase\n"},
 		{name: "docker stderr parser", command: "docker imagesa", stderrFile: dockerStderr, want: "docker images\n"},
 		{name: "npm stderr parser", command: "npm ist --depth=0", stderrFile: npmStderr, want: "npm list --depth=0\n"},
 		{name: "permission stderr parser", command: "mkdir 1", stderrFile: permissionStderr, want: "sudo mkdir 1\n"},

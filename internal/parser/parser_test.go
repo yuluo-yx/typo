@@ -52,10 +52,11 @@ func TestGitParser_Parse(t *testing.T) {
 			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
 		},
 		{
-			name:    "no upstream branch ignores placeholder remote",
+			name:    "no upstream branch defaults placeholder remote to origin",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
-			wantFix: false,
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin 0426-yuluo/fix",
 		},
 		{
 			name:    "no upstream branch is idempotent once fixed",
@@ -640,6 +641,124 @@ func TestGitParser_ParseNoUpstreamPlaceholderWithoutLocalBranch(t *testing.T) {
 	if result.Fixed {
 		t.Fatalf("Expected placeholder upstream without local branch to stay unchanged, got %+v", result)
 	}
+}
+
+func TestGitParser_ParseDivergentPullRebase(t *testing.T) {
+	p := NewGitParser()
+	stderr := gitDivergentPullStderr()
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantFix bool
+		wantCmd string
+	}{
+		{
+			name:    "plain pull",
+			cmd:     "git pull",
+			wantFix: true,
+			wantCmd: "git pull --rebase",
+		},
+		{
+			name:    "pull with remote and branch",
+			cmd:     "git pull origin main",
+			wantFix: true,
+			wantCmd: "git pull --rebase origin main",
+		},
+		{
+			name:    "pull with global option",
+			cmd:     "git -C repo pull origin main",
+			wantFix: true,
+			wantCmd: "git -C repo pull --rebase origin main",
+		},
+		{
+			name:    "git-pull form",
+			cmd:     "git-pull origin main",
+			wantFix: true,
+			wantCmd: "git-pull --rebase origin main",
+		},
+		{
+			name:    "already has rebase",
+			cmd:     "git pull --rebase origin main",
+			wantFix: false,
+		},
+		{
+			name:    "already has rebase mode",
+			cmd:     "git pull --rebase=merges origin main",
+			wantFix: false,
+		},
+		{
+			name:    "already has no rebase",
+			cmd:     "git pull --no-rebase origin main",
+			wantFix: false,
+		},
+		{
+			name:    "already has ff only",
+			cmd:     "git pull --ff-only origin main",
+			wantFix: false,
+		},
+		{
+			name:    "non pull command",
+			cmd:     "git fetch origin main",
+			wantFix: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: stderr})
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
+	p := NewGitParser()
+
+	tests := []struct {
+		name   string
+		stderr string
+	}{
+		{
+			name:   "missing fatal signal",
+			stderr: "hint: You have divergent branches and need to specify how to reconcile them.\n",
+		},
+		{
+			name:   "missing divergent signal",
+			stderr: "fatal: Need to specify how to reconcile divergent branches.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: "git pull", Stderr: tt.stderr})
+			if result.Fixed {
+				t.Fatalf("Expected incomplete divergent pull stderr to stay unchanged, got %+v", result)
+			}
+		})
+	}
+}
+
+func gitDivergentPullStderr() string {
+	return "$ git pull\n" +
+		"hint: You have divergent branches and need to specify how to reconcile them.\n" +
+		"hint: You can do so by running one of the following commands sometime before\n" +
+		"hint: your next pull:\n" +
+		"hint:\n" +
+		"hint:   git config pull.rebase false  # merge\n" +
+		"hint:   git config pull.rebase true   # rebase\n" +
+		"hint:   git config pull.ff only       # fast-forward only\n" +
+		"hint:\n" +
+		"hint: You can replace \"git config\" with \"git config --global\" to set a default\n" +
+		"hint: preference for all repositories. You can also pass --rebase, --no-rebase,\n" +
+		"hint: or --ff-only on the command line to override the configured default per\n" +
+		"hint: invocation.\n" +
+		"fatal: Need to specify how to reconcile divergent branches.\n"
 }
 
 func TestIsGitCommand(t *testing.T) {

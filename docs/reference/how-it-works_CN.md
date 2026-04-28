@@ -56,7 +56,7 @@ cd $HOME/project
 
 当前已有文档覆盖的解析器包括：
 
-- `git`：`did you mean...`、缺少 upstream 等建议
+- `git`：`did you mean...`、缺少 upstream、分叉 pull rebase 等建议
 - `docker`：未知命令建议
 - `npm`：命令未找到建议
 
