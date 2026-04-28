@@ -221,6 +221,20 @@ func TestEngine_FixWithParser_NoUpstreamTargetsPullOnly(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithParser_NoUpstreamRejectsPlaceholderRemote(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(itypes.ParserContext{
+		Command: "git remove -v && git pull",
+		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
+	})
+	if result.Fixed {
+		t.Fatalf("Expected placeholder remote to stay unchanged, got %+v", result)
+	}
+}
+
 func TestEngine_FixWithParser_NoMatch(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),

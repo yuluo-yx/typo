@@ -102,6 +102,10 @@ func (p *GitParser) parseNoUpstream(cmd, stderr string) itypes.ParserResult {
 		localBranch = matches[3]
 	}
 
+	if p.placeholderRegex.MatchString(remote) {
+		return itypes.ParserResult{Fixed: false}
+	}
+
 	branch := upstreamBranch
 	if p.placeholderRegex.MatchString(branch) && localBranch != "" {
 		branch = localBranch
