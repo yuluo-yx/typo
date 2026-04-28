@@ -87,6 +87,23 @@ If you wish to set tracking information for this branch you can do so with:
 
 Press `Esc` `Esc`, and Typo can add the suggested upstream automatically.
 
+## `git pull --rebase`
+
+When Git refuses to pull because the local and remote branches diverged:
+
+```shell
+$ git pull
+hint: You have divergent branches and need to specify how to reconcile them.
+hint: You can pass --rebase, --no-rebase, or --ff-only on the command line.
+fatal: Need to specify how to reconcile divergent branches.
+```
+
+Press `Esc` `Esc`, and Typo can retry the same pull with a command-level rebase strategy.
+
+```shell
+git pull --rebase
+```
+
 ## No permission? Use `sudo`
 
 > You finish typing a command and then realize you do not have permission.

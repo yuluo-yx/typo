@@ -221,6 +221,43 @@ func TestEngine_FixWithParser_NoUpstreamTargetsPullOnly(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithParser_NoUpstreamDefaultsPlaceholderRemoteToOrigin(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(itypes.ParserContext{
+		Command: "git remove -v && git pull",
+		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected placeholder remote to default to origin")
+	}
+	if result.Command != "git remove -v && git pull --set-upstream origin 0426-yuluo/fix" {
+		t.Fatalf("Expected placeholder remote to default to origin, got %q", result.Command)
+	}
+}
+
+func TestEngine_FixWithParser_DivergentPullRebaseTargetsPullOnly(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(itypes.ParserContext{
+		Command: "git status && git pull origin main",
+		Stderr:  "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected divergent pull command to be fixed")
+	}
+	if result.Command != "git status && git pull --rebase origin main" {
+		t.Fatalf("Expected rebase fix to apply only to git pull, got %q", result.Command)
+	}
+	if !result.UsedParser {
+		t.Fatal("Expected parser-assisted fix chain to retain parser usage marker")
+	}
+}
+
 func TestEngine_FixWithParser_NoMatch(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),

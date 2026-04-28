@@ -41,6 +41,11 @@ func (c *shellCall) replaceWord(index int, replacement string) string {
 	return c.raw[:start] + replacement + c.raw[end:]
 }
 
+func (c *shellCall) insertAfterWord(index int, insertion string) string {
+	_, end := parserWordRange(c.args[index], len(c.raw))
+	return c.raw[:end] + insertion + c.raw[end:]
+}
+
 func (c *shellCall) replaceSubcommand(command, expected, replacement string, optionsWithValues map[string]bool) (string, bool) {
 	index := findShellSubcommandIndex(c.args, command, optionsWithValues)
 	if index == -1 {
