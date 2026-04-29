@@ -150,7 +150,7 @@ func simpleParamNameRange(part *syntax.ParamExp, rawLen int) (string, int, int, 
 		return "", 0, 0, false
 	}
 
-	start, end := nodeRange(part.Param, rawLen)
+	start, end := utils.ShellNodeRange(part.Param, rawLen)
 	return name, start, end, true
 }
 
@@ -160,10 +160,6 @@ func hasUnsupportedParamFlags(part *syntax.ParamExp) bool {
 
 func hasUnsupportedParamExpansions(part *syntax.ParamExp) bool {
 	return part.Index != nil || len(part.Modifiers) > 0 || part.Slice != nil || part.Repl != nil || part.Names != 0 || part.Exp != nil
-}
-
-func nodeRange(node syntax.Node, rawLen int) (int, int) {
-	return utils.OffsetToIndex(node.Pos().Offset(), rawLen), utils.OffsetToIndex(node.End().Offset(), rawLen)
 }
 
 func isSimpleEnvName(name string) bool {

@@ -1639,9 +1639,8 @@ func findSubcommandWordIndex(mainCmd string, line *shellCommandLine) int {
 		}
 
 		if strings.HasPrefix(arg, "--") {
-			name := arg
-			if eq := strings.IndexByte(arg, '='); eq >= 0 {
-				name = arg[:eq]
+			name, _, hasInlineValue := utils.SplitInlineValue(arg)
+			if hasInlineValue {
 				if optionTakesValue(mainCmd, name) {
 					continue
 				}
@@ -1676,8 +1675,8 @@ func optionTakesValue(mainCmd, option string) bool {
 
 func splitToolOptionToken(arg string) (name string, suffix string, isOption bool) {
 	if strings.HasPrefix(arg, "--") {
-		if eq := strings.IndexByte(arg, '='); eq >= 0 {
-			return arg[:eq], arg[eq:], true
+		if name, suffix, ok := utils.SplitInlineValue(arg); ok {
+			return name, suffix, true
 		}
 		return arg, "", true
 	}
@@ -1696,8 +1695,8 @@ func splitLongOptionToken(arg string) (name string, suffix string, isOption bool
 	if !strings.HasPrefix(arg, "--") || arg == "--" {
 		return "", "", false
 	}
-	if eq := strings.IndexByte(arg, '='); eq >= 0 {
-		return arg[:eq], arg[eq:], true
+	if name, suffix, ok := utils.SplitInlineValue(arg); ok {
+		return name, suffix, true
 	}
 	return arg, "", true
 }
