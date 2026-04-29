@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 // GitParser parses git command errors.
@@ -218,7 +219,7 @@ func gitOptionState(arg string) gitOptionParseState {
 }
 
 func gitLongOptionState(arg string) gitOptionParseState {
-	name, hasInlineValue := splitLongOption(arg)
+	name, _, hasInlineValue := utils.SplitInlineValue(arg)
 	if gitGlobalOptionsWithValues[name] {
 		if hasInlineValue {
 			return gitOptionHandled
@@ -239,14 +240,6 @@ func gitShortOptionState(arg string) gitOptionParseState {
 		return gitOptionHandled
 	}
 	return gitOptionUnknown
-}
-
-func splitLongOption(arg string) (string, bool) {
-	if eq := strings.IndexByte(arg, '='); eq >= 0 {
-		return arg[:eq], true
-	}
-
-	return arg, false
 }
 
 func gitCommandHasUpstreamFlag(cmd string) bool {

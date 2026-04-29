@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 const maxAliasExpansionDepth = 8
@@ -82,7 +83,7 @@ func expandCommandAliases(raw string, entries []itypes.AliasContextEntry) (strin
 			continue
 		}
 
-		start, end := wordRange(line.args[line.commandIdx], len(raw))
+		start, end := utils.ShellNodeRange(line.args[line.commandIdx], len(raw))
 		replacements = append(replacements, rawRangeReplacement{
 			start: start,
 			end:   end,
@@ -210,8 +211,8 @@ func rewriteCommandAliases(raw string, records []aliasRewriteRecord) string {
 			continue
 		}
 
-		start, _ := wordRange(line.args[line.commandIdx], len(raw))
-		_, end := wordRange(line.args[line.commandIdx+len(record.tokens)-1], len(raw))
+		start, _ := utils.ShellNodeRange(line.args[line.commandIdx], len(raw))
+		_, end := utils.ShellNodeRange(line.args[line.commandIdx+len(record.tokens)-1], len(raw))
 		replacements = append(replacements, rawRangeReplacement{
 			start: start,
 			end:   end,

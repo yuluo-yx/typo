@@ -94,7 +94,7 @@ func (c *shellCommandLine) replaceCommandSuffixDedup(replacement string) string 
 }
 
 func (c *shellCommandLine) replaceWord(index int, replacement string) string {
-	start, end := wordRange(c.args[index], len(c.raw))
+	start, end := utils.ShellNodeRange(c.args[index], len(c.raw))
 	return c.raw[:start] + replacement + c.raw[end:]
 }
 
@@ -105,14 +105,14 @@ func (c *shellCommandLine) replaceWords(replacements ...shellWordReplacement) st
 
 	sorted := append([]shellWordReplacement(nil), replacements...)
 	sort.SliceStable(sorted, func(i, j int) bool {
-		iStart, _ := wordRange(c.args[sorted[i].index], len(c.raw))
-		jStart, _ := wordRange(c.args[sorted[j].index], len(c.raw))
+		iStart, _ := utils.ShellNodeRange(c.args[sorted[i].index], len(c.raw))
+		jStart, _ := utils.ShellNodeRange(c.args[sorted[j].index], len(c.raw))
 		return iStart > jStart
 	})
 
 	result := c.raw
 	for _, replacement := range sorted {
-		start, end := wordRange(c.args[replacement.index], len(c.raw))
+		start, end := utils.ShellNodeRange(c.args[replacement.index], len(c.raw))
 		result = result[:start] + replacement.value + result[end:]
 	}
 
@@ -120,8 +120,8 @@ func (c *shellCommandLine) replaceWords(replacements ...shellWordReplacement) st
 }
 
 func (c *shellCommandLine) commandSuffixRange() (int, int) {
-	start, _ := wordRange(c.args[c.commandIdx], len(c.raw))
-	_, end := wordRange(c.args[len(c.args)-1], len(c.raw))
+	start, _ := utils.ShellNodeRange(c.args[c.commandIdx], len(c.raw))
+	_, end := utils.ShellNodeRange(c.args[len(c.args)-1], len(c.raw))
 	return start, end
 }
 
@@ -146,10 +146,6 @@ func (c *shellCommandLine) hasWrapper(name string) bool {
 	return false
 }
 
-func wordRange(word *syntax.Word, rawLen int) (int, int) {
-	return utils.OffsetToIndex(word.Pos().Offset(), rawLen), utils.OffsetToIndex(word.End().Offset(), rawLen)
-}
-
 func trimShellWordPrefix(raw string, prefixWords []string) string {
 	if len(prefixWords) == 0 {
 		return raw
@@ -171,7 +167,7 @@ func trimShellWordPrefix(raw string, prefixWords []string) string {
 		}
 	}
 
-	_, end := wordRange(line.args[len(prefixWords)-1], len(line.raw))
+	_, end := utils.ShellNodeRange(line.args[len(prefixWords)-1], len(line.raw))
 	return strings.TrimLeft(line.raw[end:], " \t")
 }
 
@@ -285,9 +281,8 @@ func handleLongWrapperOption(arg string, optionsWithValues, optionsWithoutValues
 		return false, false
 	}
 
-	name := arg
-	if eq := strings.IndexByte(arg, '='); eq >= 0 {
-		name = arg[:eq]
+	name, _, hasInlineValue := utils.SplitInlineValue(arg)
+	if hasInlineValue {
 		if optionsWithValues[name] {
 			return true, false
 		}

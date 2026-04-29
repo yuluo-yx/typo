@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 func TestGitParser_Parse(t *testing.T) {
@@ -513,11 +514,11 @@ func TestGitCommandHelpers(t *testing.T) {
 		t.Fatalf("gitShortOptionState(-x) = %v, want gitOptionUnknown", got)
 	}
 
-	if name, hasInline := splitLongOption("--git-dir=repo"); name != "--git-dir" || !hasInline {
-		t.Fatalf("splitLongOption() = (%q, %v), want (--git-dir, true)", name, hasInline)
+	if name, _, hasInline := utils.SplitInlineValue("--git-dir=repo"); name != "--git-dir" || !hasInline {
+		t.Fatalf("SplitInlineValue() = (%q, %v), want (--git-dir, true)", name, hasInline)
 	}
-	if name, hasInline := splitLongOption("--help"); name != "--help" || hasInline {
-		t.Fatalf("splitLongOption() = (%q, %v), want (--help, false)", name, hasInline)
+	if name, _, hasInline := utils.SplitInlineValue("--help"); name != "--help" || hasInline {
+		t.Fatalf("SplitInlineValue() = (%q, %v), want (--help, false)", name, hasInline)
 	}
 
 	if !gitCommandHasUpstreamFlag("git pull --set-upstream origin main") {
