@@ -6,9 +6,12 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/yuluo-yx/typo/internal/utils"
 )
+
+const maxPathDiscoveryWorkers = 16
 
 // Discover discovers commands from the system PATH.
 func Discover() []string {
@@ -20,8 +23,40 @@ func Discover() []string {
 	}
 
 	paths := strings.Split(path, string(os.PathListSeparator))
-	for _, p := range paths {
-		discoverInDir(p, commands)
+	workerCount := pathDiscoveryWorkerCount(len(paths))
+	if workerCount == 0 {
+		return []string{}
+	}
+
+	jobs := make(chan string)
+	results := make(chan []string, workerCount)
+
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer wg.Done()
+			for p := range jobs {
+				if names := discoverNamesInDir(p); len(names) > 0 {
+					results <- names
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for _, p := range paths {
+			jobs <- p
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+	}()
+
+	for names := range results {
+		for _, cmd := range names {
+			commands[cmd] = true
+		}
 	}
 
 	// Convert to slice
@@ -36,11 +71,36 @@ func Discover() []string {
 }
 
 func discoverInDir(dir string, commands map[string]bool) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
+	for _, name := range discoverNamesInDir(dir) {
+		commands[name] = true
+	}
+}
+
+func pathDiscoveryWorkerCount(pathCount int) int {
+	if pathCount <= 0 {
+		return 0
 	}
 
+	workerCount := runtime.NumCPU() * 2
+	if workerCount < 1 {
+		workerCount = 1
+	}
+	if workerCount > maxPathDiscoveryWorkers {
+		workerCount = maxPathDiscoveryWorkers
+	}
+	if workerCount > pathCount {
+		workerCount = pathCount
+	}
+	return workerCount
+}
+
+func discoverNamesInDir(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -70,8 +130,9 @@ func discoverInDir(dir string, commands map[string]bool) {
 
 		name = trimExecutableSuffix(name)
 
-		commands[name] = true
+		names = append(names, name)
 	}
+	return names
 }
 
 // DiscoverCommon returns a list of common commands.
