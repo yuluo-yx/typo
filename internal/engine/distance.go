@@ -2,26 +2,41 @@ package engine
 
 import (
 	"math"
+	"sync"
 )
+
+const maxPooledDistanceBufferLen = 4096
+
+var distanceBufferPool = sync.Pool{
+	New: func() any {
+		return make([]float64, 0, 64)
+	},
+}
 
 // Distance calculates the Levenshtein distance between two strings.
 // It uses keyboard-aware weights for substitution operations.
 // Only two rows of the DP matrix are kept at a time to reduce allocations.
 func Distance(a, b string, weights KeyboardWeights) int {
-	if len(a) == 0 {
-		return len(b)
-	}
-	if len(b) == 0 {
-		return len(a)
-	}
+	return distanceRunes([]rune(a), []rune(b), weights)
+}
 
-	runesA := []rune(a)
-	runesB := []rune(b)
+func distanceRunes(runesA, runesB []rune, weights KeyboardWeights) int {
 	lenA := len(runesA)
 	lenB := len(runesB)
+	if lenA == 0 {
+		return lenB
+	}
+	if lenB == 0 {
+		return lenA
+	}
 
-	// Allocate two rows: previous and current.
-	buf := make([]float64, 2*(lenB+1))
+	bufLen := 2 * (lenB + 1)
+	buf := distanceBufferPool.Get().([]float64)
+	if cap(buf) < bufLen {
+		buf = make([]float64, bufLen)
+	} else {
+		buf = buf[:bufLen]
+	}
 	prev := buf[:lenB+1]
 	curr := buf[lenB+1:]
 
@@ -42,7 +57,11 @@ func Distance(a, b string, weights KeyboardWeights) int {
 		prev, curr = curr, prev
 	}
 
-	return int(math.Round(prev[lenB]))
+	result := int(math.Round(prev[lenB]))
+	if cap(buf) <= maxPooledDistanceBufferLen {
+		distanceBufferPool.Put(buf[:0])
+	}
+	return result
 }
 
 // substitutionCost returns the cost of substituting one character for another.
