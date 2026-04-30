@@ -340,7 +340,7 @@ func createTestCommand(t *testing.T, dir, name string) {
 	t.Helper()
 
 	fileName := name
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windowsOS {
 		fileName += ".exe"
 	}
 	path := filepath.Join(dir, fileName)

@@ -1329,10 +1329,6 @@ func (e *Engine) closestKnownCommand(cmd string) (string, int) {
 	return e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates())
 }
 
-func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string) (string, int) {
-	return e.closestKnownCommandFromCandidates(cmd, commandRuneCandidatesFromStrings(knownCommands))
-}
-
 func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []commandRuneCandidate) (string, int) {
 	cmdRunes := []rune(cmd)
 	candidates := make([]commandCandidate, 0, len(knownCommands))

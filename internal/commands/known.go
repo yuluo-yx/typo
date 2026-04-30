@@ -12,6 +12,7 @@ import (
 )
 
 const maxPathDiscoveryWorkers = 16
+const windowsOS = "windows"
 
 // Discover discovers commands from the system PATH.
 func Discover() []string {
@@ -117,7 +118,7 @@ func discoverNamesInDir(dir string) []string {
 			continue
 		}
 
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == windowsOS {
 			if !isWindowsExecutablePath(name) {
 				continue
 			}
@@ -212,7 +213,7 @@ func IsExecutable(path string) bool {
 	if info.IsDir() {
 		return false
 	}
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windowsOS {
 		ext := strings.ToLower(filepath.Ext(cleanPath))
 		return ext != "" && isWindowsExecutablePath(cleanPath)
 	}
@@ -250,7 +251,7 @@ func IsShellBuiltin(name string) bool {
 }
 
 func executableCandidates(name string) []string {
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != windowsOS {
 		return []string{name}
 	}
 	if filepath.Ext(name) != "" {

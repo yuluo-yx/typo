@@ -9,7 +9,8 @@ const maxPooledDistanceBufferLen = 4096
 
 var distanceBufferPool = sync.Pool{
 	New: func() any {
-		return make([]float64, 0, 64)
+		buf := make([]float64, 0, 64)
+		return &buf
 	},
 }
 
@@ -31,7 +32,8 @@ func distanceRunes(runesA, runesB []rune, weights KeyboardWeights) int {
 	}
 
 	bufLen := 2 * (lenB + 1)
-	buf := distanceBufferPool.Get().([]float64)
+	bufPtr := distanceBufferPool.Get().(*[]float64)
+	buf := *bufPtr
 	if cap(buf) < bufLen {
 		buf = make([]float64, bufLen)
 	} else {
@@ -59,7 +61,8 @@ func distanceRunes(runesA, runesB []rune, weights KeyboardWeights) int {
 
 	result := int(math.Round(prev[lenB]))
 	if cap(buf) <= maxPooledDistanceBufferLen {
-		distanceBufferPool.Put(buf[:0])
+		*bufPtr = buf[:0]
+		distanceBufferPool.Put(bufPtr)
 	}
 	return result
 }
