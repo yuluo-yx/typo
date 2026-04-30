@@ -608,8 +608,9 @@ func TestEngine_AvailableCommandsRefreshesAfterDirectAppend(t *testing.T) {
 	if len(available) != 2 || available[0] != "git" || available[1] != "echo" {
 		t.Fatalf("availableCommands() after append = %v, want [git echo]", available)
 	}
-	candidates := eng.availableCommandCandidates()
-	if len(candidates) != 2 || candidates[1].name != "echo" || string(candidates[1].runes) != "echo" {
+	candidates := eng.availableCommandCandidates("echp", 2)
+	names := commandCandidateNames(candidates)
+	if len(candidates) != 2 || !names["git"] || !names["echo"] {
 		t.Fatalf("availableCommandCandidates() after append = %+v, want git and echo candidates", candidates)
 	}
 

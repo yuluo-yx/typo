@@ -29,6 +29,7 @@ type Engine struct {
 	commands             []string // Loaded command set, seeded first and expanded on demand.
 	availableCmds        []string // Cached command set after disabled-command filtering.
 	availableCmdRunes    []commandRuneCandidate
+	availableCmdIndex    commandCandidateIndex
 	availableCmdsSet     map[string]struct{} // O(1) lookup mirror of availableCmds.
 	availableCmdsLen     int                 // Original commands length for `availableCmds`; detects stale cache after direct appends.
 	commandLoader        func() []string
@@ -49,6 +50,13 @@ type distanceMatchConfig struct {
 type commandRuneCandidate struct {
 	name  string
 	runes []rune
+}
+
+type commandCandidateIndex struct {
+	all       []commandRuneCandidate
+	byRuneLen map[int][]commandRuneCandidate
+	minLen    int
+	maxLen    int
 }
 
 const (
@@ -1319,14 +1327,14 @@ func (e *Engine) findClosestCommand(cmd string) string {
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
 	matchCfg := e.distanceMatchConfig()
-	bestMatch, bestDistance := e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates())
+	bestMatch, bestDistance := e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance))
 	if isGoodCommandDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) || e.commandLoader == nil || e.commandsFullyLoad {
 		return bestMatch, bestDistance
 	}
 
 	// Only scan PATH on demand when builtin or seeded commands cannot produce a good candidate.
 	e.loadCommands()
-	return e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates())
+	return e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance))
 }
 
 func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []commandRuneCandidate) (string, int) {
@@ -1380,11 +1388,11 @@ func (e *Engine) availableCommands() []string {
 	return e.availableCmds
 }
 
-func (e *Engine) availableCommandCandidates() []commandRuneCandidate {
+func (e *Engine) availableCommandCandidates(cmd string, maxEditDistance int) []commandRuneCandidate {
 	if len(e.commands) != e.availableCmdsLen {
 		e.refreshAvailableCommands()
 	}
-	return e.availableCmdRunes
+	return e.availableCmdIndex.candidatesFor(cmd, maxEditDistance)
 }
 
 func (e *Engine) isAvailableCommand(cmd string) bool {
@@ -1427,6 +1435,7 @@ func (e *Engine) loadCommands() {
 func (e *Engine) refreshAvailableCommands() {
 	e.availableCmds = e.filterDisabledCommands(e.commands)
 	e.availableCmdRunes = commandRuneCandidatesFromStrings(e.availableCmds)
+	e.availableCmdIndex = newCommandCandidateIndex(e.availableCmdRunes)
 	e.availableCmdsSet = make(map[string]struct{}, len(e.availableCmds))
 	for _, cmd := range e.availableCmds {
 		e.availableCmdsSet[cmd] = struct{}{}
@@ -1441,6 +1450,56 @@ func commandRuneCandidatesFromStrings(commands []string) []commandRuneCandidate 
 			name:  cmd,
 			runes: []rune(cmd),
 		})
+	}
+	return candidates
+}
+
+func newCommandCandidateIndex(candidates []commandRuneCandidate) commandCandidateIndex {
+	index := commandCandidateIndex{
+		all:       candidates,
+		byRuneLen: make(map[int][]commandRuneCandidate),
+	}
+	if len(candidates) == 0 {
+		return index
+	}
+
+	index.minLen = len(candidates[0].runes)
+	index.maxLen = index.minLen
+	for _, candidate := range candidates {
+		runeLen := len(candidate.runes)
+		index.byRuneLen[runeLen] = append(index.byRuneLen[runeLen], candidate)
+		if runeLen < index.minLen {
+			index.minLen = runeLen
+		}
+		if runeLen > index.maxLen {
+			index.maxLen = runeLen
+		}
+	}
+
+	return index
+}
+
+func (index commandCandidateIndex) candidatesFor(cmd string, maxEditDistance int) []commandRuneCandidate {
+	if len(index.all) == 0 {
+		return nil
+	}
+	if maxEditDistance < 0 {
+		return index.all
+	}
+
+	cmdLen := len([]rune(cmd))
+	minLen := cmdLen - maxEditDistance
+	if minLen < 0 {
+		minLen = 0
+	}
+	maxLen := cmdLen + maxEditDistance
+	if minLen <= index.minLen && maxLen >= index.maxLen {
+		return index.all
+	}
+
+	candidates := make([]commandRuneCandidate, 0)
+	for runeLen := minLen; runeLen <= maxLen; runeLen++ {
+		candidates = append(candidates, index.byRuneLen[runeLen]...)
 	}
 	return candidates
 }

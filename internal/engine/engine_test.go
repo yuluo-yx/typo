@@ -1907,6 +1907,80 @@ func TestEngineAvailableCommandsUsesCachedSlice(t *testing.T) {
 	}
 }
 
+func TestCommandCandidateIndexUsesRuneLengthWindow(t *testing.T) {
+	index := newCommandCandidateIndex(commandRuneCandidatesFromStrings([]string{
+		"go",
+		"git",
+		"编译",
+		"docker",
+		"kubernetes",
+	}))
+
+	candidates := index.candidatesFor("gti", 2)
+	names := commandCandidateNames(candidates)
+
+	for _, want := range []string{"go", "git", "编译"} {
+		if !names[want] {
+			t.Fatalf("candidatesFor() missing %q in %v", want, names)
+		}
+	}
+	for _, unwanted := range []string{"docker", "kubernetes"} {
+		if names[unwanted] {
+			t.Fatalf("candidatesFor() included length-mismatched %q in %v", unwanted, names)
+		}
+	}
+}
+
+func TestCommandCandidateIndexFallsBackForNegativeDistance(t *testing.T) {
+	index := newCommandCandidateIndex(commandRuneCandidatesFromStrings([]string{
+		"git",
+		"kubernetes",
+	}))
+
+	candidates := index.candidatesFor("gti", -1)
+	if len(candidates) != 2 {
+		t.Fatalf("candidatesFor() = %v, want all candidates", commandCandidateNames(candidates))
+	}
+}
+
+func TestEngineAvailableCommandCandidatesRefreshesIndex(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+	eng.commands = append(eng.commands, "mytool")
+
+	candidates := eng.availableCommandCandidates("mytol", 2)
+	if !commandCandidateNames(candidates)["mytool"] {
+		t.Fatalf("availableCommandCandidates() did not refresh appended command, got %v", commandCandidateNames(candidates))
+	}
+}
+
+func TestEngineAvailableCommandCandidatesExcludeDisabledCommands(t *testing.T) {
+	eng := NewEngine(
+		WithDisabledCommands([]string{"git"}),
+		WithCommands([]string{"git", "grep"}),
+	)
+
+	candidates := eng.availableCommandCandidates("git", 2)
+	names := commandCandidateNames(candidates)
+	if names["git"] {
+		t.Fatalf("availableCommandCandidates() included disabled command: %v", names)
+	}
+	if !names["grep"] {
+		t.Fatalf("availableCommandCandidates() missing enabled command: %v", names)
+	}
+}
+
+func TestEngineDistanceCandidateIndexKeepsLeadingTypoMatch(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "docker", "kubernetes"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	result := eng.Fix("gut status", "")
+	if !result.Fixed || result.Command != "git status" {
+		t.Fatalf("expected length-indexed distance fix for leading typo, got %+v", result)
+	}
+}
+
 func TestEngineFixDebugTracksPathLoad(t *testing.T) {
 	eng := NewEngine(
 		WithCommands([]string{"git"}),
@@ -1975,4 +2049,12 @@ func TestEngineFixDebugTracksRejectedCandidate(t *testing.T) {
 	if candidate.Stage != "distance" || candidate.Candidate != "mytool" {
 		t.Fatalf("unexpected rejected candidate: %+v", candidate)
 	}
+}
+
+func commandCandidateNames(candidates []commandRuneCandidate) map[string]bool {
+	names := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		names[candidate.name] = true
+	}
+	return names
 }

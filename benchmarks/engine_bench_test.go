@@ -2,6 +2,7 @@ package benchmarks
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -244,6 +245,28 @@ func BenchmarkEngine_Fix_WithCommands(b *testing.B) {
 			eng.Fix("dkcer ps", "")
 		}
 	})
+
+	largeCommands := syntheticCommandList(10000)
+	largeCommands = append(largeCommands, "git", "docker", "kubectl")
+	largeEng := engine.NewEngine(
+		engine.WithRules(engine.NewRules("")),
+		engine.WithHistory(engine.NewHistory("")),
+		engine.WithCommands(largeCommands),
+	)
+
+	b.Run("distance-large-known-10k", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			largeEng.Fix("gti status", "")
+		}
+	})
+}
+
+func syntheticCommandList(count int) []string {
+	commands := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		commands = append(commands, fmt.Sprintf("synthetic-command-%05d", i))
+	}
+	return commands
 }
 
 func newBenchmarkToolTreeRegistry(b *testing.B, tools map[string][]string) *commands.ToolTreeRegistry {
