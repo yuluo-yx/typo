@@ -26,8 +26,9 @@ type Engine struct {
 	rules                *Rules
 	history              *History
 	parser               *parser.Registry
-	commands             []string            // Loaded command set, seeded first and expanded on demand.
-	availableCmds        []string            // Cached command set after disabled-command filtering.
+	commands             []string // Loaded command set, seeded first and expanded on demand.
+	availableCmds        []string // Cached command set after disabled-command filtering.
+	availableCmdRunes    []commandRuneCandidate
 	availableCmdsSet     map[string]struct{} // O(1) lookup mirror of availableCmds.
 	availableCmdsLen     int                 // Original commands length for `availableCmds`; detects stale cache after direct appends.
 	commandLoader        func() []string
@@ -43,6 +44,11 @@ type distanceMatchConfig struct {
 	keyboard            KeyboardWeights
 	maxEditDistance     int
 	similarityThreshold float64
+}
+
+type commandRuneCandidate struct {
+	name  string
+	runes []rune
 }
 
 const (
@@ -1313,33 +1319,34 @@ func (e *Engine) findClosestCommand(cmd string) string {
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
 	matchCfg := e.distanceMatchConfig()
-	bestMatch, bestDistance := e.closestKnownCommandFromSlice(cmd, e.availableCommands())
+	bestMatch, bestDistance := e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates())
 	if isGoodCommandDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) || e.commandLoader == nil || e.commandsFullyLoad {
 		return bestMatch, bestDistance
 	}
 
 	// Only scan PATH on demand when builtin or seeded commands cannot produce a good candidate.
 	e.loadCommands()
-	return e.closestKnownCommandFromSlice(cmd, e.availableCommands())
+	return e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates())
 }
 
-func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string) (string, int) {
+func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []commandRuneCandidate) (string, int) {
+	cmdRunes := []rune(cmd)
 	candidates := make([]commandCandidate, 0, len(knownCommands))
 	seen := make(map[string]bool, len(knownCommands))
 
 	for _, known := range knownCommands {
-		if known == "" || seen[known] {
+		if known.name == "" || seen[known.name] {
 			continue
 		}
-		seen[known] = true
+		seen[known.name] = true
 
-		d := Distance(cmd, known, e.keyboard)
+		d := distanceRunes(cmdRunes, known.runes, e.keyboard)
 		candidates = append(candidates, commandCandidate{
-			name:       known,
+			name:       known.name,
 			distance:   d,
-			similarity: SimilarityFromDistance(len(cmd), len(known), d),
-			priority:   e.commandPriority(known),
-			transposed: utils.IsSingleAdjacentTransposition(cmd, known),
+			similarity: SimilarityFromDistance(len(cmd), len(known.name), d),
+			priority:   e.commandPriority(known.name),
+			transposed: utils.IsSingleAdjacentTransposition(cmd, known.name),
 		})
 	}
 
@@ -1371,6 +1378,13 @@ func (e *Engine) availableCommands() []string {
 		e.refreshAvailableCommands()
 	}
 	return e.availableCmds
+}
+
+func (e *Engine) availableCommandCandidates() []commandRuneCandidate {
+	if len(e.commands) != e.availableCmdsLen {
+		e.refreshAvailableCommands()
+	}
+	return e.availableCmdRunes
 }
 
 func (e *Engine) isAvailableCommand(cmd string) bool {
@@ -1412,11 +1426,23 @@ func (e *Engine) loadCommands() {
 
 func (e *Engine) refreshAvailableCommands() {
 	e.availableCmds = e.filterDisabledCommands(e.commands)
+	e.availableCmdRunes = commandRuneCandidatesFromStrings(e.availableCmds)
 	e.availableCmdsSet = make(map[string]struct{}, len(e.availableCmds))
 	for _, cmd := range e.availableCmds {
 		e.availableCmdsSet[cmd] = struct{}{}
 	}
 	e.availableCmdsLen = len(e.commands)
+}
+
+func commandRuneCandidatesFromStrings(commands []string) []commandRuneCandidate {
+	candidates := make([]commandRuneCandidate, 0, len(commands))
+	for _, cmd := range commands {
+		candidates = append(candidates, commandRuneCandidate{
+			name:  cmd,
+			runes: []rune(cmd),
+		})
+	}
+	return candidates
 }
 
 func (e *Engine) distanceMatchConfig() distanceMatchConfig {
