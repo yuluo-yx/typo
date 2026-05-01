@@ -93,6 +93,8 @@ func Run() int {
 		return cmdDoctor()
 	case "uninstall":
 		return cmdUninstall()
+	case "update", "upgrade":
+		return cmdUpdate(os.Args[2:])
 	case "help", "-h", "--help":
 		printUsage()
 		return 0
@@ -127,6 +129,10 @@ Usage:
   typo history list                       List correction history
   typo history clear                      Clear correction history
   typo stats [--since <days>] [--top <n>] Analyze accepted correction history
+  typo update                             Update typo to the latest version
+  typo update --check                     Only check for updates
+  typo update --version <tag>             Install a specific version
+  typo update --dry-run                   Simulate without making changes
   typo init zsh                           Print zsh integration script
   typo init bash                          Print bash integration script
   typo init fish                          Print fish integration script
@@ -142,6 +148,8 @@ Examples:
   typo rules add "mytypo" "mycommand"
   typo rules disable git
   typo stats --since 7
+  typo update
+  typo update --check
   eval "$(typo init zsh)"
 
 Zsh Integration:

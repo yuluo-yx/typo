@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv -f /c/Users/12480/.local/bin/typo.exe.new /c/Users/12480/.local/bin/typo.exe)",
+      "Bash(typo version *)"
+    ]
+  }
+}
