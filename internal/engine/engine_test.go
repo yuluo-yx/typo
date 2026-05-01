@@ -1945,11 +1945,27 @@ func TestCommandCandidateIndexFallsBackForNegativeDistance(t *testing.T) {
 
 func TestEngineAvailableCommandCandidatesRefreshesIndex(t *testing.T) {
 	eng := NewEngine(WithCommands([]string{"git"}))
-	eng.commands = append(eng.commands, "mytool")
+	eng.addCommands("mytool")
 
 	candidates := eng.availableCommandCandidates("mytol", 2)
 	if !commandCandidateNames(candidates)["mytool"] {
 		t.Fatalf("availableCommandCandidates() did not refresh appended command, got %v", commandCandidateNames(candidates))
+	}
+}
+
+func TestEngineAvailableCommandsRefreshesAfterSameLengthReplacement(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+	if !eng.isAvailableCommand("git") {
+		t.Fatal("isAvailableCommand(git) = false, want true")
+	}
+
+	eng.setCommands([]string{"grep"})
+
+	if eng.isAvailableCommand("git") {
+		t.Fatal("isAvailableCommand(git) = true after replacement, want false")
+	}
+	if !eng.isAvailableCommand("grep") {
+		t.Fatal("isAvailableCommand(grep) = false after replacement, want true")
 	}
 }
 
