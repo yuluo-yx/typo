@@ -52,7 +52,8 @@ func (r *Registry) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 				return withParserName(result, route.parser)
 			}
 
-			// 专属 parser 只是快速首试；generic 和 permission 仍需保持原始有序兜底。
+			// A dedicated parser is just a quick initial test; generics and permissions
+			// still need to be kept in their original, orderly state as a fallback.
 			return r.parseFallback(ctx, route.index)
 		}
 	}
