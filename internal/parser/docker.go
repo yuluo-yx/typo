@@ -23,7 +23,7 @@ func NewDockerParser() *DockerParser {
 
 // Name returns the parser name.
 func (p *DockerParser) Name() string {
-	return "docker"
+	return parserNameDocker
 }
 
 // Parse parses docker error output.
@@ -46,7 +46,7 @@ func (p *DockerParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 			fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
 		} else {
 			var ok bool
-			fixed, ok = call.replaceSubcommand("docker", wrongCmd, suggested, dockerParserOptionsWithValues)
+			fixed, ok = call.replaceSubcommand(parserNameDocker, wrongCmd, suggested, dockerParserOptionsWithValues)
 			if !ok {
 				return itypes.ParserResult{Fixed: false}
 			}
@@ -69,7 +69,7 @@ func (p *DockerParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 			fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
 		} else {
 			var ok bool
-			fixed, ok = call.replaceSubcommand("docker", wrongCmd, suggested, dockerParserOptionsWithValues)
+			fixed, ok = call.replaceSubcommand(parserNameDocker, wrongCmd, suggested, dockerParserOptionsWithValues)
 			if !ok {
 				return itypes.ParserResult{Fixed: false}
 			}
@@ -89,5 +89,5 @@ func isDockerCommand(cmd string) bool {
 	if len(parts) == 0 {
 		return false
 	}
-	return parts[0] == "docker" || strings.HasPrefix(parts[0], "docker-")
+	return parts[0] == parserNameDocker || strings.HasPrefix(parts[0], dockerCommandPrefix)
 }

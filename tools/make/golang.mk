@@ -90,7 +90,7 @@ test: ## Run project test
 .PHONY: lint-go
 lint-go: ## Run golangci-lint
 	@$(LOG_TARGET)
-	@golangci-lint version | grep -Eq "version (v)?2\\." || (echo "golangci-lint v2 is required"; exit 1)
+	@golangci-lint version | grep -Eq "version $(GOLANGCI_LINT_VERSION_NUMBER)([^0-9.]|$$)" || (echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required; run make install-golangcilint"; exit 1)
 	golangci-lint run ./... --config tools/linter/go/.golangci.yml
 
 .PHONY: clean

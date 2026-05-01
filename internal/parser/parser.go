@@ -1,10 +1,20 @@
 package parser
 
-import itypes "github.com/yuluo-yx/typo/internal/types"
+import (
+	"strings"
+
+	itypes "github.com/yuluo-yx/typo/internal/types"
+)
 
 // Registry manages all available parsers.
 type Registry struct {
-	parsers []itypes.Parser
+	parsers   []itypes.Parser
+	byCommand map[string]parserRoute
+}
+
+type parserRoute struct {
+	parser itypes.Parser
+	index  int
 }
 
 // NewRegistry creates a new parser registry with default parsers.
@@ -21,18 +31,77 @@ func NewRegistry() *Registry {
 // Register adds a parser to the registry.
 func (r *Registry) Register(p itypes.Parser) {
 	r.parsers = append(r.parsers, p)
+	key := dedicatedParserNameKey(p.Name())
+	if key == "" {
+		return
+	}
+	if r.byCommand == nil {
+		r.byCommand = make(map[string]parserRoute)
+	}
+	if _, exists := r.byCommand[key]; !exists {
+		r.byCommand[key] = parserRoute{parser: p, index: len(r.parsers) - 1}
+	}
 }
 
 // Parse tries all registered parsers and returns the first successful result.
 func (r *Registry) Parse(ctx itypes.ParserContext) itypes.ParserResult {
-	for _, p := range r.parsers {
+	if key := commandParserKey(ctx.Command); key != "" {
+		if route, ok := r.byCommand[key]; ok {
+			result := route.parser.Parse(ctx)
+			if result.Fixed {
+				return withParserName(result, route.parser)
+			}
+
+			// A dedicated parser is just a quick initial test; generics and permissions
+			// still need to be kept in their original, orderly state as a fallback.
+			return r.parseFallback(ctx, route.index)
+		}
+	}
+	return r.parseFallback(ctx, -1)
+}
+
+func (r *Registry) parseFallback(ctx itypes.ParserContext, skipIndex int) itypes.ParserResult {
+	for i, p := range r.parsers {
+		if i == skipIndex {
+			continue
+		}
 		result := p.Parse(ctx)
 		if result.Fixed {
-			if result.Parser == "" {
-				result.Parser = p.Name()
-			}
-			return result
+			return withParserName(result, p)
 		}
 	}
 	return itypes.ParserResult{Fixed: false}
+}
+
+func withParserName(result itypes.ParserResult, p itypes.Parser) itypes.ParserResult {
+	if result.Parser == "" {
+		result.Parser = p.Name()
+	}
+	return result
+}
+
+func commandParserKey(command string) string {
+	return dedicatedCommandKey(firstCommandWord(command))
+}
+
+func dedicatedParserNameKey(name string) string {
+	switch name {
+	case parserNameGit, parserNameDocker, parserNameNPM:
+		return name
+	default:
+		return ""
+	}
+}
+
+func dedicatedCommandKey(name string) string {
+	switch {
+	case name == parserNameGit || strings.HasPrefix(name, gitCommandPrefix):
+		return parserNameGit
+	case name == parserNameDocker || strings.HasPrefix(name, dockerCommandPrefix):
+		return parserNameDocker
+	case name == parserNameNPM || strings.HasPrefix(name, npmCommandPrefix):
+		return parserNameNPM
+	default:
+		return ""
+	}
 }

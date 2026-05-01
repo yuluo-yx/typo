@@ -32,7 +32,7 @@ func NewGitParser() *GitParser {
 
 // Name returns the parser name.
 func (p *GitParser) Name() string {
-	return "git"
+	return parserNameGit
 }
 
 // Parse parses git error output.
@@ -82,7 +82,7 @@ func (p *GitParser) parseDidYouMean(cmd, stderr string) itypes.ParserResult {
 		}
 	}
 
-	fixed, ok := call.replaceSubcommand("git", wrongCmd, suggested, gitParserOptionsWithValues)
+	fixed, ok := call.replaceSubcommand(parserNameGit, wrongCmd, suggested, gitParserOptionsWithValues)
 	if !ok {
 		return itypes.ParserResult{Fixed: false}
 	}
@@ -160,7 +160,7 @@ func gitSubcommand(cmd string) string {
 	if subcommand := gitPrefixedSubcommand(parts[0]); subcommand != "" {
 		return subcommand
 	}
-	if parts[0] != "git" {
+	if parts[0] != parserNameGit {
 		return ""
 	}
 
@@ -189,8 +189,8 @@ func gitSubcommand(cmd string) string {
 }
 
 func gitPrefixedSubcommand(first string) string {
-	if strings.HasPrefix(first, "git-") && len(first) > len("git-") {
-		return strings.TrimPrefix(first, "git-")
+	if strings.HasPrefix(first, gitCommandPrefix) && len(first) > len(gitCommandPrefix) {
+		return strings.TrimPrefix(first, gitCommandPrefix)
 	}
 
 	return ""
@@ -269,13 +269,13 @@ func gitCommandHasPullReconcileFlag(cmd string) bool {
 }
 
 func addGitPullRebaseFlag(cmd string) (string, bool) {
-	if strings.HasPrefix(strings.Fields(cmd)[0], "git-pull") {
+	if strings.HasPrefix(strings.Fields(cmd)[0], gitCommandPrefix+"pull") {
 		return addGitPrefixedPullRebaseFlag(cmd)
 	}
 
 	call, err := parseShellCall(cmd)
 	if err == nil {
-		index := findShellSubcommandIndex(call.args, "git", gitParserOptionsWithValues)
+		index := findShellSubcommandIndex(call.args, parserNameGit, gitParserOptionsWithValues)
 		if index != -1 && call.args[index].Lit() == "pull" {
 			return call.insertAfterWord(index, " --rebase"), true
 		}
@@ -340,5 +340,5 @@ func isGitCommand(cmd string) bool {
 	if len(parts) == 0 {
 		return false
 	}
-	return parts[0] == "git" || strings.HasPrefix(parts[0], "git-")
+	return parts[0] == parserNameGit || strings.HasPrefix(parts[0], gitCommandPrefix)
 }

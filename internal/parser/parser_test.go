@@ -7,6 +7,21 @@ import (
 	"github.com/yuluo-yx/typo/internal/utils"
 )
 
+type recordingParser struct {
+	name   string
+	result itypes.ParserResult
+	calls  int
+}
+
+func (p *recordingParser) Name() string {
+	return p.name
+}
+
+func (p *recordingParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
+	p.calls++
+	return p.result
+}
+
 func TestGitParser_Parse(t *testing.T) {
 	p := NewGitParser()
 
@@ -272,11 +287,80 @@ func TestRegistry_Parse(t *testing.T) {
 	if result.Command != "git remote -v" {
 		t.Errorf("Expected 'git remote -v', got %q", result.Command)
 	}
+	if result.Parser != "git" {
+		t.Errorf("Expected git parser, got %q", result.Parser)
+	}
 
 	// Test unknown error
 	result = r.Parse(itypes.ParserContext{Command: "unknown command", Stderr: "unknown error"})
 	if result.Fixed {
 		t.Error("Expected not to fix unknown error")
+	}
+}
+
+func TestRegistry_ParseFastPathKeepsPermissionFallback(t *testing.T) {
+	r := NewRegistry()
+
+	result := r.Parse(itypes.ParserContext{
+		Command:  "docker ps",
+		Stderr:   "docker: permission denied\n",
+		ExitCode: 1,
+	})
+	if !result.Fixed {
+		t.Fatal("Expected permission fallback to fix docker permission error")
+	}
+	if result.Command != "sudo docker ps" {
+		t.Fatalf("Parse().Command = %q, want %q", result.Command, "sudo docker ps")
+	}
+	if result.Parser != "permission" {
+		t.Fatalf("Parse().Parser = %q, want %q", result.Parser, "permission")
+	}
+}
+
+func TestRegistry_ParseFastPathKeepsGenericFallback(t *testing.T) {
+	r := NewRegistry()
+
+	result := r.Parse(itypes.ParserContext{
+		Command: "docker imags",
+		Stderr:  "error: unknown command 'imags'. Did you mean 'images'?",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected generic fallback to fix docker command")
+	}
+	if result.Command != "docker images" {
+		t.Fatalf("Parse().Command = %q, want %q", result.Command, "docker images")
+	}
+	if result.Parser != "generic" {
+		t.Fatalf("Parse().Parser = %q, want %q", result.Parser, "generic")
+	}
+}
+
+func TestRegistry_ParseFastPathDoesNotRepeatDedicatedParser(t *testing.T) {
+	gitParser := &recordingParser{name: "git"}
+	genericParser := &recordingParser{
+		name: "generic",
+		result: itypes.ParserResult{
+			Fixed:   true,
+			Command: "git status",
+		},
+	}
+
+	r := &Registry{}
+	r.Register(gitParser)
+	r.Register(genericParser)
+
+	result := r.Parse(itypes.ParserContext{Command: "git stauts", Stderr: "Did you mean 'status'?"})
+	if !result.Fixed || result.Command != "git status" {
+		t.Fatalf("Parse() = %+v, want fixed git status", result)
+	}
+	if result.Parser != "generic" {
+		t.Fatalf("Parse().Parser = %q, want %q", result.Parser, "generic")
+	}
+	if gitParser.calls != 1 {
+		t.Fatalf("git parser calls = %d, want 1", gitParser.calls)
+	}
+	if genericParser.calls != 1 {
+		t.Fatalf("generic parser calls = %d, want 1", genericParser.calls)
 	}
 }
 
