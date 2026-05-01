@@ -23,7 +23,7 @@ func NewNpmParser() *NpmParser {
 
 // Name returns the parser name.
 func (p *NpmParser) Name() string {
-	return "npm"
+	return parserNameNPM
 }
 
 // Parse parses npm error output.
@@ -49,7 +49,7 @@ func (p *NpmParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 				fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
 			} else {
 				var ok bool
-				fixed, ok = call.replaceSubcommand("npm", wrongCmd, suggested, npmParserOptionsWithValues)
+				fixed, ok = call.replaceSubcommand(parserNameNPM, wrongCmd, suggested, npmParserOptionsWithValues)
 				if !ok {
 					return itypes.ParserResult{Fixed: false}
 				}
@@ -68,7 +68,7 @@ func (p *NpmParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 		suggested := matches[1]
 		call, err := parseShellCall(cmd)
 		if err == nil {
-			fixed, ok := call.replaceSubcommand("npm", "", suggested, npmParserOptionsWithValues)
+			fixed, ok := call.replaceSubcommand(parserNameNPM, "", suggested, npmParserOptionsWithValues)
 			if ok {
 				return itypes.ParserResult{
 					Fixed:   true,
@@ -103,5 +103,5 @@ func isNpmCommand(cmd string) bool {
 	if len(parts) == 0 {
 		return false
 	}
-	return parts[0] == "npm" || strings.HasPrefix(parts[0], "npm-")
+	return parts[0] == parserNameNPM || strings.HasPrefix(parts[0], npmCommandPrefix)
 }

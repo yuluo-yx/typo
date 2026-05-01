@@ -86,7 +86,7 @@ func commandParserKey(command string) string {
 
 func dedicatedParserNameKey(name string) string {
 	switch name {
-	case "git", "docker", "npm":
+	case parserNameGit, parserNameDocker, parserNameNPM:
 		return name
 	default:
 		return ""
@@ -95,12 +95,12 @@ func dedicatedParserNameKey(name string) string {
 
 func dedicatedCommandKey(name string) string {
 	switch {
-	case name == "git" || strings.HasPrefix(name, "git-"):
-		return "git"
-	case name == "docker" || strings.HasPrefix(name, "docker-"):
-		return "docker"
-	case name == "npm" || strings.HasPrefix(name, "npm-"):
-		return "npm"
+	case name == parserNameGit || strings.HasPrefix(name, gitCommandPrefix):
+		return parserNameGit
+	case name == parserNameDocker || strings.HasPrefix(name, dockerCommandPrefix):
+		return parserNameDocker
+	case name == parserNameNPM || strings.HasPrefix(name, npmCommandPrefix):
+		return parserNameNPM
 	default:
 		return ""
 	}
