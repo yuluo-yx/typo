@@ -293,7 +293,7 @@ func TestEngine_FixCommand_WithShellWrappers(t *testing.T) {
 
 func TestEngine_CommonTools_WithWrappersAndPipelines(t *testing.T) {
 	eng := newEngineWithCommonToolSubcommands(t)
-	eng.commands = append(eng.commands, "echo", "grep")
+	eng.addCommands("echo", "grep")
 
 	tests := []struct {
 		name    string
@@ -599,10 +599,10 @@ func TestEngine_LoadCommandsRefreshesAvailableCommandsCache(t *testing.T) {
 	}
 }
 
-func TestEngine_AvailableCommandsRefreshesAfterDirectAppend(t *testing.T) {
+func TestEngine_AvailableCommandsRefreshesAfterCommandSetChange(t *testing.T) {
 	eng := NewEngine(WithCommands([]string{"git"}))
 
-	eng.commands = append(eng.commands, "echo")
+	eng.addCommands("echo")
 
 	available := eng.availableCommands()
 	if len(available) != 2 || available[0] != "git" || available[1] != "echo" {
@@ -1116,7 +1116,7 @@ func TestEngine_TrySubcommandFix_EmptyDynamicSubcommands(t *testing.T) {
 
 func TestEngine_TrySubcommandFixWithShell_ContinuesUntilLaterFix(t *testing.T) {
 	eng := newEngineWithCommonToolSubcommands(t)
-	eng.commands = append(eng.commands, "mytool")
+	eng.addCommands("mytool")
 
 	got, parsed := eng.trySubcommandFixWithShell("unknown biuld && mytool isntall && docker build && docker zzzz && git stattus")
 	if !parsed {

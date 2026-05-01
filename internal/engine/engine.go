@@ -31,7 +31,8 @@ type Engine struct {
 	availableCmdRunes    []commandRuneCandidate
 	availableCmdIndex    commandCandidateIndex
 	availableCmdsSet     map[string]struct{} // O(1) lookup mirror of availableCmds.
-	availableCmdsLen     int                 // Original commands length for `availableCmds`; detects stale cache after direct appends.
+	commandsVersion      uint64              // Version of commands; increments whenever the loaded command set changes.
+	availableCmdsVersion uint64              // Commands version represented by the available-command cache.
 	commandLoader        func() []string
 	commandsLoadOnce     sync.Once
 	commandsFullyLoad    bool
@@ -131,7 +132,7 @@ func WithParser(p *parser.Registry) Option {
 
 // WithCommands sets the known commands.
 func WithCommands(cmds []string) Option {
-	return func(e *Engine) { e.commands = append([]string(nil), cmds...) }
+	return func(e *Engine) { e.setCommands(cmds) }
 }
 
 // WithCommandLoader sets the lazy loader for discovered commands.
@@ -1382,16 +1383,12 @@ func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []c
 }
 
 func (e *Engine) availableCommands() []string {
-	if len(e.commands) != e.availableCmdsLen {
-		e.refreshAvailableCommands()
-	}
+	e.ensureAvailableCommandsFresh()
 	return e.availableCmds
 }
 
 func (e *Engine) availableCommandCandidates(cmd string, maxEditDistance int) []commandRuneCandidate {
-	if len(e.commands) != e.availableCmdsLen {
-		e.refreshAvailableCommands()
-	}
+	e.ensureAvailableCommandsFresh()
 	return e.availableCmdIndex.candidatesFor(cmd, maxEditDistance)
 }
 
@@ -1426,10 +1423,29 @@ func (e *Engine) loadCommands() {
 			debug.LoadedPATHCommands = true
 			debug.LoadedPATHCommandCount = len(loaded)
 		}
-		e.commands = utils.MergeUniqueStrings(e.commands, e.filterDisabledCommands(loaded)...)
+		e.setCommands(utils.MergeUniqueStrings(e.commands, e.filterDisabledCommands(loaded)...))
 		e.refreshAvailableCommands()
 		e.commandsFullyLoad = true
 	})
+}
+
+func (e *Engine) setCommands(commands []string) {
+	e.commands = append([]string(nil), commands...)
+	e.commandsVersion++
+}
+
+func (e *Engine) addCommands(commands ...string) {
+	if len(commands) == 0 {
+		return
+	}
+	e.commands = append(e.commands, commands...)
+	e.commandsVersion++
+}
+
+func (e *Engine) ensureAvailableCommandsFresh() {
+	if e.availableCmdsVersion != e.commandsVersion {
+		e.refreshAvailableCommands()
+	}
 }
 
 func (e *Engine) refreshAvailableCommands() {
@@ -1440,7 +1456,7 @@ func (e *Engine) refreshAvailableCommands() {
 	for _, cmd := range e.availableCmds {
 		e.availableCmdsSet[cmd] = struct{}{}
 	}
-	e.availableCmdsLen = len(e.commands)
+	e.availableCmdsVersion = e.commandsVersion
 }
 
 func commandRuneCandidatesFromStrings(commands []string) []commandRuneCandidate {
