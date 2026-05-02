@@ -82,10 +82,25 @@ fmt: ## Run go fmt
 	$(GO) fmt ./...
 	gofmt -s -w .
 
+.PHONY: fmt-check
+fmt-check: ## Check go fmt without modifying files
+	@$(LOG_TARGET)
+	@files="$$(find . -type f -name '*.go' -not -path './.git/*')"; \
+	unformatted="$$(gofmt -s -l $$files)"; \
+	if [ -n "$$unformatted" ]; then \
+		echo "$$unformatted"; \
+		echo "go files are not formatted; run make fmt" >&2; \
+		exit 1; \
+	fi
+
 .PHONY: test
 test: ## Run project test
 	@$(LOG_TARGET)
 	$(GO) test ./... -v -race
+
+.PHONY: ci
+ci: ## Run CI-aligned checks for formatting, linting, spelling, and tests
+ci: ci-tools fmt-check lint-go codespell-check test
 
 .PHONY: lint-go
 lint-go: ## Run golangci-lint

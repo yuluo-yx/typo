@@ -55,17 +55,20 @@ make benchmark       # Run benchmarks
 make test-e2e        # Run end-to-end tests locally
 make test-e2e-docker # Run end-to-end tests in Docker
 make fmt             # Format code with gofmt and goimports
-make lint            # Run golangci-lint (v2 required)
-make ci              # Run formatting, linting, and tests in sequence
+make fmt-check       # Check Go formatting without modifying files
+make lint-go         # Run golangci-lint (pinned version required)
+make lint            # Run spelling and Markdown lint checks
+make ci              # CI-aligned: format check, Go lint, spelling, tests
 ```
 
-Run `make ci` before pushing any changes.
+Run `make ci` before pushing any changes. This is the explicit local marker for
+the non-E2E checks that GitHub Actions runs through the repository Makefile.
 
 ## Code Style
 
 - Follow standard [Go conventions](https://go.dev/doc/effective_go) and the [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) guide.
-- Run `make fmt` before committing. The project uses `gofmt` with simplification and `goimports` with local prefix `github.com/yuluo-yx/typo`.
-- All lint checks defined in `.golangci.yml` must pass. Run `make lint` to verify.
+- Run `make fmt` before committing. The project uses `gofmt` with simplification.
+- All Go lint checks defined in `tools/linter/go/.golangci.yml` must pass. Run `make lint-go` or `make ci` to verify.
 - Keep functions focused and cyclomatic complexity under 15.
 - Export only what needs to be exported.
 - Use `internal/types` only for stable data contracts shared across packages; keep package-owned behavior, storage, validation, discovery, and lifecycle details in their owning packages.
