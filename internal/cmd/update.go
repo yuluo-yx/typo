@@ -79,6 +79,7 @@ type updateHandler interface {
 // updateHandlerFunc adapts a function to the updateHandler interface.
 type updateHandlerFunc func(ctx *updateContext) error
 
+// Handle implements the updateHandler interface.
 func (f updateHandlerFunc) Handle(ctx *updateContext) error { return f(ctx) }
 
 func init() {
@@ -87,11 +88,10 @@ func init() {
 	downloadClient := &http.Client{Timeout: 10 * time.Minute}
 	updateHTTPGet = apiClient.Do
 	updateHTTPDownload = downloadClient.Do
-	updateCopyFile = func(dst io.Writer, src io.Reader) (int64, error) {
-		return io.Copy(dst, src)
-	}
+	updateCopyFile = io.Copy
 }
-// update chain 
+
+// update chain
 func cmdUpdate(args []string) int {
 	ctx := &updateContext{args: args}
 
@@ -150,28 +150,41 @@ func flagParseHandler(ctx *updateContext) error {
 func versionCheckHandler(ctx *updateContext) error {
 	ctx.currentVer, _, _ = resolveVersionInfo()
 
-	latest, err := fetchLatestRelease()
-	if err != nil {
-		return fmt.Errorf("failed to check for updates: %w", err)
-	}
-	ctx.latest = latest
-
-	ctx.targetTag = latest.TagName
 	if ctx.flags.targetVer != "" {
 		ctx.targetTag = ctx.flags.targetVer
+	} else {
+		latest, err := fetchLatestRelease()
+		if err != nil {
+			return fmt.Errorf("failed to check for updates: %w", err)
+		}
+		ctx.latest = latest
+		ctx.targetTag = latest.TagName
 	}
 
+	targetVer := strings.TrimPrefix(ctx.targetTag, "v")
+
 	if ctx.flags.checkOnly {
-		if ctx.flags.force || compareVersions(ctx.currentVer, strings.TrimPrefix(ctx.targetTag, "v")) < 0 {
-			fmt.Printf("Update available: %s → %s\n", ctx.currentVer, ctx.targetTag)
+		cmp := compareVersions(ctx.currentVer, targetVer)
+		if ctx.flags.targetVer != "" {
+			if cmp == 0 {
+				fmt.Printf("typo %s is already installed\n", ctx.targetTag)
+			} else if cmp < 0 {
+				fmt.Printf("Update available: %s → %s\n", ctx.currentVer, ctx.targetTag)
+			} else {
+				fmt.Printf("Installed version %s is newer than %s\n", ctx.currentVer, ctx.targetTag)
+			}
 		} else {
-			fmt.Printf("typo is up to date (%s)\n", ctx.currentVer)
+			if cmp < 0 {
+				fmt.Printf("Update available: %s → %s\n", ctx.currentVer, ctx.targetTag)
+			} else {
+				fmt.Printf("typo is up to date (%s)\n", ctx.currentVer)
+			}
 		}
 		return errStop
 	}
 
-	if !ctx.flags.force && ctx.flags.targetVer == "" {
-		if compareVersions(ctx.currentVer, strings.TrimPrefix(ctx.targetTag, "v")) >= 0 {
+	if !ctx.flags.force {
+		if compareVersions(ctx.currentVer, targetVer) >= 0 {
 			fmt.Printf("typo is up to date (%s)\n", ctx.currentVer)
 			return errStop
 		}
@@ -225,11 +238,10 @@ func downloadHandler(ctx *updateContext) error {
 	fmt.Println("  ─────────────────────────────────────────")
 
 	if err := downloadBinary(ctx.binaryPath, ctx.apiURL, ctx.cdnURL, ctx.githubToken); err != nil {
-		return fmt.Errorf("download failed: %w\n\n"+
-			"Tip: You can manually download from:\n"+
-			"  https://github.com/yuluo-yx/typo/releases/tag/%s\n"+
-			"  Replace your current typo binary with the downloaded file.",
-			err, ctx.targetTag)
+		os.Stderr.WriteString("Tip: You can manually download from:\n" +
+			"  https://github.com/yuluo-yx/typo/releases/tag/" + ctx.targetTag + "\n" +
+			"  Replace your current typo binary with the downloaded file.\n")
+		return fmt.Errorf("download failed: %w", err)
 	}
 
 	return nil
@@ -249,11 +261,13 @@ func checksumHandler(ctx *updateContext) error {
 
 	checksumsPath := filepath.Join(ctx.exeDir, "checksums.txt")
 	if err := downloadToFile(checksumsPath, ctx.checksumsURL, true, false, ctx.githubToken); err != nil {
+		_ = os.Remove(ctx.binaryPath)
 		return fmt.Errorf("checksums download failed: %w", err)
 	}
 	defer func() { _ = os.Remove(checksumsPath) }()
 
 	if err := verifyChecksum(ctx.binaryPath, checksumsPath, ctx.assetName); err != nil {
+		_ = os.Remove(ctx.binaryPath)
 		return fmt.Errorf("checksum verification failed: %w", err)
 	}
 
@@ -263,7 +277,7 @@ func checksumHandler(ctx *updateContext) error {
 func installHandler(ctx *updateContext) error {
 	if isHomebrewInstall(ctx.currentExe) {
 		_ = os.Remove(ctx.binaryPath)
-		return fmt.Errorf("typo was installed via Homebrew. Use 'brew upgrade typo' instead.")
+		return fmt.Errorf("typo was installed via Homebrew: use 'brew upgrade typo' instead")
 	}
 
 	if err := replaceBinary(ctx.binaryPath, ctx.currentExe); err != nil {
@@ -538,7 +552,7 @@ var homebrewCellarPrefixes = []string{
 }
 
 func isHomebrewInstall(exePath string) bool {
-	realPath, err := filepath.EvalSymlinks(exePath)
+	realPath, err := evalSymlinks(exePath)
 	if err != nil {
 		return false
 	}

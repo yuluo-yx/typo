@@ -14,7 +14,7 @@ install-golangcilint: ## Install golangci-lint
 	@if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version | grep -Eq "version $(GOLANGCI_LINT_VERSION_NUMBER)([^0-9.]|$$)"; then \
 		echo "golangci-lint $(GOLANGCI_LINT_VERSION_NUMBER) is already installed, skipping..."; \
 	else \
-		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
+		curl -sSfL "https://github.com/golangci/golangci-lint/releases/download/$(GOLANGCI_LINT_VERSION)/golangci-lint-$(GOLANGCI_LINT_VERSION_NUMBER)-linux-amd64.tar.gz" | tar xzf - -C /tmp && mv /tmp/golangci-lint-$(GOLANGCI_LINT_VERSION_NUMBER)-linux-amd64/golangci-lint $$(go env GOPATH)/bin/golangci-lint; \
 	fi
 	@golangci-lint --version
 

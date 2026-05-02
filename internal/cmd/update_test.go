@@ -128,6 +128,13 @@ func TestSplitVersion(t *testing.T) {
 }
 
 func TestIsHomebrewInstall(t *testing.T) {
+	origEval := evalSymlinks
+	defer func() { evalSymlinks = origEval }()
+
+	evalSymlinks = func(path string) (string, error) {
+		return path, nil
+	}
+
 	tmpDir := t.TempDir()
 
 	t.Run("regular install", func(t *testing.T) {
@@ -138,7 +145,7 @@ func TestIsHomebrewInstall(t *testing.T) {
 	})
 
 	t.Run("homebrew install", func(t *testing.T) {
-		cellar := filepath.Join("/opt/homebrew", "Cellar", "typo", "bin", "typo")
+		cellar := "/opt/homebrew/Cellar/typo/bin/typo"
 		if !isHomebrewInstall(cellar) {
 			t.Error("homebrew path should be detected")
 		}
