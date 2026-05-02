@@ -21,6 +21,8 @@ typo fix "typo hsitory lsit"
 - `--no-history`：本次修正不写入历史记录。
 - `--alias-context <file>`：读取 shell 集成采集的修正上下文。
 - `--debug`：把本次修正链路的调试信息输出到 stderr，不影响 stdout 上的修正命令。
+- `--debug=json`：以带 `schema_version=1` 的结构化 JSON 输出同一份 trace。
+- `--trace-file <file>`：把结构化 JSON trace 写入文件，不改变 stdout。
 
 `--alias-context` 主要由 `typo init <shell>` 生成的脚本内部使用。该上下文是
 临时的、仅属于当前 shell 会话；Typo 会先展开 `k=kubectl` 这类别名，再把 `$VAR`
@@ -37,7 +39,18 @@ token 与当前会话里的环境变量名（例如 `$HOME`）进行匹配，最
 - 被拒绝的高分候选（如果有）。
 - auto-learn 是否触发、是否超时，以及原因。
 - 总耗时、引擎修正耗时，以及 auto-learn 等待耗时。
-- 总耗时、引擎修正耗时，以及 auto-learn 等待耗时。
+
+## `typo explain`
+
+解释 Typo 为什么选择某条修正。它复用 `typo fix --debug` 的同一份修正 trace，但输出面向用户的步骤列表，并且不会写入历史记录或触发 auto-learn。
+
+```bash
+typo explain "gut stattus"
+typo explain -s /tmp/typo-stderr "dcoker ps"
+typo explain --alias-context /tmp/typo-aliases "k get podz"
+```
+
+该文本输出面向人工阅读和 issue 上报，具体措辞不承诺稳定。工具集成应使用 `typo fix --debug=json` 或 `typo fix --trace-file <file>` 获取稳定的结构化载荷。
 
 ## `typo learn`
 

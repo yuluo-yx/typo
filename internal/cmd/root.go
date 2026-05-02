@@ -74,6 +74,8 @@ func Run() int {
 	switch os.Args[1] {
 	case "fix":
 		return cmdFix(os.Args[2:])
+	case "explain":
+		return cmdExplain(os.Args[2:])
 	case "learn":
 		return cmdLearn(os.Args[2:])
 	case "config":
@@ -114,6 +116,9 @@ Usage:
   typo fix --alias-context <file> <command>
                                            Fix command with shell correction context
   typo fix --debug <command>              Print fix debug trace to stderr
+  typo fix --debug=json <command>         Print structured debug trace to stderr
+  typo fix --trace-file <file> <command>  Write structured debug trace to a file
+  typo explain <command>                  Explain why Typo chose a correction
   typo learn <from> <to>                  Learn a correction
   typo config list                        List current configuration values
   typo config get <key>                   Show a single configuration value
@@ -138,6 +143,7 @@ Usage:
 
 Examples:
   typo fix "gut stattus"
+  typo explain "gut stattus"
   typo learn "gut" "git"
   typo config set keyboard dvorak
   typo config set experimental.long-option-correction.enabled true
