@@ -106,7 +106,8 @@ The following top-level subcommands and their documented flags are stable:
 
 | Command | Stable flags |
 |---------|-------------|
-| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history`, `--alias-context <file>`, `--debug` |
+| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history`, `--alias-context <file>`, `--debug`, `--debug=json`, `--trace-file <file>` |
+| `typo explain <cmd>` | `-s <file>`, `--exit-code <n>`, `--alias-context <file>` |
 | `typo learn <from> <to>` | *(none)* |
 | `typo config list` | *(none)* |
 | `typo config get <key>` | *(none)* |

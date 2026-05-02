@@ -21,6 +21,8 @@ Useful flags:
 - `--no-history`: do not persist the accepted correction into history.
 - `--alias-context <file>`: read the shell correction context captured by shell integration.
 - `--debug`: print the fix trace to stderr without changing the corrected command written to stdout.
+- `--debug=json`: print the same trace as structured JSON with `schema_version=1`.
+- `--trace-file <file>`: write the structured JSON trace to a file without changing stdout.
 
 `--alias-context` is mainly used by `typo init <shell>` scripts. The context is
 temporary and session-local; it lets Typo expand aliases such as `k=kubectl`,
@@ -37,6 +39,18 @@ Repeated accepted corrections can be promoted into silent user rules automatical
 - rejected high-scoring candidates, when any exist
 - auto-learn attempt, timeout, and reason details
 - total time, engine fix time, and auto-learn wait time
+
+## `typo explain`
+
+Explain why Typo chose a correction. It uses the same fix trace as `typo fix --debug`, but prints a user-facing step list and does not record history or run auto-learn.
+
+```bash
+typo explain "gut stattus"
+typo explain -s /tmp/typo-stderr "dcoker ps"
+typo explain --alias-context /tmp/typo-aliases "k get podz"
+```
+
+The text output is meant for people and issue reports, so the exact wording can evolve. Use `typo fix --debug=json` or `typo fix --trace-file <file>` when tools need a stable structured payload.
 
 ## `typo learn`
 

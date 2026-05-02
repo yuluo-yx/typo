@@ -27,7 +27,9 @@ func cmdFix(args []string) int {
 	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
 	noHistory := fs.Bool("no-history", false, "do not persist correction history")
 	aliasContextFile := fs.String("alias-context", "", "file containing shell correction context")
-	debugEnabled := fs.Bool("debug", false, "print debug trace to stderr")
+	debugMode := fixDebugModeOff
+	fs.Var(&debugMode, "debug", "print debug trace to stderr; use --debug=json for structured output")
+	traceFile := fs.String("trace-file", "", "write structured debug trace to a JSON file")
 
 	_ = fs.Parse(args)
 
@@ -48,7 +50,7 @@ func cmdFix(args []string) int {
 
 	cfg := config.Load()
 	eng := createEngine(cfg)
-	if *debugEnabled {
+	if debugMode.enabled() || *traceFile != "" {
 		eng.EnableDebug()
 	}
 
@@ -74,8 +76,9 @@ func cmdFix(args []string) int {
 		if result.Message != "" {
 			fmt.Fprintf(os.Stderr, "typo: %s\n", result.Message)
 		}
-		if *debugEnabled {
-			printFixDebug(os.Stderr, result)
+		if err := emitFixDebug(os.Stderr, result, debugMode, *traceFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
 		}
 		return 0
 	}
@@ -83,8 +86,8 @@ func cmdFix(args []string) int {
 	fmt.Fprintln(os.Stderr, "typo: no correction found")
 	attachAutoLearnDebug(&result, skippedAutoLearnDebugInfo(cfg.User.History.Enabled, *noHistory, cmd, result))
 	attachTotalTimingDebug(&result, time.Since(startedAt))
-	if *debugEnabled {
-		printFixDebug(os.Stderr, result)
+	if err := emitFixDebug(os.Stderr, result, debugMode, *traceFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	}
 	return 1
 }

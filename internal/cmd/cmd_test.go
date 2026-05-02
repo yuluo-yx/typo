@@ -466,6 +466,92 @@ func TestFixCommandDebugOutputNoMatch(t *testing.T) {
 	}
 }
 
+func TestFixCommandDebugJSONOutput(t *testing.T) {
+	useTempHome(t)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--debug=json", "gut", "status"})
+	if code != 0 {
+		t.Fatalf("debug json fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if strings.TrimSpace(stdout) != "git status" {
+		t.Fatalf("expected fixed command in stdout, got %q", stdout)
+	}
+
+	var payload struct {
+		SchemaVersion string `json:"schema_version"`
+		Fixed         bool   `json:"fixed"`
+		Command       string `json:"command"`
+		Source        string `json:"source"`
+		Events        []struct {
+			Stage string `json:"stage"`
+		} `json:"events"`
+		AutoLearn struct {
+			Attempted bool `json:"attempted"`
+		} `json:"auto_learn"`
+	}
+	if err := json.Unmarshal([]byte(stderr), &payload); err != nil {
+		t.Fatalf("expected valid debug json, got err=%v stderr=%q", err, stderr)
+	}
+	if payload.SchemaVersion != "1" || !payload.Fixed || payload.Command != "git status" || payload.Source != "rule" {
+		t.Fatalf("unexpected debug json payload: %+v", payload)
+	}
+	if len(payload.Events) == 0 || payload.Events[0].Stage != "rule" {
+		t.Fatalf("expected rule event in debug json, got %+v", payload.Events)
+	}
+	if !payload.AutoLearn.Attempted {
+		t.Fatalf("expected auto-learn attempt in debug json, got %+v", payload.AutoLearn)
+	}
+}
+
+func TestFixCommandTraceFileWritesDebugJSON(t *testing.T) {
+	useTempHome(t)
+	traceFile := filepath.Join(t.TempDir(), "trace.json")
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--trace-file", traceFile, "gut", "status"})
+	if code != 0 {
+		t.Fatalf("trace file fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if strings.TrimSpace(stdout) != "git status" {
+		t.Fatalf("expected fixed command in stdout, got %q", stdout)
+	}
+	if strings.Contains(stderr, "typo: debug") || strings.Contains(stderr, "schema_version") {
+		t.Fatalf("trace-file should not print debug output by itself, got stderr=%q", stderr)
+	}
+
+	data, err := os.ReadFile(traceFile)
+	if err != nil {
+		t.Fatalf("expected trace file to be written: %v", err)
+	}
+	var payload struct {
+		SchemaVersion string `json:"schema_version"`
+		Input         string `json:"input"`
+		Fixed         bool   `json:"fixed"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("expected valid trace json, got err=%v data=%q", err, string(data))
+	}
+	if payload.SchemaVersion != "1" || payload.Input != "gut status" || !payload.Fixed {
+		t.Fatalf("unexpected trace payload: %+v", payload)
+	}
+}
+
+func TestExplainCommandOutput(t *testing.T) {
+	tmpHome := useTempHome(t)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "explain", "gut", "status"})
+	if code != 0 {
+		t.Fatalf("explain failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	for _, want := range []string{"Input: gut status", "rules: \"gut status\" -> \"git status\"", "Result:\n  git status"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("expected explain output to contain %q, got %q", want, stdout)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(tmpHome, ".typo", "usage_history.json")); !os.IsNotExist(err) {
+		t.Fatalf("explain should not record history, stat err=%v", err)
+	}
+}
+
 func TestFixCommand(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
