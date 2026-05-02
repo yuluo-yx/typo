@@ -55,7 +55,7 @@ Notes:
 
 - The install script currently supports macOS and Linux.
 - WSL uses the same Linux install flow inside the WSL environment.
-- The script downloads the selected Release binary over HTTPS, but it does not verify checksums automatically.
+- The script verifies Release binaries against `checksums.txt` when that file is available. If a historical Release does not provide `checksums.txt`, the script prints a warning and continues without checksum verification.
 
 ### Windows PowerShell 7+ via quick install
 

@@ -71,6 +71,9 @@ New keys may be added in minor releases. Unrecognized keys are ignored, so
 config files written by a newer v1.x release will still load in an older v1.x
 binary (unknown keys are silently skipped).
 
+Experimental config keys may also be added in minor releases. They are opt-in
+and are not covered by the stable field-name guarantee above.
+
 `usage_history.json` entries may include `rule_applied: true` to indicate that
 the exact `(from, to)` pair has already been promoted into a user rule and
 should no longer grow its history count.
@@ -103,7 +106,7 @@ The following top-level subcommands and their documented flags are stable:
 
 | Command | Stable flags |
 |---------|-------------|
-| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history`, `--alias-context <file>` |
+| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history`, `--alias-context <file>`, `--debug` |
 | `typo learn <from> <to>` | *(none)* |
 | `typo config list` | *(none)* |
 | `typo config get <key>` | *(none)* |
@@ -129,9 +132,15 @@ in minor releases.
 
 ### Experimental features
 
-There are no experimental subcommands or flags at this time. If experimental
-features are introduced in a future minor release, they will be clearly marked in
-the command help output and in this document.
+The following experimental config key is currently available:
+
+- CLI key: `experimental.long-option-correction.enabled`
+- `config.json` key: `experimental.long_option_correction.enabled`
+- Default: `false`
+- Behavior: enables experimental typo correction for `--long-option` tokens only
+
+Short options such as `-A` and `-v` are intentionally excluded from fuzzy
+correction in this experimental feature.
 
 ## Shell integration API
 

@@ -37,6 +37,73 @@ func TestNewToolTreeRegistry_EmptyCacheDir(t *testing.T) {
 	}
 }
 
+func TestCommandTreeRegistry(t *testing.T) {
+	registry := NewCommandTreeRegistry()
+	if registry == nil {
+		t.Fatal("Expected non-nil command tree registry")
+	}
+	if !registry.HasRoot("typo") {
+		t.Fatal("Expected typo root to be registered")
+	}
+	if registry.HasRoot("") {
+		t.Fatal("Expected empty root lookup to fail")
+	}
+	if registry.HasRoot("git") {
+		t.Fatal("Expected external tool root to be absent from builtin command registry")
+	}
+
+	trees := registry.Trees()
+	if len(trees) == 0 {
+		t.Fatal("Expected registered command trees")
+	}
+	trees[0] = nil
+	if registry.Trees()[0] == nil {
+		t.Fatal("Expected Trees to return a defensive slice copy")
+	}
+
+	var nilRegistry *CommandTreeRegistry
+	if nilRegistry.Trees() != nil {
+		t.Fatal("Expected nil registry Trees to return nil")
+	}
+	if nilRegistry.HasRoot("typo") {
+		t.Fatal("Expected nil registry HasRoot to fail")
+	}
+}
+
+func TestTreeNodeToCommandTreeNode(t *testing.T) {
+	tree := &TreeNode{
+		Terminal:    true,
+		Passthrough: false,
+		Alias:       "canonical",
+		Children: map[string]*TreeNode{
+			"child": {Terminal: true, Passthrough: true},
+		},
+	}
+
+	node := tree.ToCommandTreeNode()
+	if node == nil {
+		t.Fatal("Expected command tree node")
+	}
+	if !node.StopAfterMatch {
+		t.Fatal("Expected terminal non-passthrough node to stop after match")
+	}
+	if node.Alias != "canonical" {
+		t.Fatalf("Expected alias to be preserved, got %q", node.Alias)
+	}
+	child, ok := node.Child("child")
+	if !ok {
+		t.Fatal("Expected converted child node")
+	}
+	if child.StopAfterMatch {
+		t.Fatal("Expected passthrough child not to stop after match")
+	}
+
+	var nilTree *TreeNode
+	if nilTree.ToCommandTreeNode() != nil {
+		t.Fatal("Expected nil TreeNode conversion to return nil")
+	}
+}
+
 func TestHasBuiltinSubcommand(t *testing.T) {
 	if !HasBuiltinSubcommand("git", "status") {
 		t.Fatal("Expected builtin git subcommand lookup to find status")
@@ -135,6 +202,44 @@ func TestLoadCache_LoadsExistingCache(t *testing.T) {
 	}
 	if got := r.GetChildren("gcloud", []string{"compute"}); len(got) != 1 || got[0] != "instances" {
 		t.Error("Expected gcloud cache with nested children")
+	}
+}
+
+func TestLoadCache_PreservesLongOptionMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, "subcommands.json")
+
+	wrapper := struct {
+		SchemaVersion int              `json:"schema_version"`
+		Tools         []*ToolTreeCache `json:"tools"`
+	}{
+		SchemaVersion: subcommandCacheSchemaVersion,
+		Tools: []*ToolTreeCache{
+			{
+				Tool: "git",
+				Tree: withLongOptions(treeBranch(map[string]*TreeNode{
+					"commit": withLongOptions(treeLeafPassthrough(), []string{"--amend"}, nil),
+				}), []string{"--work-tree"}, []string{"--work-tree"}),
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(wrapper, "", "  ")
+	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
+		t.Fatalf("Failed to write cache file: %v", err)
+	}
+
+	r := &ToolTreeRegistry{
+		trees:    make(map[string]*ToolTreeCache),
+		cacheDir: tmpDir,
+	}
+	r.loadCache()
+
+	if !r.HasLongOptionInScope("git", []string{"commit"}, "--amend") {
+		t.Fatal("Expected cached git commit scope to preserve --amend")
+	}
+	if !r.LongOptionTakesValue("git", nil, "--work-tree") {
+		t.Fatal("Expected cached git root scope to preserve --work-tree value semantics")
 	}
 }
 
@@ -418,6 +523,45 @@ func TestToolTreeRegistry_BuiltinNestedSemantics(t *testing.T) {
 	}
 }
 
+func TestToolTreeRegistry_LongOptionsInScope(t *testing.T) {
+	r := &ToolTreeRegistry{cacheExpiry: 7 * 24 * time.Hour}
+
+	rootOptions := r.LongOptionsInScope("docker", nil)
+	if !hasString(rootOptions, "--context") {
+		t.Fatalf("Expected docker root long options to include --context, got %v", rootOptions)
+	}
+
+	runOptions := r.LongOptionsInScope("docker", []string{"run"})
+	for _, want := range []string{"--context", "--detach", "--rm"} {
+		if !hasString(runOptions, want) {
+			t.Fatalf("Expected docker run long options to include %q, got %v", want, runOptions)
+		}
+	}
+
+	if !r.HasLongOptionInScope("git", []string{"commit"}, "--amend") {
+		t.Fatal("Expected git commit scope to know --amend")
+	}
+	if !r.LongOptionTakesValue("gcloud", []string{"compute"}, "--zone") {
+		t.Fatal("Expected gcloud compute --zone to take a value")
+	}
+	if r.HasLongOptionInScope("docker", []string{"run"}, "-p") {
+		t.Fatal("Expected short option -p to stay outside long-option scope")
+	}
+	if got := r.LongOptionsInScope("unknown", nil); len(got) != 0 {
+		t.Fatalf("Expected unknown tool to have no long options, got %v", got)
+	}
+	if r.LongOptionTakesValue("unknown", nil, "--context") {
+		t.Fatal("Expected unknown tool value lookup to be false")
+	}
+}
+
+func TestNormalizeLongOptions(t *testing.T) {
+	got := normalizeLongOptions([]string{"--context", "", "--context", "-C", "--", "--config"})
+	if len(got) != 2 || got[0] != "--config" || got[1] != "--context" {
+		t.Fatalf("normalizeLongOptions() = %v, want [--config --context]", got)
+	}
+}
+
 func TestToolTreeRegistry_CachedNestedCoverageForAdditionalTools(t *testing.T) {
 	r := &ToolTreeRegistry{
 		trees: map[string]*ToolTreeCache{
@@ -663,6 +807,24 @@ func TestParseGitHelp_Empty(t *testing.T) {
 	subcommands := parseGitHelp("")
 	if len(subcommands) != 0 {
 		t.Errorf("Expected 0 subcommands for empty output, got %d", len(subcommands))
+	}
+}
+
+func TestParseGitNestedHelpUsageForms(t *testing.T) {
+	output := `usage: git remote add [<options>] <name> <url>
+   or: git remote rename <old> <new>
+   or: git remote (set-head|set-branches) [<options>]
+`
+
+	subcommands := parseGitNestedHelp(output)
+	want := []string{"add", "rename", "set-head", "set-branches"}
+	if len(subcommands) != len(want) {
+		t.Fatalf("Expected %d nested git subcommands, got %d: %v", len(want), len(subcommands), subcommands)
+	}
+	for i := range want {
+		if subcommands[i] != want[i] {
+			t.Fatalf("Expected nested git subcommands[%d] = %q, got %q", i, want[i], subcommands[i])
+		}
 	}
 }
 

@@ -221,6 +221,43 @@ func TestEngine_FixWithParser_NoUpstreamTargetsPullOnly(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithParser_NoUpstreamDefaultsPlaceholderRemoteToOrigin(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(itypes.ParserContext{
+		Command: "git remove -v && git pull",
+		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected placeholder remote to default to origin")
+	}
+	if result.Command != "git remove -v && git pull --set-upstream origin 0426-yuluo/fix" {
+		t.Fatalf("Expected placeholder remote to default to origin, got %q", result.Command)
+	}
+}
+
+func TestEngine_FixWithParser_DivergentPullRebaseTargetsPullOnly(t *testing.T) {
+	eng := NewEngine(
+		WithParser(parser.NewRegistry()),
+	)
+
+	result := eng.FixWithContext(itypes.ParserContext{
+		Command: "git status && git pull origin main",
+		Stderr:  "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected divergent pull command to be fixed")
+	}
+	if result.Command != "git status && git pull --rebase origin main" {
+		t.Fatalf("Expected rebase fix to apply only to git pull, got %q", result.Command)
+	}
+	if !result.UsedParser {
+		t.Fatal("Expected parser-assisted fix chain to retain parser usage marker")
+	}
+}
+
 func TestEngine_FixWithParser_NoMatch(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),
@@ -812,6 +849,29 @@ func TestEngine_MaybeAutoLearnFromHistory(t *testing.T) {
 	}
 }
 
+func TestEngine_MaybeAutoLearnFromHistoryDebugInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	history := NewHistory(tmpDir)
+	rules := NewRules(tmpDir)
+	eng := NewEngine(
+		WithHistory(history),
+		WithRules(rules),
+		WithAutoLearnThreshold(1),
+	)
+
+	if err := eng.RecordHistory("mytypo", "mytool"); err != nil {
+		t.Fatalf("RecordHistory failed: %v", err)
+	}
+
+	info := eng.MaybeAutoLearnFromHistory(context.Background(), "mytypo", "mytool")
+	if !info.Triggered || !info.Persisted || info.TimedOut || info.Error != "" {
+		t.Fatalf("MaybeAutoLearnFromHistory() = %+v", info)
+	}
+	if info.Reason != "promoted history pair into user rule" {
+		t.Fatalf("Expected promoted reason, got %q", info.Reason)
+	}
+}
+
 func TestEngine_MaybeAutoLearnFromHistory_MarksExistingUserRule(t *testing.T) {
 	tmpDir := t.TempDir()
 	history := NewHistory(tmpDir)
@@ -1135,7 +1195,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 		SchemaVersion int                       `json:"schema_version"`
 		Tools         []*commands.ToolTreeCache `json:"tools"`
 	}{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		Tools: []*commands.ToolTreeCache{
 			toolTreeCache("git", map[string]*commands.TreeNode{
 				"status": {}, "remote": {}, "rev-parse": {}, "ls-files": {},
@@ -1334,6 +1394,7 @@ func newEngineWithCommonToolSubcommands(t *testing.T) *Engine {
 		WithRules(NewRules(tmpDir)),
 		WithCommands([]string{"git", "docker", "npm", "yarn", "cargo", "go", "pip", "pip3", "composer", "kubectl", "brew", "terraform", "helm", "typo", "aws", "gcloud", "az"}),
 		WithKeyboard(NewQWERTYKeyboard()),
+		WithExperimentalLongOptionFix(true),
 		WithToolTrees(subcmdRegistry),
 		WithCommandTrees(commands.NewCommandTreeRegistry()),
 	)
@@ -1535,6 +1596,21 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 			wantCmd: "cargo --version",
 		},
 		{
+			name:    "git long option typo",
+			cmd:     "git commit " + misspelledLongAmendOption(),
+			wantCmd: "git commit --amend",
+		},
+		{
+			name:    "docker long option typo after positional",
+			cmd:     "docker run alpine --rmr",
+			wantCmd: "docker run alpine --rm",
+		},
+		{
+			name:    "cargo subcommand long option typo",
+			cmd:     "cargo build --realse",
+			wantCmd: "cargo build --release",
+		},
+		{
 			name:    "kubectl main command and subcommand typo",
 			cmd:     "kubctl desribe pod/nginx",
 			wantCmd: "kubectl describe pod/nginx",
@@ -1592,6 +1668,21 @@ func TestEngine_CommonCommands_CanBeFixed(t *testing.T) {
 				t.Errorf("Fix().Command = %q, want %q", result.Command, tt.wantCmd)
 			}
 		})
+	}
+}
+
+func TestEngine_ExperimentalLongOptionFixCanBeDisabled(t *testing.T) {
+	eng := newEngineWithCommonToolSubcommands(t)
+	eng.longOptionFixEnabled = false
+
+	for _, cmd := range []string{
+		"git commit " + misspelledLongAmendOption(),
+		"docker run alpine --rmr",
+		"cargo build --realse",
+	} {
+		if got := eng.Fix(cmd, ""); got.Fixed {
+			t.Fatalf("Expected experimental long-option fix to stay disabled for %q, got %+v", cmd, got)
+		}
 	}
 }
 
@@ -1814,4 +1905,172 @@ func TestEngineAvailableCommandsUsesCachedSlice(t *testing.T) {
 	if allocs != 0 {
 		t.Fatalf("availableCommands() allocs = %v, want 0", allocs)
 	}
+}
+
+func TestCommandCandidateIndexUsesRuneLengthWindow(t *testing.T) {
+	index := newCommandCandidateIndex(commandRuneCandidatesFromStrings([]string{
+		"go",
+		"git",
+		"编译",
+		"docker",
+		"kubernetes",
+	}))
+
+	candidates := index.candidatesFor("gti", 2)
+	names := commandCandidateNames(candidates)
+
+	for _, want := range []string{"go", "git", "编译"} {
+		if !names[want] {
+			t.Fatalf("candidatesFor() missing %q in %v", want, names)
+		}
+	}
+	for _, unwanted := range []string{"docker", "kubernetes"} {
+		if names[unwanted] {
+			t.Fatalf("candidatesFor() included length-mismatched %q in %v", unwanted, names)
+		}
+	}
+}
+
+func TestCommandCandidateIndexFallsBackForNegativeDistance(t *testing.T) {
+	index := newCommandCandidateIndex(commandRuneCandidatesFromStrings([]string{
+		"git",
+		"kubernetes",
+	}))
+
+	candidates := index.candidatesFor("gti", -1)
+	if len(candidates) != 2 {
+		t.Fatalf("candidatesFor() = %v, want all candidates", commandCandidateNames(candidates))
+	}
+}
+
+func TestEngineAvailableCommandCandidatesRefreshesIndex(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+	eng.addCommands("mytool")
+
+	candidates := eng.availableCommandCandidates("mytol", 2)
+	if !commandCandidateNames(candidates)["mytool"] {
+		t.Fatalf("availableCommandCandidates() did not refresh appended command, got %v", commandCandidateNames(candidates))
+	}
+}
+
+func TestEngineAvailableCommandsRefreshesAfterSameLengthReplacement(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+	if !eng.isAvailableCommand("git") {
+		t.Fatal("isAvailableCommand(git) = false, want true")
+	}
+
+	eng.setCommands([]string{"grep"})
+
+	if eng.isAvailableCommand("git") {
+		t.Fatal("isAvailableCommand(git) = true after replacement, want false")
+	}
+	if !eng.isAvailableCommand("grep") {
+		t.Fatal("isAvailableCommand(grep) = false after replacement, want true")
+	}
+}
+
+func TestEngineAvailableCommandCandidatesExcludeDisabledCommands(t *testing.T) {
+	eng := NewEngine(
+		WithDisabledCommands([]string{"git"}),
+		WithCommands([]string{"git", "grep"}),
+	)
+
+	candidates := eng.availableCommandCandidates("git", 2)
+	names := commandCandidateNames(candidates)
+	if names["git"] {
+		t.Fatalf("availableCommandCandidates() included disabled command: %v", names)
+	}
+	if !names["grep"] {
+		t.Fatalf("availableCommandCandidates() missing enabled command: %v", names)
+	}
+}
+
+func TestEngineDistanceCandidateIndexKeepsLeadingTypoMatch(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "docker", "kubernetes"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	result := eng.Fix("gut status", "")
+	if !result.Fixed || result.Command != "git status" {
+		t.Fatalf("expected length-indexed distance fix for leading typo, got %+v", result)
+	}
+}
+
+func TestEngineFixDebugTracksPathLoad(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git"}),
+		WithCommandLoader(func() []string {
+			return []string{"mytool"}
+		}),
+	)
+	eng.EnableDebug()
+
+	result := eng.Fix("mytol", "")
+	if !result.Fixed || result.Command != "mytool" {
+		t.Fatalf("expected path-loaded command fix, got %+v", result)
+	}
+	if result.Debug == nil {
+		t.Fatal("expected debug info to be attached")
+	}
+	if result.Debug.EngineDuration < 0 {
+		t.Fatalf("expected non-negative engine duration, got %+v", result.Debug)
+	}
+	if !result.Debug.LoadedPATHCommands || result.Debug.LoadedPATHCommandCount != 1 {
+		t.Fatalf("expected PATH load to be recorded, got %+v", result.Debug)
+	}
+	if len(result.Debug.Events) == 0 || result.Debug.Events[0].Stage != "distance" {
+		t.Fatalf("expected distance stage in debug events, got %+v", result.Debug.Events)
+	}
+}
+
+func TestEngineDisableDebugClearsCurrentTrace(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git"}))
+	eng.EnableDebug()
+
+	if result := eng.Fix("gut", ""); result.Debug == nil {
+		t.Fatalf("expected debug info before disabling debug, got %+v", result)
+	}
+
+	eng.DisableDebug()
+	if result := eng.Fix("gut", ""); result.Debug != nil {
+		t.Fatalf("expected debug info to be disabled, got %+v", result.Debug)
+	}
+	if eng.debugTrace() != nil {
+		t.Fatal("expected current debug trace to be cleared")
+	}
+}
+
+func TestEngineFixDebugTracksRejectedCandidate(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"mytool"}),
+		WithSimilarityThreshold(0.95),
+	)
+	eng.EnableDebug()
+
+	result := eng.Fix("mytol", "")
+	if result.Fixed {
+		t.Fatalf("expected fix to be rejected by strict threshold, got %+v", result)
+	}
+	if result.Debug == nil {
+		t.Fatal("expected debug info to be attached")
+	}
+	if result.Debug.EngineDuration < 0 {
+		t.Fatalf("expected non-negative engine duration, got %+v", result.Debug)
+	}
+	if len(result.Debug.RejectedCandidates) == 0 {
+		t.Fatalf("expected rejected candidate trace, got %+v", result.Debug)
+	}
+	candidate := result.Debug.RejectedCandidates[0]
+	if candidate.Stage != "distance" || candidate.Candidate != "mytool" {
+		t.Fatalf("unexpected rejected candidate: %+v", candidate)
+	}
+}
+
+func commandCandidateNames(candidates []commandRuneCandidate) map[string]bool {
+	names := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		names[candidate.name] = true
+	}
+	return names
 }

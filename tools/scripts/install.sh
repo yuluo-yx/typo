@@ -110,6 +110,17 @@ normalize_tag() {
   echo "v$input"
 }
 
+resolve_release_tag() {
+  local tag="$1"
+
+  if [[ -n "$tag" ]]; then
+    echo "$tag"
+    return
+  fi
+
+  resolve_latest_release_tag
+}
+
 resolve_install_dir() {
   local os_name="$1"
 
@@ -147,14 +158,60 @@ download_release_binary() {
   local output="$3"
   local url=""
 
-  if [[ -z "$tag" ]]; then
-    tag="$(resolve_latest_release_tag)"
-  fi
-
   url="https://github.com/${REPO}/releases/download/${tag}/${BINARY_NAME}-${platform}"
 
   echo "Downloading ${BINARY_NAME} ${tag} from ${url}"
   curl -fsSL "$url" -o "$output"
+}
+
+verify_release_checksum() {
+  local platform="$1"
+  local tag="$2"
+  local binary_path="$3"
+  local asset="${BINARY_NAME}-${platform}"
+  local checksums_path="${TMP_DIR}/checksums.txt"
+  local checksums_url="https://github.com/${REPO}/releases/download/${tag}/checksums.txt"
+
+  echo "Downloading checksums.txt from ${checksums_url}"
+  local http_code curl_status
+  curl_status=0
+  http_code="$(curl -fsSL -w "%{http_code}" "$checksums_url" -o "$checksums_path")" || curl_status=$?
+  if [[ "$curl_status" -ne 0 ]]; then
+    if [[ "$http_code" == "404" ]]; then
+      echo "Warning: checksums.txt is not available for ${tag}. Checksum verification will be skipped." >&2
+      return
+    fi
+    echo "Unable to download checksums.txt for ${tag}." >&2
+    echo "Refusing to install an unverified binary because the checksum manifest download failed." >&2
+    exit 1
+  fi
+
+  local checksum_line
+  checksum_line="$(grep -E "^[0-9a-fA-F]{64}[[:space:]]+\\*?${asset}$" "$checksums_path" || true)"
+  if [[ -z "$checksum_line" ]]; then
+    echo "Unable to find checksum entry for ${asset}" >&2
+    exit 1
+  fi
+
+  local expected_hash actual_hash
+  expected_hash="$(printf '%s\n' "$checksum_line" | awk '{print tolower($1)}')"
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_hash="$(sha256sum "$binary_path" | awk '{print tolower($1)}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_hash="$(shasum -a 256 "$binary_path" | awk '{print tolower($1)}')"
+  else
+    echo "Missing required command: sha256sum or shasum" >&2
+    exit 1
+  fi
+
+  if [[ "$actual_hash" != "$expected_hash" ]]; then
+    echo "Checksum verification failed for ${asset}" >&2
+    echo "Expected: ${expected_hash}" >&2
+    echo "Actual:   ${actual_hash}" >&2
+    exit 1
+  fi
+
+  echo "Checksum verified for ${asset}"
 }
 
 resolve_latest_release_tag() {
@@ -247,7 +304,10 @@ main() {
   if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
     build_main_binary "$TMP_DIR" "$binary_path"
   else
-    download_release_binary "$platform" "$(normalize_tag "$VERSION_SELECTOR")" "$binary_path"
+    local release_tag
+    release_tag="$(resolve_release_tag "$(normalize_tag "$VERSION_SELECTOR")")"
+    download_release_binary "$platform" "$release_tag" "$binary_path"
+    verify_release_checksum "$platform" "$release_tag" "$binary_path"
   fi
 
   install_binary "$binary_path" "$install_dir"

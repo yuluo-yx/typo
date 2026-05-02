@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 
 - 安装脚本当前支持 macOS 和 Linux。
 - WSL 请在 Linux 环境内走同一套安装流程。
-- 脚本会通过 HTTPS 下载所选 Release 二进制，但当前不会自动校验 checksum。
+- 当对应 Release 提供 `checksums.txt` 时，脚本会自动校验下载的二进制。如果历史 Release 缺少 `checksums.txt`，脚本会输出警告并在未执行 checksum 校验的情况下继续安装。
 
 ### Windows PowerShell 7+ 快速安装
 

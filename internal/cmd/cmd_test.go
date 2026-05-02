@@ -393,13 +393,14 @@ func TestRunAutoLearnWithinTimeout(t *testing.T) {
 
 	autoLearnFixTimeout = 20 * time.Millisecond
 	started := make(chan struct{}, 1)
-	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) {
+	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) itypes.AutoLearnDebugInfo {
 		started <- struct{}{}
 		<-ctx.Done()
+		return itypes.AutoLearnDebugInfo{Attempted: true, TimedOut: true, Reason: ctx.Err().Error()}
 	}
 
 	start := time.Now()
-	runAutoLearnWithinTimeout(engine.NewEngine(), "gut status", "git status")
+	info := runAutoLearnWithinTimeout(engine.NewEngine(), "gut status", "git status")
 	elapsed := time.Since(start)
 
 	select {
@@ -407,8 +408,61 @@ func TestRunAutoLearnWithinTimeout(t *testing.T) {
 	default:
 		t.Fatal("Expected auto learn worker to start")
 	}
+	if !info.Attempted || !info.TimedOut {
+		t.Fatalf("Expected timeout debug info, got %+v", info)
+	}
 	if elapsed >= 250*time.Millisecond {
 		t.Fatalf("Expected auto learn wait to stop at timeout, got %v", elapsed)
+	}
+}
+
+func TestFixCommandDebugOutput(t *testing.T) {
+	tmpHome := useTempHome(t)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--debug", "gut", "status"})
+	if code != 0 {
+		t.Fatalf("debug fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if strings.TrimSpace(stdout) != "git status" {
+		t.Fatalf("expected fixed command in stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "typo: debug") {
+		t.Fatalf("expected debug header, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "stage pass=1 stage=rule") {
+		t.Fatalf("expected rule stage in debug output, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "timing total=") {
+		t.Fatalf("expected timing line in debug output, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "auto-learn attempted=yes") {
+		t.Fatalf("expected auto-learn attempt in debug output, got %q", stderr)
+	}
+	historyFile := filepath.Join(tmpHome, ".typo", "usage_history.json")
+	assertFileExists(t, historyFile, "debug fix should still record history")
+}
+
+func TestFixCommandDebugOutputNoMatch(t *testing.T) {
+	useTempHome(t)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--debug", "xyzabc"})
+	if code != 1 {
+		t.Fatalf("expected no-match exit code, got code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected empty stdout for no-match debug run, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "typo: no correction found") {
+		t.Fatalf("expected no correction message, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "matched-stages=none") {
+		t.Fatalf("expected empty stage summary, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "timing total=") {
+		t.Fatalf("expected timing line in no-match debug output, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "auto-learn attempted=no") {
+		t.Fatalf("expected auto-learn skipped summary, got %q", stderr)
 	}
 }
 
@@ -1644,6 +1698,9 @@ func TestPrintUsage(t *testing.T) {
 
 	if !bytes.Contains([]byte(output), []byte("typo")) {
 		t.Error("Expected usage to contain 'typo'")
+	}
+	if !bytes.Contains([]byte(output), []byte("experimental.long-option-correction.enabled")) {
+		t.Error("Expected usage to mention experimental long-option correction")
 	}
 }
 
@@ -4081,12 +4138,16 @@ func TestConfigCommandLifecycle(t *testing.T) {
 	assertConfigValue(t, "keyboard", "qwerty", "after config gen")
 	assertCLISucceeds(t, []string{"typo", "config", "set", "keyboard", "dvorak"}, "config set keyboard")
 	assertCLISucceeds(t, []string{"typo", "config", "set", "auto-learn-threshold", "5"}, "config set auto-learn-threshold")
+	assertCLISucceeds(t, []string{"typo", "config", "set", "experimental.long-option-correction.enabled", "true"}, "config set experimental long option")
 	assertConfigValue(t, "auto-learn-threshold", "5", "after config set")
+	assertConfigValue(t, "experimental.long-option-correction.enabled", "true", "after config set")
 	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "keyboard=dvorak", "config list")
 	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "auto-learn-threshold=5", "config list")
+	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "experimental.long-option-correction.enabled=true", "config list")
 	assertCLISucceeds(t, []string{"typo", "config", "reset"}, "config reset")
 	assertConfigValue(t, "keyboard", "qwerty", "after config reset")
 	assertConfigValue(t, "auto-learn-threshold", "3", "after config reset")
+	assertConfigValue(t, "experimental.long-option-correction.enabled", "false", "after config reset")
 }
 
 func TestStatsCommandSummary(t *testing.T) {
@@ -4240,6 +4301,7 @@ func TestConfigCommandErrors(t *testing.T) {
 		{name: "unknown get key", args: []string{"typo", "config", "get", "unknown"}, wantIn: "unknown config key"},
 		{name: "missing set value", args: []string{"typo", "config", "set", "keyboard"}, wantIn: "<key> and <value> required"},
 		{name: "invalid set value", args: []string{"typo", "config", "set", "history.enabled", "maybe"}, wantIn: "invalid bool value"},
+		{name: "invalid experimental set value", args: []string{"typo", "config", "set", "experimental.long-option-correction.enabled", "maybe"}, wantIn: "invalid bool value"},
 		{name: "invalid auto learn threshold", args: []string{"typo", "config", "set", "auto-learn-threshold", "wat"}, wantIn: "invalid int value"},
 		{name: "gen positional args", args: []string{"typo", "config", "gen", "extra"}, wantIn: "does not accept positional arguments"},
 		{name: "gen invalid flag", args: []string{"typo", "config", "gen", "--wat"}, wantIn: "flag provided but not defined"},
@@ -4333,6 +4395,34 @@ func TestFixUsesGlobalHistoryDisabledConfig(t *testing.T) {
 	historyFile := filepath.Join(cfg.ConfigDir, "usage_history.json")
 	if _, err := os.Stat(historyFile); !os.IsNotExist(err) {
 		t.Fatalf("expected history file to stay absent, got %v", err)
+	}
+}
+
+func TestDoctorPrintsExperimentalLongOptionConfig(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("Restore HOME failed: %v", err)
+		}
+	}()
+
+	tmpHome := t.TempDir()
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+
+	cfg := config.Load()
+	cfg.User.Experimental.LongOptionCorrection.Enabled = true
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "doctor"})
+	if code != 1 && code != 0 {
+		t.Fatalf("doctor failed unexpectedly: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "experimental.long-option-correction.enabled=true") {
+		t.Fatalf("expected doctor output to show experimental config, got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
 

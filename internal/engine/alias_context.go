@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 const maxAliasExpansionDepth = 8
@@ -30,6 +31,16 @@ func (e *Engine) fixWithAliasContext(input itypes.ParserContext) itypes.FixResul
 	expanded, records, ok := expandCommandAliases(input.Command, input.AliasContext)
 	if !ok {
 		return e.fixWithoutAliasContext(input)
+	}
+	e.markDebugFeature("alias")
+	if debug := e.debugTrace(); debug != nil && expanded != input.Command {
+		debug.Events = append(debug.Events, itypes.FixDebugEvent{
+			Pass:    0,
+			Stage:   "alias",
+			Before:  input.Command,
+			After:   expanded,
+			Message: "expanded shell alias context",
+		})
 	}
 
 	expandedInput := input
@@ -72,7 +83,7 @@ func expandCommandAliases(raw string, entries []itypes.AliasContextEntry) (strin
 			continue
 		}
 
-		start, end := wordRange(line.args[line.commandIdx], len(raw))
+		start, end := utils.ShellNodeRange(line.args[line.commandIdx], len(raw))
 		replacements = append(replacements, rawRangeReplacement{
 			start: start,
 			end:   end,
@@ -200,8 +211,8 @@ func rewriteCommandAliases(raw string, records []aliasRewriteRecord) string {
 			continue
 		}
 
-		start, _ := wordRange(line.args[line.commandIdx], len(raw))
-		_, end := wordRange(line.args[line.commandIdx+len(record.tokens)-1], len(raw))
+		start, _ := utils.ShellNodeRange(line.args[line.commandIdx], len(raw))
+		_, end := utils.ShellNodeRange(line.args[line.commandIdx+len(record.tokens)-1], len(raw))
 		replacements = append(replacements, rawRangeReplacement{
 			start: start,
 			end:   end,

@@ -20,6 +20,7 @@ Useful flags:
 - `--exit-code <n>`: reuse the previous exit code as additional correction context.
 - `--no-history`: do not persist the accepted correction into history.
 - `--alias-context <file>`: read the shell correction context captured by shell integration.
+- `--debug`: print the fix trace to stderr without changing the corrected command written to stdout.
 
 `--alias-context` is mainly used by `typo init <shell>` scripts. The context is
 temporary and session-local; it lets Typo expand aliases such as `k=kubectl`,
@@ -27,6 +28,15 @@ match `$VAR` tokens against live environment variable names such as `$HOME`, and
 print the corrected result back with the original alias when that is safe.
 
 Repeated accepted corrections can be promoted into silent user rules automatically once they reach the configured threshold. Set `typo config set auto-learn-threshold 0` to disable this behavior.
+
+`--debug` includes the current fix-chain visibility for:
+
+- matched stages and the before/after command for each pass
+- whether alias context, parser, history, subcommand, and other stages were used
+- whether Typo loaded additional commands from `PATH`
+- rejected high-scoring candidates, when any exist
+- auto-learn attempt, timeout, and reason details
+- total time, engine fix time, and auto-learn wait time
 
 ## `typo learn`
 
@@ -61,6 +71,7 @@ The current configurable keys are:
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `experimental.long-option-correction.enabled` *(Experimental; default: `false`)*
 - `rules.<scope>.enabled`
 
 ## `typo rules`

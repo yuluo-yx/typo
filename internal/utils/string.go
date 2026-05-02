@@ -1,5 +1,7 @@
 package utils
 
+import "strings"
+
 // IsSingleAdjacentTransposition reports whether two strings differ
 // by exactly one swap of adjacent characters.
 func IsSingleAdjacentTransposition(original, candidate string) bool {
@@ -27,4 +29,13 @@ func IsSingleAdjacentTransposition(original, candidate string) bool {
 	i := diffIdx[0]
 	j := diffIdx[1]
 	return originalRunes[i] == candidateRunes[j] && originalRunes[j] == candidateRunes[i]
+}
+
+// SplitInlineValue splits a token like "--flag=value" into "--flag" and "=value".
+func SplitInlineValue(value string) (name, suffix string, ok bool) {
+	if eq := strings.IndexByte(value, '='); eq >= 0 {
+		return value[:eq], value[eq:], true
+	}
+
+	return value, "", false
 }

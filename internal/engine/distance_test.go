@@ -25,6 +25,8 @@ func TestDistance(t *testing.T) {
 		{"typo: gti to git", "gti", "git", 2},
 		{"typo: dcoker to docker", "dcoker", "docker", 2},
 		{"unicode support", "日本", "日本語", 1},
+		{"unicode empty left", "", "日本", 2},
+		{"unicode empty right", "日本", "", 2},
 	}
 
 	for _, tt := range tests {

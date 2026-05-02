@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/parser"
@@ -15,24 +16,30 @@ import (
 
 // Engine is the main correction engine.
 type Engine struct {
-	keyboard            KeyboardWeights
-	similarityThreshold float64
-	maxEditDistance     int
-	maxFixPasses        int
-	autoLearnThreshold  int
-	disabledCommands    map[string]bool
-	rules               *Rules
-	history             *History
-	parser              *parser.Registry
-	commands            []string            // Loaded command set, seeded first and expanded on demand.
-	availableCmds       []string            // Cached command set after disabled-command filtering.
-	availableCmdsSet    map[string]struct{} // O(1) lookup mirror of availableCmds.
-	availableCmdsLen    int                 // Original commands length for `availableCmds`; detects stale cache after direct appends.
-	commandLoader       func() []string
-	commandsLoadOnce    sync.Once
-	commandsFullyLoad   bool
-	toolTrees           *commands.ToolTreeRegistry
-	commandTrees        *commands.CommandTreeRegistry
+	keyboard             KeyboardWeights
+	similarityThreshold  float64
+	maxEditDistance      int
+	maxFixPasses         int
+	autoLearnThreshold   int
+	longOptionFixEnabled bool
+	disabledCommands     map[string]bool
+	rules                *Rules
+	history              *History
+	parser               *parser.Registry
+	commands             []string // Loaded command set, seeded first and expanded on demand.
+	availableCmds        []string // Cached command set after disabled-command filtering.
+	availableCmdRunes    []commandRuneCandidate
+	availableCmdIndex    commandCandidateIndex
+	availableCmdsSet     map[string]struct{} // O(1) lookup mirror of availableCmds.
+	commandsVersion      uint64              // Version of commands; increments whenever the loaded command set changes.
+	availableCmdsVersion uint64              // Commands version represented by the available-command cache.
+	commandLoader        func() []string
+	commandsLoadOnce     sync.Once
+	commandsFullyLoad    bool
+	toolTrees            *commands.ToolTreeRegistry
+	commandTrees         *commands.CommandTreeRegistry
+	debugEnabled         bool
+	currentDebug         *itypes.FixDebugInfo
 }
 
 type distanceMatchConfig struct {
@@ -40,6 +47,25 @@ type distanceMatchConfig struct {
 	maxEditDistance     int
 	similarityThreshold float64
 }
+
+type commandRuneCandidate struct {
+	name  string
+	runes []rune
+}
+
+type commandCandidateIndex struct {
+	all       []commandRuneCandidate
+	byRuneLen map[int][]commandRuneCandidate
+	minLen    int
+	maxLen    int
+}
+
+const (
+	fixSourceParser               = "parser"
+	fixSourceHistory              = "history"
+	fixSourceDistance             = "distance"
+	longOptionSimilarityThreshold = 0.75
+)
 
 // Option is a functional option for Engine.
 type Option func(*Engine)
@@ -67,6 +93,11 @@ func WithMaxFixPasses(passes int) Option {
 // WithAutoLearnThreshold sets the minimum history count needed before promoting a pair to a user rule.
 func WithAutoLearnThreshold(threshold int) Option {
 	return func(e *Engine) { e.autoLearnThreshold = threshold }
+}
+
+// WithExperimentalLongOptionFix enables the experimental long-option fix stage.
+func WithExperimentalLongOptionFix(enabled bool) Option {
+	return func(e *Engine) { e.longOptionFixEnabled = enabled }
 }
 
 // WithDisabledCommands excludes commands from the candidate command set.
@@ -101,7 +132,7 @@ func WithParser(p *parser.Registry) Option {
 
 // WithCommands sets the known commands.
 func WithCommands(cmds []string) Option {
-	return func(e *Engine) { e.commands = append([]string(nil), cmds...) }
+	return func(e *Engine) { e.setCommands(cmds) }
 }
 
 // WithCommandLoader sets the lazy loader for discovered commands.
@@ -143,6 +174,21 @@ func NewEngine(opts ...Option) *Engine {
 	return e
 }
 
+// EnableDebug enables per-fix debug tracing.
+func (e *Engine) EnableDebug() {
+	if e != nil {
+		e.debugEnabled = true
+	}
+}
+
+// DisableDebug disables per-fix debug tracing.
+func (e *Engine) DisableDebug() {
+	if e != nil {
+		e.debugEnabled = false
+		e.currentDebug = nil
+	}
+}
+
 // Fix attempts to fix the given command.
 // stderr is optional and used for error parsing.
 func (e *Engine) Fix(cmd, stderr string) itypes.FixResult {
@@ -155,15 +201,128 @@ func (e *Engine) Fix(cmd, stderr string) itypes.FixResult {
 // FixWithContext attempts to fix the given command with parser context.
 func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 	input.Command = strings.TrimSpace(input.Command)
+	debugInfo := e.beginDebugTrace(input)
+	startedAt := time.Now()
+	defer e.clearDebugTrace()
+
 	if input.Command == "" {
-		return itypes.FixResult{Fixed: false}
+		return e.attachDebug(itypes.FixResult{Fixed: false}, debugInfo, startedAt)
 	}
 
 	if len(input.AliasContext) > 0 {
-		return e.fixWithAliasContext(input)
+		return e.attachDebug(e.fixWithAliasContext(input), debugInfo, startedAt)
 	}
 
-	return e.fixWithoutAliasContext(input)
+	return e.attachDebug(e.fixWithoutAliasContext(input), debugInfo, startedAt)
+}
+
+func (e *Engine) beginDebugTrace(input itypes.ParserContext) *itypes.FixDebugInfo {
+	if e == nil || !e.debugEnabled {
+		return nil
+	}
+
+	debugInfo := &itypes.FixDebugInfo{
+		InputCommand:         input.Command,
+		AliasContextProvided: len(input.AliasContext) > 0,
+		AliasContextEntries:  len(input.AliasContext),
+	}
+	e.currentDebug = debugInfo
+	return debugInfo
+}
+
+func (e *Engine) clearDebugTrace() {
+	if e != nil {
+		e.currentDebug = nil
+	}
+}
+
+func (e *Engine) attachDebug(result itypes.FixResult, debugInfo *itypes.FixDebugInfo, startedAt time.Time) itypes.FixResult {
+	if debugInfo != nil {
+		debugInfo.EngineDuration = time.Since(startedAt)
+		result.Debug = debugInfo
+	}
+	return result
+}
+
+func (e *Engine) debugTrace() *itypes.FixDebugInfo {
+	if e == nil {
+		return nil
+	}
+	return e.currentDebug
+}
+
+func (e *Engine) markDebugFeature(stage string) {
+	debug := e.debugTrace()
+	if debug == nil {
+		return
+	}
+
+	switch stage {
+	case "alias":
+		debug.UsedAlias = true
+		debug.AliasContextUsed = true
+	case fixSourceParser:
+		debug.UsedParser = true
+	case fixSourceHistory:
+		debug.UsedHistory = true
+	case "rule":
+		debug.UsedRule = true
+	case "tree":
+		debug.UsedCommandTree = true
+	case "subcommand":
+		debug.UsedSubcommand = true
+	case fixSourceDistance:
+		debug.UsedDistance = true
+	case "env":
+		debug.UsedEnv = true
+	case "option":
+		debug.UsedOption = true
+	}
+}
+
+func (e *Engine) recordAcceptedFix(pass int, before string, result itypes.FixResult) {
+	debug := e.debugTrace()
+	if debug == nil || !result.Fixed {
+		return
+	}
+
+	e.markDebugFeature(result.Source)
+	if result.UsedParser {
+		debug.UsedParser = true
+	}
+
+	debug.Events = append(debug.Events, itypes.FixDebugEvent{
+		Pass:    pass,
+		Stage:   result.Source,
+		Before:  before,
+		After:   result.Command,
+		Message: result.Message,
+	})
+}
+
+func (e *Engine) recordRejectedCandidate(stage, input, candidate string, distance int, similarity float64, reason string) {
+	debug := e.debugTrace()
+	if debug == nil || input == "" || candidate == "" || reason == "" {
+		return
+	}
+
+	for _, existing := range debug.RejectedCandidates {
+		if existing.Stage == stage && existing.Input == input && existing.Candidate == candidate {
+			return
+		}
+	}
+	if len(debug.RejectedCandidates) >= 5 {
+		return
+	}
+
+	debug.RejectedCandidates = append(debug.RejectedCandidates, itypes.FixDebugCandidate{
+		Stage:      stage,
+		Input:      input,
+		Candidate:  candidate,
+		Distance:   distance,
+		Similarity: similarity,
+		Reason:     reason,
+	})
 }
 
 func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixResult {
@@ -184,13 +343,14 @@ func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixRe
 		passes = 1
 	}
 
-	for range passes {
+	for pass := 1; pass <= passes; pass++ {
 		input.Command = currentCmd
 		result := e.fixOnePass(input)
 		if !isMeaningfulFix(currentCmd, result) {
 			break
 		}
 
+		e.recordAcceptedFix(pass, currentCmd, result)
 		currentCmd = result.Command
 		lastSource = result.Source
 		if result.Message != "" && !slices.Contains(messages, result.Message) {
@@ -199,7 +359,7 @@ func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixRe
 		if resultKind == "" && result.Kind != "" {
 			resultKind = result.Kind
 		}
-		if result.Source == "parser" {
+		if result.Source == fixSourceParser {
 			usedParser = true
 			// stderr only belongs to the failed command that triggered this fix.
 			// Once a parser fix lands, later passes must not consume the same stderr again.
@@ -267,8 +427,10 @@ func (e *Engine) fixOnePass(input itypes.ParserContext) itypes.FixResult {
 	}
 
 	// 9. Try tool global option fix
-	if result := e.tryToolOptionFix(cmd); isMeaningfulFix(cmd, result) {
-		return result
+	if e.longOptionFixEnabled {
+		if result := e.tryToolOptionFix(cmd); isMeaningfulFix(cmd, result) {
+			return result
+		}
 	}
 
 	return itypes.FixResult{Fixed: false}
@@ -303,7 +465,7 @@ func (e *Engine) FixCommand(cmd string) itypes.FixResult {
 	}
 
 	if result := e.tryHistory(cmdWord); result.Fixed {
-		rebuilt := e.rebuildCommand(result.Command, args, "history")
+		rebuilt := e.rebuildCommand(result.Command, args, fixSourceHistory)
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
@@ -324,7 +486,7 @@ func (e *Engine) FixCommand(cmd string) itypes.FixResult {
 	}
 
 	if result := e.tryDistance(cmdWord); result.Fixed {
-		rebuilt := e.rebuildCommand(result.Command, args, "distance")
+		rebuilt := e.rebuildCommand(result.Command, args, fixSourceDistance)
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
@@ -357,7 +519,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) itypes.FixResult {
 			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(entry.To),
-				Source:  "history",
+				Source:  fixSourceHistory,
 			}
 			if isMeaningfulFix(cmd, result) {
 				return result
@@ -395,7 +557,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) itypes.FixResult {
 			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(replacement),
-				Source:  "distance",
+				Source:  fixSourceDistance,
 			}
 			if isMeaningfulFix(cmd, result) {
 				return result
@@ -424,7 +586,7 @@ func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
 				return itypes.FixResult{
 					Fixed:   true,
 					Command: line.replaceCommandSuffix(result.Command),
-					Source:  "parser",
+					Source:  fixSourceParser,
 					Message: result.Message,
 					Kind:    result.Kind,
 				}
@@ -445,7 +607,7 @@ func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
 		return itypes.FixResult{
 			Fixed:   true,
 			Command: result.Command,
-			Source:  "parser",
+			Source:  fixSourceParser,
 			Message: result.Message,
 			Kind:    result.Kind,
 		}
@@ -454,7 +616,7 @@ func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
 }
 
 func (e *Engine) tryHistory(cmd string) itypes.FixResult {
-	result := e.tryMatchOnCommand(cmd, "history", func(s string) (string, bool) {
+	result := e.tryMatchOnCommand(cmd, fixSourceHistory, func(s string) (string, bool) {
 		if e.shouldSkipHistoryLookup(s) {
 			return "", false
 		}
@@ -550,6 +712,7 @@ func (e *Engine) tryBuiltinRules(cmd string) itypes.FixResult {
 
 func (e *Engine) fixSubcommandInResult(result itypes.FixResult) itypes.FixResult {
 	if fixed := e.trySubcommandFixWithSource(result.Command, result.Source); fixed.Fixed {
+		e.markDebugFeature("subcommand")
 		return fixed
 	}
 	return result
@@ -626,6 +789,7 @@ func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 
 	// Find best match from known commands
 	bestMatch, bestDistance := e.closestKnownCommand(cmdWord)
+	bestSimilarity := SimilarityFromDistance(len(cmdWord), len(bestMatch), bestDistance)
 
 	// Check if match is good enough
 	// Threshold: distance <= 2 and similarity > 60%
@@ -633,7 +797,7 @@ func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 		result := itypes.FixResult{
 			Fixed:   true,
 			Command: bestMatch,
-			Source:  "distance",
+			Source:  fixSourceDistance,
 		}
 
 		// Add original args
@@ -647,6 +811,9 @@ func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 		}
 
 		return result
+	}
+	if bestMatch != "" && bestMatch != cmdWord {
+		e.recordRejectedCandidate(fixSourceDistance, cmdWord, bestMatch, bestDistance, bestSimilarity, "did not pass command distance threshold")
 	}
 
 	return itypes.FixResult{Fixed: false}
@@ -666,7 +833,11 @@ func (e *Engine) tryDistanceWithShell(cmd string) (itypes.FixResult, bool) {
 		}
 
 		bestMatch, bestDistance := e.closestKnownCommand(line.commandWord())
+		bestSimilarity := SimilarityFromDistance(len(line.commandWord()), len(bestMatch), bestDistance)
 		if !isGoodCommandDistanceMatch(line.commandWord(), bestMatch, bestDistance, matchCfg) {
+			if bestMatch != "" && bestMatch != line.commandWord() {
+				e.recordRejectedCandidate(fixSourceDistance, line.commandWord(), bestMatch, bestDistance, bestSimilarity, "did not pass command distance threshold")
+			}
 			continue
 		}
 		if bestMatch == line.commandWord() {
@@ -676,7 +847,7 @@ func (e *Engine) tryDistanceWithShell(cmd string) (itypes.FixResult, bool) {
 		result := itypes.FixResult{
 			Fixed:   true,
 			Command: line.replaceCommandWord(bestMatch),
-			Source:  "distance",
+			Source:  fixSourceDistance,
 		}
 
 		if e.toolTrees != nil {
@@ -690,11 +861,13 @@ func (e *Engine) tryDistanceWithShell(cmd string) (itypes.FixResult, bool) {
 }
 
 func (e *Engine) tryToolOptionFix(cmd string) itypes.FixResult {
+	if e.toolTrees == nil {
+		return itypes.FixResult{Fixed: false}
+	}
+
 	if result, parsed := e.tryToolOptionFixWithShell(cmd); parsed {
 		return result
 	}
-
-	matchCfg := e.distanceMatchConfig()
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
@@ -702,18 +875,92 @@ func (e *Engine) tryToolOptionFix(cmd string) itypes.FixResult {
 	}
 
 	mainCmd := parts[0]
+	resolvedCmd := ""
 	if !e.isAvailableCommand(mainCmd) {
 		resolved := e.findClosestCommand(mainCmd)
 		if resolved == "" {
 			return itypes.FixResult{Fixed: false}
 		}
+		resolvedCmd = resolved
 		mainCmd = resolved
 		parts[0] = resolved
 	}
 
+	idx, replacement, ok := e.findLongOptionFix(mainCmd, parts[1:])
+	if !ok {
+		return itypes.FixResult{Fixed: false}
+	}
+
+	parts[idx+1] = replacement
+	if resolvedCmd != "" {
+		parts[0] = resolvedCmd
+	}
+
+	name, _, _ := splitLongOptionToken(replacement)
+	return itypes.FixResult{
+		Fixed:   true,
+		Command: strings.Join(parts, " "),
+		Source:  "option",
+		Message: fmt.Sprintf("did you mean: %s?", name),
+	}
+}
+
+func (e *Engine) tryToolOptionFixWithShell(cmd string) (itypes.FixResult, bool) {
+	if e.toolTrees == nil {
+		return itypes.FixResult{Fixed: false}, true
+	}
+
+	lines, err := parseShellCommandLines(cmd)
+	if err != nil {
+		return itypes.FixResult{Fixed: false}, false
+	}
+
+	for _, line := range lines {
+		mainCmd, resolvedCmd, resolveErr := e.resolveShellCommandLine(line)
+		if resolveErr != nil {
+			continue
+		}
+
+		args := make([]string, 0, len(line.args)-line.commandIdx-1)
+		for i := line.commandIdx + 1; i < len(line.args); i++ {
+			args = append(args, line.args[i].Lit())
+		}
+
+		idx, replacement, ok := e.findLongOptionFix(mainCmd, args)
+		if !ok {
+			continue
+		}
+
+		replacements := []shellWordReplacement{{
+			index: line.commandIdx + 1 + idx,
+			value: replacement,
+		}}
+		if resolvedCmd != "" {
+			replacements = append(replacements, shellWordReplacement{index: line.commandIdx, value: resolvedCmd})
+		}
+
+		name, _, _ := splitLongOptionToken(replacement)
+		return itypes.FixResult{
+			Fixed:   true,
+			Command: line.replaceWords(replacements...),
+			Source:  "option",
+			Message: fmt.Sprintf("did you mean: %s?", name),
+		}, true
+	}
+
+	return itypes.FixResult{Fixed: false}, true
+}
+
+func (e *Engine) findLongOptionFix(mainCmd string, args []string) (int, string, bool) {
+	if e == nil || e.toolTrees == nil || len(args) == 0 {
+		return -1, "", false
+	}
+
+	matchCfg := e.longOptionMatchConfig()
+	prefix := make([]string, 0, 3)
 	expectValue := false
-	for i := 1; i < len(parts); i++ {
-		arg := parts[i]
+
+	for i, arg := range args {
 		if expectValue {
 			expectValue = false
 			continue
@@ -723,93 +970,86 @@ func (e *Engine) tryToolOptionFix(cmd string) itypes.FixResult {
 			break
 		}
 
-		name, suffix, isOption := splitToolOptionToken(arg)
-		if !isOption {
-			break
-		}
-
-		if isKnownToolOption(mainCmd, name) {
-			if toolOptionTakesValue(mainCmd, name) && suffix == "" {
-				expectValue = true
+		if fixIndex, replacement, needsValue, handled := e.tryLongOptionToken(mainCmd, prefix, args, i, matchCfg); handled {
+			if fixIndex >= 0 {
+				return fixIndex, replacement, true
 			}
+			expectValue = needsValue
 			continue
 		}
 
-		replacement := closestToolOption(mainCmd, name, matchCfg)
-		if replacement == "" {
+		if needsValue, isShortOption := longOptionScanShortOption(mainCmd, arg); isShortOption {
+			expectValue = needsValue
 			continue
 		}
 
-		parts[i] = replacement + suffix
-		return itypes.FixResult{
-			Fixed:   true,
-			Command: strings.Join(parts, " "),
-			Source:  "option",
-			Message: fmt.Sprintf("did you mean: %s?", replacement),
+		if canonical, ok := e.toolTrees.ResolveChild(mainCmd, prefix, arg); ok {
+			prefix = append(prefix, canonical)
 		}
 	}
 
-	return itypes.FixResult{Fixed: false}
+	return -1, "", false
 }
 
-func (e *Engine) tryToolOptionFixWithShell(cmd string) (itypes.FixResult, bool) {
-	lines, err := parseShellCommandLines(cmd)
-	if err != nil {
-		return itypes.FixResult{Fixed: false}, false
+func (e *Engine) tryLongOptionToken(
+	mainCmd string,
+	prefix []string,
+	args []string,
+	idx int,
+	matchCfg distanceMatchConfig,
+) (int, string, bool, bool) {
+	arg := args[idx]
+	name, suffix, isLongOption := splitLongOptionToken(arg)
+	if !isLongOption {
+		return -1, "", false, false
 	}
 
-	matchCfg := e.distanceMatchConfig()
-
-	for _, line := range lines {
-		mainCmd, resolvedCmd, resolveErr := e.resolveShellCommandLine(line)
-		if resolveErr != nil {
-			continue
-		}
-
-		expectValue := false
-		for i := line.commandIdx + 1; i < len(line.args); i++ {
-			arg := line.args[i].Lit()
-			if expectValue {
-				expectValue = false
-				continue
-			}
-
-			if arg == "--" {
-				break
-			}
-
-			name, suffix, isOption := splitToolOptionToken(arg)
-			if !isOption {
-				break
-			}
-
-			if isKnownToolOption(mainCmd, name) {
-				if toolOptionTakesValue(mainCmd, name) && suffix == "" {
-					expectValue = true
-				}
-				continue
-			}
-
-			replacement := closestToolOption(mainCmd, name, matchCfg)
-			if replacement == "" {
-				continue
-			}
-
-			replacements := []shellWordReplacement{{index: i, value: replacement + suffix}}
-			if resolvedCmd != "" {
-				replacements = append(replacements, shellWordReplacement{index: line.commandIdx, value: resolvedCmd})
-			}
-
-			return itypes.FixResult{
-				Fixed:   true,
-				Command: line.replaceWords(replacements...),
-				Source:  "option",
-				Message: fmt.Sprintf("did you mean: %s?", replacement),
-			}, true
-		}
+	if e.toolTrees.HasLongOptionInScope(mainCmd, prefix, name) {
+		return -1, "", e.toolTrees.LongOptionTakesValue(mainCmd, prefix, name) && suffix == "", true
 	}
 
-	return itypes.FixResult{Fixed: false}, true
+	replacement := closestLongOption(e.toolTrees.LongOptionsInScope(mainCmd, prefix), name, matchCfg)
+	if replacement != "" && e.canApplyLongOptionReplacement(mainCmd, prefix, args, idx, replacement, suffix, matchCfg) {
+		return idx, replacement + suffix, false, true
+	}
+
+	return -1, "", e.toolTrees.LongOptionTakesValue(mainCmd, prefix, name) && suffix == "", true
+}
+
+func longOptionScanShortOption(mainCmd, arg string) (bool, bool) {
+	if !isShortToolOption(arg) {
+		return false, false
+	}
+
+	return optionTakesValue(mainCmd, arg) || toolOptionTakesValue(mainCmd, arg), true
+}
+
+func (e *Engine) canApplyLongOptionReplacement(
+	mainCmd string,
+	prefix []string,
+	args []string,
+	idx int,
+	replacement string,
+	suffix string,
+	matchCfg distanceMatchConfig,
+) bool {
+	if e == nil || e.toolTrees == nil || replacement == "" {
+		return false
+	}
+	if suffix != "" || !e.toolTrees.LongOptionTakesValue(mainCmd, prefix, replacement) {
+		return true
+	}
+
+	nextToken := tokenAt(args, idx+1)
+	if nextToken == "" || nextToken == "--" || strings.HasPrefix(nextToken, "-") {
+		return false
+	}
+
+	subcommands := e.toolTrees.GetChildren(mainCmd, prefix)
+	if len(subcommands) > 0 && tokenAt(args, idx+2) == "" {
+		return false
+	}
+	return !isSubcommandCandidate(nextToken, subcommands, matchCfg)
 }
 
 func (e *Engine) trySubcommandFix(cmd string) itypes.FixResult {
@@ -973,6 +1213,10 @@ func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, 
 
 		match, distance := closestSubcommand(token, subcommands, cfg)
 		if !isGoodSubcommandMatch(token, match, distance, cfg) {
+			if match != "" && match != token {
+				similarity := SimilarityFromDistance(len(token), len(match), distance)
+				e.recordRejectedCandidate("subcommand", token, match, distance, similarity, "did not pass subcommand distance threshold")
+			}
 			break
 		}
 
@@ -1084,33 +1328,34 @@ func (e *Engine) findClosestCommand(cmd string) string {
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
 	matchCfg := e.distanceMatchConfig()
-	bestMatch, bestDistance := e.closestKnownCommandFromSlice(cmd, e.availableCommands())
+	bestMatch, bestDistance := e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance))
 	if isGoodCommandDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) || e.commandLoader == nil || e.commandsFullyLoad {
 		return bestMatch, bestDistance
 	}
 
 	// Only scan PATH on demand when builtin or seeded commands cannot produce a good candidate.
 	e.loadCommands()
-	return e.closestKnownCommandFromSlice(cmd, e.availableCommands())
+	return e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance))
 }
 
-func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string) (string, int) {
+func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []commandRuneCandidate) (string, int) {
+	cmdRunes := []rune(cmd)
 	candidates := make([]commandCandidate, 0, len(knownCommands))
 	seen := make(map[string]bool, len(knownCommands))
 
 	for _, known := range knownCommands {
-		if known == "" || seen[known] {
+		if known.name == "" || seen[known.name] {
 			continue
 		}
-		seen[known] = true
+		seen[known.name] = true
 
-		d := Distance(cmd, known, e.keyboard)
+		d := distanceRunes(cmdRunes, known.runes, e.keyboard)
 		candidates = append(candidates, commandCandidate{
-			name:       known,
+			name:       known.name,
 			distance:   d,
-			similarity: SimilarityFromDistance(len(cmd), len(known), d),
-			priority:   e.commandPriority(known),
-			transposed: utils.IsSingleAdjacentTransposition(cmd, known),
+			similarity: SimilarityFromDistance(len(cmd), len(known.name), d),
+			priority:   e.commandPriority(known.name),
+			transposed: utils.IsSingleAdjacentTransposition(cmd, known.name),
 		})
 	}
 
@@ -1138,10 +1383,13 @@ func (e *Engine) closestKnownCommandFromSlice(cmd string, knownCommands []string
 }
 
 func (e *Engine) availableCommands() []string {
-	if len(e.commands) != e.availableCmdsLen {
-		e.refreshAvailableCommands()
-	}
+	e.ensureAvailableCommandsFresh()
 	return e.availableCmds
+}
+
+func (e *Engine) availableCommandCandidates(cmd string, maxEditDistance int) []commandRuneCandidate {
+	e.ensureAvailableCommandsFresh()
+	return e.availableCmdIndex.candidatesFor(cmd, maxEditDistance)
 }
 
 func (e *Engine) isAvailableCommand(cmd string) bool {
@@ -1170,19 +1418,106 @@ func (e *Engine) loadCommands() {
 			return
 		}
 
-		e.commands = utils.MergeUniqueStrings(e.commands, e.filterDisabledCommands(e.commandLoader())...)
+		loaded := e.commandLoader()
+		if debug := e.debugTrace(); debug != nil {
+			debug.LoadedPATHCommands = true
+			debug.LoadedPATHCommandCount = len(loaded)
+		}
+		e.setCommands(utils.MergeUniqueStrings(e.commands, e.filterDisabledCommands(loaded)...))
 		e.refreshAvailableCommands()
 		e.commandsFullyLoad = true
 	})
 }
 
+func (e *Engine) setCommands(commands []string) {
+	e.commands = append([]string(nil), commands...)
+	e.commandsVersion++
+}
+
+func (e *Engine) addCommands(commands ...string) {
+	if len(commands) == 0 {
+		return
+	}
+	e.commands = append(e.commands, commands...)
+	e.commandsVersion++
+}
+
+func (e *Engine) ensureAvailableCommandsFresh() {
+	if e.availableCmdsVersion != e.commandsVersion {
+		e.refreshAvailableCommands()
+	}
+}
+
 func (e *Engine) refreshAvailableCommands() {
 	e.availableCmds = e.filterDisabledCommands(e.commands)
+	e.availableCmdRunes = commandRuneCandidatesFromStrings(e.availableCmds)
+	e.availableCmdIndex = newCommandCandidateIndex(e.availableCmdRunes)
 	e.availableCmdsSet = make(map[string]struct{}, len(e.availableCmds))
 	for _, cmd := range e.availableCmds {
 		e.availableCmdsSet[cmd] = struct{}{}
 	}
-	e.availableCmdsLen = len(e.commands)
+	e.availableCmdsVersion = e.commandsVersion
+}
+
+func commandRuneCandidatesFromStrings(commands []string) []commandRuneCandidate {
+	candidates := make([]commandRuneCandidate, 0, len(commands))
+	for _, cmd := range commands {
+		candidates = append(candidates, commandRuneCandidate{
+			name:  cmd,
+			runes: []rune(cmd),
+		})
+	}
+	return candidates
+}
+
+func newCommandCandidateIndex(candidates []commandRuneCandidate) commandCandidateIndex {
+	index := commandCandidateIndex{
+		all:       candidates,
+		byRuneLen: make(map[int][]commandRuneCandidate),
+	}
+	if len(candidates) == 0 {
+		return index
+	}
+
+	index.minLen = len(candidates[0].runes)
+	index.maxLen = index.minLen
+	for _, candidate := range candidates {
+		runeLen := len(candidate.runes)
+		index.byRuneLen[runeLen] = append(index.byRuneLen[runeLen], candidate)
+		if runeLen < index.minLen {
+			index.minLen = runeLen
+		}
+		if runeLen > index.maxLen {
+			index.maxLen = runeLen
+		}
+	}
+
+	return index
+}
+
+func (index commandCandidateIndex) candidatesFor(cmd string, maxEditDistance int) []commandRuneCandidate {
+	if len(index.all) == 0 {
+		return nil
+	}
+	if maxEditDistance < 0 {
+		return index.all
+	}
+
+	cmdLen := len([]rune(cmd))
+	minLen := cmdLen - maxEditDistance
+	if minLen < 0 {
+		minLen = 0
+	}
+	maxLen := cmdLen + maxEditDistance
+	if minLen <= index.minLen && maxLen >= index.maxLen {
+		return index.all
+	}
+
+	candidates := make([]commandRuneCandidate, 0)
+	for runeLen := minLen; runeLen <= maxLen; runeLen++ {
+		candidates = append(candidates, index.byRuneLen[runeLen]...)
+	}
+	return candidates
 }
 
 func (e *Engine) distanceMatchConfig() distanceMatchConfig {
@@ -1191,6 +1526,14 @@ func (e *Engine) distanceMatchConfig() distanceMatchConfig {
 		maxEditDistance:     e.maxEditDistance,
 		similarityThreshold: e.similarityThreshold,
 	}
+}
+
+func (e *Engine) longOptionMatchConfig() distanceMatchConfig {
+	cfg := e.distanceMatchConfig()
+	if cfg.similarityThreshold < longOptionSimilarityThreshold {
+		cfg.similarityThreshold = longOptionSimilarityThreshold
+	}
+	return cfg
 }
 
 func (e *Engine) filterDisabledCommands(commands []string) []string {
@@ -1397,9 +1740,8 @@ func findSubcommandWordIndex(mainCmd string, line *shellCommandLine) int {
 		}
 
 		if strings.HasPrefix(arg, "--") {
-			name := arg
-			if eq := strings.IndexByte(arg, '='); eq >= 0 {
-				name = arg[:eq]
+			name, _, hasInlineValue := utils.SplitInlineValue(arg)
+			if hasInlineValue {
 				if optionTakesValue(mainCmd, name) {
 					continue
 				}
@@ -1434,8 +1776,8 @@ func optionTakesValue(mainCmd, option string) bool {
 
 func splitToolOptionToken(arg string) (name string, suffix string, isOption bool) {
 	if strings.HasPrefix(arg, "--") {
-		if eq := strings.IndexByte(arg, '='); eq >= 0 {
-			return arg[:eq], arg[eq:], true
+		if name, suffix, ok := utils.SplitInlineValue(arg); ok {
+			return name, suffix, true
 		}
 		return arg, "", true
 	}
@@ -1450,9 +1792,18 @@ func splitToolOptionToken(arg string) (name string, suffix string, isOption bool
 	return "", "", false
 }
 
-func isKnownToolOption(mainCmd, option string) bool {
-	options, ok := builtinToolOptionSet[mainCmd]
-	return ok && options[option]
+func splitLongOptionToken(arg string) (name string, suffix string, isOption bool) {
+	if !strings.HasPrefix(arg, "--") || arg == "--" {
+		return "", "", false
+	}
+	if name, suffix, ok := utils.SplitInlineValue(arg); ok {
+		return name, suffix, true
+	}
+	return arg, "", true
+}
+
+func isShortToolOption(arg string) bool {
+	return strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && arg != "-"
 }
 
 func toolOptionTakesValue(mainCmd, option string) bool {
@@ -1490,6 +1841,115 @@ func closestToolOption(mainCmd, option string, cfg distanceMatchConfig) string {
 	}
 
 	return bestMatch
+}
+
+func closestLongOption(candidates []string, option string, cfg distanceMatchConfig) string {
+	if len(candidates) == 0 || !strings.HasPrefix(option, "--") || option == "--" {
+		return ""
+	}
+
+	bestMatch := ""
+	bestDistance := 999
+	for _, candidate := range candidates {
+		if !strings.HasPrefix(candidate, "--") || candidate == "--" {
+			continue
+		}
+
+		distance := Distance(option, candidate, cfg.keyboard)
+		if distance < bestDistance {
+			bestDistance = distance
+			bestMatch = candidate
+		}
+	}
+
+	if !isGoodLongOptionMatch(option, bestMatch, bestDistance, cfg) {
+		return ""
+	}
+
+	return bestMatch
+}
+
+func isGoodLongOptionMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
+	if isGoodDistanceMatch(original, candidate, distance, cfg) {
+		return true
+	}
+
+	if candidate == "" || cfg.maxEditDistance < 1 {
+		return false
+	}
+
+	if utils.IsSingleAdjacentTransposition(original, candidate) {
+		return cfg.maxEditDistance >= 1
+	}
+
+	heuristicDistance := longOptionHeuristicDistance(original, candidate)
+	if heuristicDistance <= 0 || heuristicDistance > cfg.maxEditDistance {
+		return false
+	}
+
+	return isLongBoundaryPreservingMatch(original, candidate)
+}
+
+func longOptionHeuristicDistance(original, candidate string) int {
+	original = strings.TrimPrefix(original, "--")
+	candidate = strings.TrimPrefix(candidate, "--")
+
+	if original == candidate {
+		return 0
+	}
+	if utils.IsSingleAdjacentTransposition(original, candidate) {
+		return 1
+	}
+
+	originalRunes := []rune(original)
+	candidateRunes := []rune(candidate)
+	if utils.Abs(len(originalRunes)-len(candidateRunes)) != 1 {
+		return 999
+	}
+
+	longer := candidateRunes
+	shorter := originalRunes
+	if len(originalRunes) > len(candidateRunes) {
+		longer = originalRunes
+		shorter = candidateRunes
+	}
+
+	for i := range longer {
+		reduced := make([]rune, 0, len(longer)-1)
+		reduced = append(reduced, longer[:i]...)
+		reduced = append(reduced, longer[i+1:]...)
+
+		reducedText := string(reduced)
+		shorterText := string(shorter)
+		if reducedText == shorterText {
+			return 1
+		}
+		if utils.IsSingleAdjacentTransposition(reducedText, shorterText) {
+			return 2
+		}
+	}
+
+	return 999
+}
+
+func isLongBoundaryPreservingMatch(original, candidate string) bool {
+	original = strings.TrimPrefix(original, "--")
+	candidate = strings.TrimPrefix(candidate, "--")
+
+	originalRunes := []rune(original)
+	candidateRunes := []rune(candidate)
+	if len(originalRunes) < 6 || len(candidateRunes) < 6 {
+		return false
+	}
+	if utils.Abs(len(originalRunes)-len(candidateRunes)) > 1 {
+		return false
+	}
+
+	originalLast := len(originalRunes) - 1
+	candidateLast := len(candidateRunes) - 1
+	return originalRunes[0] == candidateRunes[0] &&
+		originalRunes[1] == candidateRunes[1] &&
+		originalRunes[originalLast] == candidateRunes[candidateLast]
 }
 
 var subcommandPreOptionsWithValues = map[string]map[string]bool{
@@ -1608,8 +2068,6 @@ var builtinToolOptions = map[string][]string{
 	"cargo": {"-C", "-V", "-Z", "-h", "-q", "-v", "--color", "--config", "--explain", "--frozen", "--help", "--list", "--locked", "--offline", "--quiet", "--verbose", "--version"},
 }
 
-var builtinToolOptionSet = buildBuiltinToolOptionSet()
-
 var builtinToolOptionsWithValues = map[string]map[string]bool{
 	"cargo": {
 		"--color":   true,
@@ -1618,15 +2076,6 @@ var builtinToolOptionsWithValues = map[string]map[string]bool{
 		"-C":        true,
 		"-Z":        true,
 	},
-}
-
-func buildBuiltinToolOptionSet() map[string]map[string]bool {
-	result := make(map[string]map[string]bool, len(builtinToolOptions))
-	for tool, options := range builtinToolOptions {
-		result[tool] = utils.StringSet(options)
-	}
-
-	return result
 }
 
 // Learn stores a user-taught correction as a rule instead of history.

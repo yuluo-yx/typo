@@ -63,7 +63,7 @@ Typo can extract suggestions from real `stderr` output when available.
 
 Currently documented parser coverage:
 
-- `git`: `did you mean...`, missing upstream, and related suggestions
+- `git`: `did you mean...`, missing upstream, divergent pull rebase, and related suggestions
 - `docker`: unknown command suggestions
 - `npm`: command-not-found suggestions
 
@@ -169,6 +169,7 @@ The default configuration currently exposes:
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `experimental.long-option-correction.enabled` *(Experimental; default: `false`)*
 - `rules.<scope>.enabled`
 
 Supported keyboard layouts:

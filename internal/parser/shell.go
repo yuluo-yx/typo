@@ -37,8 +37,13 @@ func parseShellCall(raw string) (*shellCall, error) {
 }
 
 func (c *shellCall) replaceWord(index int, replacement string) string {
-	start, end := parserWordRange(c.args[index], len(c.raw))
+	start, end := utils.ShellNodeRange(c.args[index], len(c.raw))
 	return c.raw[:start] + replacement + c.raw[end:]
+}
+
+func (c *shellCall) insertAfterWord(index int, insertion string) string {
+	_, end := utils.ShellNodeRange(c.args[index], len(c.raw))
+	return c.raw[:end] + insertion + c.raw[end:]
 }
 
 func (c *shellCall) replaceSubcommand(command, expected, replacement string, optionsWithValues map[string]bool) (string, bool) {
@@ -51,10 +56,6 @@ func (c *shellCall) replaceSubcommand(command, expected, replacement string, opt
 	}
 
 	return c.replaceWord(index, replacement), true
-}
-
-func parserWordRange(word *syntax.Word, rawLen int) (int, int) {
-	return utils.OffsetToIndex(word.Pos().Offset(), rawLen), utils.OffsetToIndex(word.End().Offset(), rawLen)
 }
 
 func findShellSubcommandIndex(args []*syntax.Word, command string, optionsWithValues map[string]bool) int {
@@ -78,9 +79,8 @@ func findShellSubcommandIndex(args []*syntax.Word, command string, optionsWithVa
 		}
 
 		if strings.HasPrefix(arg, "--") {
-			name := arg
-			if eq := strings.IndexByte(arg, '='); eq >= 0 {
-				name = arg[:eq]
+			name, _, hasInlineValue := utils.SplitInlineValue(arg)
+			if hasInlineValue {
 				if optionsWithValues[name] {
 					continue
 				}
@@ -131,3 +131,5 @@ var npmParserOptionsWithValues = map[string]bool{
 	"--userconfig": true,
 	"-C":           true,
 }
+
+var genericParserOptionsWithValues = map[string]bool{}

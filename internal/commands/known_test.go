@@ -3,6 +3,9 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +28,66 @@ func TestDiscover(t *testing.T) {
 		if !found {
 			t.Logf("Warning: common command %q not found in PATH", c)
 		}
+	}
+}
+
+func TestDiscover_MultiplePathDirectories(t *testing.T) {
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	missingDir := filepath.Join(t.TempDir(), "missing")
+
+	createTestCommand(t, dirA, "zeta")
+	createTestCommand(t, dirA, "alpha")
+	createTestCommand(t, dirA, "dup")
+	createTestCommand(t, dirA, ".hidden")
+
+	nonExecFile := filepath.Join(dirA, "plain")
+	if err := os.WriteFile(nonExecFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create non-exec file: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dirA, "subdir"), 0755); err != nil {
+		t.Fatalf("Failed to create subdir: %v", err)
+	}
+
+	createTestCommand(t, dirB, "beta")
+	createTestCommand(t, dirB, "dup")
+
+	t.Setenv("PATH", strings.Join([]string{dirA, missingDir, dirB}, string(os.PathListSeparator)))
+
+	got := Discover()
+	want := []string{"alpha", "beta", "dup", "zeta"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Discover() = %v, want %v", got, want)
+	}
+}
+
+func TestPathDiscoveryWorkerCount(t *testing.T) {
+	if got := pathDiscoveryWorkerCount(0); got != 0 {
+		t.Fatalf("pathDiscoveryWorkerCount(0) = %d, want 0", got)
+	}
+	if got := pathDiscoveryWorkerCount(-1); got != 0 {
+		t.Fatalf("pathDiscoveryWorkerCount(-1) = %d, want 0", got)
+	}
+	if got := pathDiscoveryWorkerCount(1); got != 1 {
+		t.Fatalf("pathDiscoveryWorkerCount(1) = %d, want 1", got)
+	}
+
+	smallPathCount := 3
+	if got := pathDiscoveryWorkerCount(smallPathCount); got < 1 || got > smallPathCount {
+		t.Fatalf("pathDiscoveryWorkerCount(%d) = %d, want between 1 and %d", smallPathCount, got, smallPathCount)
+	}
+
+	largePathCount := maxPathDiscoveryWorkers * 4
+	got := pathDiscoveryWorkerCount(largePathCount)
+	want := runtime.NumCPU() * 2
+	if want < 1 {
+		want = 1
+	}
+	if want > maxPathDiscoveryWorkers {
+		want = maxPathDiscoveryWorkers
+	}
+	if got != want {
+		t.Fatalf("pathDiscoveryWorkerCount(%d) = %d, want %d", largePathCount, got, want)
 	}
 }
 
@@ -270,5 +333,18 @@ func TestDiscoverInDir_FileInfoError(t *testing.T) {
 
 	if !commands["testcmd"] {
 		t.Error("Expected 'testcmd' to be discovered")
+	}
+}
+
+func createTestCommand(t *testing.T, dir, name string) {
+	t.Helper()
+
+	fileName := name
+	if runtime.GOOS == windowsOS {
+		fileName += ".exe"
+	}
+	path := filepath.Join(dir, fileName)
+	if err := os.WriteFile(path, []byte("#!/bin/sh"), 0755); err != nil {
+		t.Fatalf("Failed to create test command %q: %v", name, err)
 	}
 }

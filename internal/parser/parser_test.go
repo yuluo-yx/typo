@@ -4,7 +4,23 @@ import (
 	"testing"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
+	"github.com/yuluo-yx/typo/internal/utils"
 )
+
+type recordingParser struct {
+	name   string
+	result itypes.ParserResult
+	calls  int
+}
+
+func (p *recordingParser) Name() string {
+	return p.name
+}
+
+func (p *recordingParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
+	p.calls++
+	return p.result
+}
 
 func TestGitParser_Parse(t *testing.T) {
 	p := NewGitParser()
@@ -50,6 +66,13 @@ func TestGitParser_Parse(t *testing.T) {
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to rebase against.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check\n",
 			wantFix: true,
 			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
+		},
+		{
+			name:    "no upstream branch defaults placeholder remote to origin",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin 0426-yuluo/fix",
 		},
 		{
 			name:    "no upstream branch is idempotent once fixed",
@@ -264,11 +287,80 @@ func TestRegistry_Parse(t *testing.T) {
 	if result.Command != "git remote -v" {
 		t.Errorf("Expected 'git remote -v', got %q", result.Command)
 	}
+	if result.Parser != "git" {
+		t.Errorf("Expected git parser, got %q", result.Parser)
+	}
 
 	// Test unknown error
 	result = r.Parse(itypes.ParserContext{Command: "unknown command", Stderr: "unknown error"})
 	if result.Fixed {
 		t.Error("Expected not to fix unknown error")
+	}
+}
+
+func TestRegistry_ParseFastPathKeepsPermissionFallback(t *testing.T) {
+	r := NewRegistry()
+
+	result := r.Parse(itypes.ParserContext{
+		Command:  "docker ps",
+		Stderr:   "docker: permission denied\n",
+		ExitCode: 1,
+	})
+	if !result.Fixed {
+		t.Fatal("Expected permission fallback to fix docker permission error")
+	}
+	if result.Command != "sudo docker ps" {
+		t.Fatalf("Parse().Command = %q, want %q", result.Command, "sudo docker ps")
+	}
+	if result.Parser != "permission" {
+		t.Fatalf("Parse().Parser = %q, want %q", result.Parser, "permission")
+	}
+}
+
+func TestRegistry_ParseFastPathKeepsGenericFallback(t *testing.T) {
+	r := NewRegistry()
+
+	result := r.Parse(itypes.ParserContext{
+		Command: "docker imags",
+		Stderr:  "error: unknown command 'imags'. Did you mean 'images'?",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected generic fallback to fix docker command")
+	}
+	if result.Command != "docker images" {
+		t.Fatalf("Parse().Command = %q, want %q", result.Command, "docker images")
+	}
+	if result.Parser != "generic" {
+		t.Fatalf("Parse().Parser = %q, want %q", result.Parser, "generic")
+	}
+}
+
+func TestRegistry_ParseFastPathDoesNotRepeatDedicatedParser(t *testing.T) {
+	gitParser := &recordingParser{name: "git"}
+	genericParser := &recordingParser{
+		name: "generic",
+		result: itypes.ParserResult{
+			Fixed:   true,
+			Command: "git status",
+		},
+	}
+
+	r := &Registry{}
+	r.Register(gitParser)
+	r.Register(genericParser)
+
+	result := r.Parse(itypes.ParserContext{Command: "git stauts", Stderr: "Did you mean 'status'?"})
+	if !result.Fixed || result.Command != "git status" {
+		t.Fatalf("Parse() = %+v, want fixed git status", result)
+	}
+	if result.Parser != "generic" {
+		t.Fatalf("Parse().Parser = %q, want %q", result.Parser, "generic")
+	}
+	if gitParser.calls != 1 {
+		t.Fatalf("git parser calls = %d, want 1", gitParser.calls)
+	}
+	if genericParser.calls != 1 {
+		t.Fatalf("generic parser calls = %d, want 1", genericParser.calls)
 	}
 }
 
@@ -506,11 +598,11 @@ func TestGitCommandHelpers(t *testing.T) {
 		t.Fatalf("gitShortOptionState(-x) = %v, want gitOptionUnknown", got)
 	}
 
-	if name, hasInline := splitLongOption("--git-dir=repo"); name != "--git-dir" || !hasInline {
-		t.Fatalf("splitLongOption() = (%q, %v), want (--git-dir, true)", name, hasInline)
+	if name, _, hasInline := utils.SplitInlineValue("--git-dir=repo"); name != "--git-dir" || !hasInline {
+		t.Fatalf("SplitInlineValue() = (%q, %v), want (--git-dir, true)", name, hasInline)
 	}
-	if name, hasInline := splitLongOption("--help"); name != "--help" || hasInline {
-		t.Fatalf("splitLongOption() = (%q, %v), want (--help, false)", name, hasInline)
+	if name, _, hasInline := utils.SplitInlineValue("--help"); name != "--help" || hasInline {
+		t.Fatalf("SplitInlineValue() = (%q, %v), want (--help, false)", name, hasInline)
 	}
 
 	if !gitCommandHasUpstreamFlag("git pull --set-upstream origin main") {
@@ -636,6 +728,124 @@ func TestGitParser_ParseNoUpstreamPlaceholderWithoutLocalBranch(t *testing.T) {
 	}
 }
 
+func TestGitParser_ParseDivergentPullRebase(t *testing.T) {
+	p := NewGitParser()
+	stderr := gitDivergentPullStderr()
+
+	tests := []struct {
+		name    string
+		cmd     string
+		wantFix bool
+		wantCmd string
+	}{
+		{
+			name:    "plain pull",
+			cmd:     "git pull",
+			wantFix: true,
+			wantCmd: "git pull --rebase",
+		},
+		{
+			name:    "pull with remote and branch",
+			cmd:     "git pull origin main",
+			wantFix: true,
+			wantCmd: "git pull --rebase origin main",
+		},
+		{
+			name:    "pull with global option",
+			cmd:     "git -C repo pull origin main",
+			wantFix: true,
+			wantCmd: "git -C repo pull --rebase origin main",
+		},
+		{
+			name:    "git-pull form",
+			cmd:     "git-pull origin main",
+			wantFix: true,
+			wantCmd: "git-pull --rebase origin main",
+		},
+		{
+			name:    "already has rebase",
+			cmd:     "git pull --rebase origin main",
+			wantFix: false,
+		},
+		{
+			name:    "already has rebase mode",
+			cmd:     "git pull --rebase=merges origin main",
+			wantFix: false,
+		},
+		{
+			name:    "already has no rebase",
+			cmd:     "git pull --no-rebase origin main",
+			wantFix: false,
+		},
+		{
+			name:    "already has ff only",
+			cmd:     "git pull --ff-only origin main",
+			wantFix: false,
+		},
+		{
+			name:    "non pull command",
+			cmd:     "git fetch origin main",
+			wantFix: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: stderr})
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
+	p := NewGitParser()
+
+	tests := []struct {
+		name   string
+		stderr string
+	}{
+		{
+			name:   "missing fatal signal",
+			stderr: "hint: You have divergent branches and need to specify how to reconcile them.\n",
+		},
+		{
+			name:   "missing divergent signal",
+			stderr: "fatal: Need to specify how to reconcile divergent branches.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: "git pull", Stderr: tt.stderr})
+			if result.Fixed {
+				t.Fatalf("Expected incomplete divergent pull stderr to stay unchanged, got %+v", result)
+			}
+		})
+	}
+}
+
+func gitDivergentPullStderr() string {
+	return "$ git pull\n" +
+		"hint: You have divergent branches and need to specify how to reconcile them.\n" +
+		"hint: You can do so by running one of the following commands sometime before\n" +
+		"hint: your next pull:\n" +
+		"hint:\n" +
+		"hint:   git config pull.rebase false  # merge\n" +
+		"hint:   git config pull.rebase true   # rebase\n" +
+		"hint:   git config pull.ff only       # fast-forward only\n" +
+		"hint:\n" +
+		"hint: You can replace \"git config\" with \"git config --global\" to set a default\n" +
+		"hint: preference for all repositories. You can also pass --rebase, --no-rebase,\n" +
+		"hint: or --ff-only on the command line to override the configured default per\n" +
+		"hint: invocation.\n" +
+		"fatal: Need to specify how to reconcile divergent branches.\n"
+}
+
 func TestIsGitCommand(t *testing.T) {
 	tests := []struct {
 		cmd      string
@@ -722,5 +932,154 @@ func TestNpmParser_ParseJustSuggestionNoParts(t *testing.T) {
 	})
 	if result.Fixed {
 		t.Error("Expected not to fix when npm has no subcommand to replace")
+	}
+}
+
+func TestGenericParser_Name(t *testing.T) {
+	p := NewGenericParser()
+	if p.Name() != "generic" {
+		t.Errorf("Name() = %q, want 'generic'", p.Name())
+	}
+}
+
+func TestGenericParser_Parse(t *testing.T) {
+	p := NewGenericParser()
+
+	tests := []struct {
+		name    string
+		cmd     string
+		stderr  string
+		wantFix bool
+		wantCmd string
+	}{
+		{
+			// rustup: single-quoted inline hint
+			name:    "rustup did you mean",
+			cmd:     "rustup taget list",
+			stderr:  "error: Unknown command 'taget'. Did you mean 'target'?",
+			wantFix: true,
+			wantCmd: "rustup target list",
+		},
+		{
+			// cargo: backtick-quoted inline hint with indentation
+			name:    "cargo did you mean",
+			cmd:     "cargo buid",
+			stderr:  "error: no such subcommand: `buid`\n\n\tDid you mean `build`?\n",
+			wantFix: true,
+			wantCmd: "cargo build",
+		},
+		{
+			// helm: next-line hint after "Did you mean this?"
+			name:    "helm did you mean this",
+			cmd:     "helm upgraed myrelease ./chart",
+			stderr:  "Error: unknown command \"upgraed\" for \"helm\"\n\nDid you mean this?\n\tupgrade\n\nRun 'helm --help' for usage.",
+			wantFix: true,
+			wantCmd: "helm upgrade myrelease ./chart",
+		},
+		{
+			// gh: next-line hint after "Did you mean this?" — wrong token at position 1
+			name:    "gh did you mean this",
+			cmd:     "gh pr-lst",
+			stderr:  "unknown command \"pr-lst\" for \"gh\"\n\nDid you mean this?\n\tpr-list\n",
+			wantFix: true,
+			wantCmd: "gh pr-list",
+		},
+		{
+			// kubectl: next-line hint after "Did you mean this?"
+			name:    "kubectl did you mean this",
+			cmd:     "kubectl appli -f pod.yaml",
+			stderr:  "Error: unknown command \"appli\" for \"kubectl\"\n\nDid you mean this?\n\tapply\n",
+			wantFix: true,
+			wantCmd: "kubectl apply -f pod.yaml",
+		},
+		{
+			// poetry: next-line hint after "Did you mean one of these?"
+			name:    "poetry did you mean one of these",
+			cmd:     "poetry addd requests",
+			stderr:  "The command \"addd\" is not defined.\nDid you mean one of these?\n    add\n    addr\n",
+			wantFix: true,
+			wantCmd: "poetry add requests",
+		},
+		{
+			// pip: "maybe you meant" double-quoted inline hint
+			name:    "pip maybe you meant",
+			cmd:     "pip insatll requests",
+			stderr:  "ERROR: unknown command \"insatll\" - maybe you meant \"install\"\n",
+			wantFix: true,
+			wantCmd: "pip install requests",
+		},
+		{
+			// Flag suggestion should be ignored — not a subcommand fix
+			name:    "pnpm flag suggestion ignored",
+			cmd:     "pnpm install --savde",
+			stderr:  "ERR_PNPM_UNKNOWN_OPTIONS  Unknown option: '--savde'\nDid you mean '--save'?\n",
+			wantFix: false,
+		},
+		{
+			// No stderr hint at all
+			name:    "no hint in stderr",
+			cmd:     "sometool badcmd",
+			stderr:  "error: unrecognized command\n",
+			wantFix: false,
+		},
+		{
+			// Single-word command with no subcommand to replace
+			name:    "command with no subcommand",
+			cmd:     "rustup",
+			stderr:  "Did you mean 'target'?",
+			wantFix: false,
+		},
+		{
+			// Git commands should not be double-handled — git parser runs first,
+			// but even if it fell through, we verify generic produces a valid fix
+			name:    "generic does not break on git-style stderr",
+			cmd:     "git comit -m 'msg'",
+			stderr:  "git: 'comit' is not a git command.\nDid you mean 'commit'?\n",
+			wantFix: true,
+			wantCmd: "git commit -m 'msg'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
+			if result.Fixed != tt.wantFix {
+				t.Errorf("Parse().Fixed = %v, want %v", result.Fixed, tt.wantFix)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Errorf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestGenericParser_RegisteredLast(t *testing.T) {
+	r := NewRegistry()
+
+	// A git error must still be handled by the git parser (not the generic one)
+	result := r.Parse(itypes.ParserContext{
+		Command: "git comit -m 'msg'",
+		Stderr:  "git: 'comit' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tcommit\n",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected registry to fix git error")
+	}
+	if result.Parser != "git" {
+		t.Errorf("Expected git parser to handle git error, got %q", result.Parser)
+	}
+
+	// An unknown CLI with a generic hint must be handled by the generic parser
+	result = r.Parse(itypes.ParserContext{
+		Command: "rustup taget list",
+		Stderr:  "error: Unknown command 'taget'. Did you mean 'target'?",
+	})
+	if !result.Fixed {
+		t.Fatal("Expected registry to fix rustup error via generic parser")
+	}
+	if result.Command != "rustup target list" {
+		t.Errorf("Expected 'rustup target list', got %q", result.Command)
+	}
+	if result.Parser != "generic" {
+		t.Errorf("Expected generic parser to handle rustup error, got %q", result.Parser)
 	}
 }

@@ -143,6 +143,7 @@ Before submitting changes, make sure the Git pre-commit hooks pass. See [Contrib
 ## Release Integrity
 
 The current GitHub Release workflow publishes a `checksums.txt` file with SHA-256 hashes for all platform binaries. Some historical Releases may not include that file.
+The macOS/Linux install script and Windows quick-install script verify downloaded Release binaries against `checksums.txt` when it is available.
 If you install from release assets directly, verify the downloaded binary against `checksums.txt` when it is available before placing it on your `PATH`.
 For step-by-step verification commands, see [Quick Start](docs/getting-started/quick-start.md#verify-a-release-binary).
 

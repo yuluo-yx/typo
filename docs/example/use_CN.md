@@ -87,6 +87,23 @@ If you wish to set tracking information for this branch you can do so with:
 
 这时按两次 `Esc`，Typo 会自动补全建议的 upstream 设置。
 
+## `git pull --rebase`
+
+当本地分支和远端分支已经分叉，Git 会拒绝继续 pull：
+
+```shell
+$ git pull
+hint: You have divergent branches and need to specify how to reconcile them.
+hint: You can pass --rebase, --no-rebase, or --ff-only on the command line.
+fatal: Need to specify how to reconcile divergent branches.
+```
+
+这时按两次 `Esc`，Typo 会用命令级 rebase 策略重试同一次 pull。
+
+```shell
+git pull --rebase
+```
+
 ## 没有权限？自动补 `sudo`
 
 > 命令本身没问题，只是执行时缺少权限。

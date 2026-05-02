@@ -134,6 +134,9 @@ func TestDefaultUserConfig(t *testing.T) {
 	if !cfg.History.Enabled {
 		t.Fatal("History.Enabled should default to true")
 	}
+	if cfg.Experimental.LongOptionCorrection.Enabled {
+		t.Fatal("experimental.long-option-correction.enabled should default to false")
+	}
 	if !cfg.Rules["git"].Enabled {
 		t.Fatal("rules.git.enabled should default to true")
 	}
@@ -164,6 +167,11 @@ func TestLoad_MergesPartialConfigFile(t *testing.T) {
   "history": {
     "enabled": false
   },
+  "experimental": {
+    "long_option_correction": {
+      "enabled": true
+    }
+  },
   "rules": {
     "docker": { "enabled": false }
   }
@@ -178,6 +186,9 @@ func TestLoad_MergesPartialConfigFile(t *testing.T) {
 	}
 	if cfg.User.Keyboard != "dvorak" {
 		t.Fatalf("Keyboard = %q, want dvorak", cfg.User.Keyboard)
+	}
+	if !cfg.User.Experimental.LongOptionCorrection.Enabled {
+		t.Fatal("experimental.long-option-correction.enabled should be true")
 	}
 	if cfg.User.History.Enabled {
 		t.Fatal("History.Enabled should be false")
@@ -265,6 +276,7 @@ func TestConfigSetGetAndReset(t *testing.T) {
 		"keyboard":             "colemak",
 		"rules.git.enabled":    "false",
 		"history.enabled":      "false",
+		"experimental.long-option-correction.enabled": "true",
 	})
 
 	assertConfigValue(t, cfg, "keyboard", "colemak")
@@ -274,8 +286,10 @@ func TestConfigSetGetAndReset(t *testing.T) {
 	assertConfigValue(t, cfg, "max-fix-passes", "40")
 	assertConfigValue(t, cfg, "auto-learn-threshold", "5")
 	assertConfigValue(t, cfg, "history.enabled", "false")
+	assertConfigValue(t, cfg, "experimental.long-option-correction.enabled", "true")
 	assertListSetting(t, cfg.ListSettings(), "rules.git.enabled", "false")
 	assertListSetting(t, cfg.ListSettings(), "auto-learn-threshold", "5")
+	assertListSetting(t, cfg.ListSettings(), "experimental.long-option-correction.enabled", "true")
 	assertResetConfig(t, cfg)
 }
 
@@ -327,6 +341,9 @@ func assertResetConfig(t *testing.T, cfg *Config) {
 	}
 	if cfg.User.AutoLearnThreshold != 3 {
 		t.Fatalf("AutoLearnThreshold after reset = %d, want 3", cfg.User.AutoLearnThreshold)
+	}
+	if cfg.User.Experimental.LongOptionCorrection.Enabled {
+		t.Fatal("experimental.long-option-correction.enabled should reset to false")
 	}
 	if !cfg.User.Rules["git"].Enabled {
 		t.Fatal("rules.git.enabled should reset to true")
@@ -396,6 +413,7 @@ func TestConfigGetAndSetErrors(t *testing.T) {
 		{key: "max-fix-passes", value: "abc"},
 		{key: "auto-learn-threshold", value: "abc"},
 		{key: "history.enabled", value: "maybe"},
+		{key: "experimental.long-option-correction.enabled", value: "maybe"},
 		{key: "rules.git.enabled", value: "maybe"},
 		{key: "unknown", value: "1"},
 		{key: "rules.unknown.enabled", value: "true"},
@@ -452,6 +470,13 @@ func TestConfigSetValueLeavesConfigUnchangedOnFailure(t *testing.T) {
 	}
 	if !reflect.DeepEqual(cfg.User, original) {
 		t.Fatalf("SetValue() mutated config on parse failure: got %+v want %+v", cfg.User, original)
+	}
+
+	if err := cfg.SetValue("experimental.long-option-correction.enabled", "maybe"); err == nil {
+		t.Fatal("SetValue() should fail parsing for invalid experimental bool")
+	}
+	if !reflect.DeepEqual(cfg.User, original) {
+		t.Fatalf("SetValue() mutated config on experimental parse failure: got %+v want %+v", cfg.User, original)
 	}
 }
 
@@ -718,6 +743,7 @@ func TestApplyFileConfig(t *testing.T) {
 	maxPasses := 50
 	keyboard := "colemak"
 	historyEnabled := false
+	longOptionCorrectionEnabled := true
 	dockerEnabled := false
 
 	applyFileConfig(&cfg, fileUserConfig{
@@ -726,6 +752,9 @@ func TestApplyFileConfig(t *testing.T) {
 		MaxFixPasses:        &maxPasses,
 		Keyboard:            &keyboard,
 		History:             &fileHistoryConfig{Enabled: &historyEnabled},
+		Experimental: &fileExperimentalConfig{
+			LongOptionCorrection: &fileLongOptionCorrectionConfig{Enabled: &longOptionCorrectionEnabled},
+		},
 		Rules: map[string]fileRuleConfig{
 			"docker": {Enabled: &dockerEnabled},
 			"git":    {},
@@ -740,6 +769,9 @@ func TestApplyFileConfig(t *testing.T) {
 	}
 	if cfg.History.Enabled {
 		t.Fatal("applyFileConfig() should disable history")
+	}
+	if !cfg.Experimental.LongOptionCorrection.Enabled {
+		t.Fatal("applyFileConfig() should enable experimental long-option correction")
 	}
 	if cfg.Rules["docker"].Enabled {
 		t.Fatal("applyFileConfig() should disable docker rule scope")

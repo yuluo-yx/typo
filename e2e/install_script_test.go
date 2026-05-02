@@ -4,7 +4,9 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path"
@@ -73,6 +75,7 @@ func (e *installScriptEnv) commandEnv(extra ...string) []string {
 		"TYPO_INSTALL_DIR=",
 		"TYPO_TEST_CURL_LOG=",
 		"TYPO_TEST_RELEASE_BINARY=",
+		"TYPO_TEST_RELEASE_SHA256=",
 		"TYPO_TEST_SOURCE_ARCHIVE=",
 	}, len(extra)+10)
 
@@ -129,7 +132,8 @@ func TestInstallScriptInstallsLatestRelease(t *testing.T) {
 	env := newInstallScriptEnv(t)
 
 	releaseBinary := filepath.Join(env.tmpDir, "release-typo")
-	if err := os.WriteFile(releaseBinary, []byte("#!/bin/sh\necho installed-from-release\n"), 0755); err != nil {
+	releaseBinaryContent := []byte("#!/bin/sh\necho installed-from-release\n")
+	if err := os.WriteFile(releaseBinary, releaseBinaryContent, 0755); err != nil {
 		t.Fatalf("failed to write fake release binary: %v", err)
 	}
 
@@ -168,6 +172,9 @@ case "$url" in
     cp "$TYPO_TEST_RELEASE_BINARY" "$output"
     chmod 755 "$output"
     ;;
+  "https://github.com/yuluo-yx/typo/releases/download/v9.9.9/checksums.txt")
+    printf '%s  typo-linux-amd64\n' "$TYPO_TEST_RELEASE_SHA256" > "$output"
+    ;;
   *)
     echo "unexpected curl URL: $url" >&2
     exit 1
@@ -175,7 +182,10 @@ case "$url" in
 esac
 `)
 
-	result := env.runWithEnv(t, []string{"TYPO_TEST_RELEASE_BINARY=" + releaseBinary})
+	result := env.runWithEnv(t, []string{
+		"TYPO_TEST_RELEASE_BINARY=" + releaseBinary,
+		"TYPO_TEST_RELEASE_SHA256=" + sha256Hex(releaseBinaryContent),
+	})
 	if result.code != 0 {
 		t.Fatalf("install latest release failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
@@ -199,6 +209,185 @@ esac
 	}
 	if !strings.Contains(logText, "https://github.com/yuluo-yx/typo/releases/download/v9.9.9/typo-linux-amd64") {
 		t.Fatalf("release binary download was not requested: %s", logText)
+	}
+	if !strings.Contains(logText, "https://github.com/yuluo-yx/typo/releases/download/v9.9.9/checksums.txt") {
+		t.Fatalf("checksum manifest download was not requested: %s", logText)
+	}
+}
+
+func TestInstallScriptContinuesWhenChecksumManifestIsUnavailable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh e2e is only supported on Unix hosts")
+	}
+
+	env := newInstallScriptEnv(t)
+	releaseBinary := filepath.Join(env.tmpDir, "release-typo")
+	if err := os.WriteFile(releaseBinary, []byte("#!/bin/sh\necho installed-without-checksum\n"), 0755); err != nil {
+		t.Fatalf("failed to write fake release binary: %v", err)
+	}
+
+	env.writeBinScript(t, "uname", installTestUnameScript())
+	env.writeBinScript(t, "curl", `#!/bin/sh
+set -eu
+url=""
+output=""
+expect_output=0
+for arg in "$@"; do
+  if [ "$expect_output" -eq 1 ]; then
+    output="$arg"
+    expect_output=0
+    continue
+  fi
+  if [ "$arg" = "-o" ]; then
+    expect_output=1
+    continue
+  fi
+  case "$arg" in
+    http://*|https://*) url="$arg" ;;
+  esac
+done
+case "$url" in
+  "https://github.com/yuluo-yx/typo/releases/download/v1.2.3/typo-linux-amd64")
+    cp "$TYPO_TEST_RELEASE_BINARY" "$output"
+    chmod 755 "$output"
+    ;;
+  "https://github.com/yuluo-yx/typo/releases/download/v1.2.3/checksums.txt")
+    printf '404'
+    exit 22
+    ;;
+  *)
+    echo "unexpected curl URL: $url" >&2
+    exit 1
+    ;;
+esac
+`)
+
+	result := env.runWithEnv(t, []string{"TYPO_TEST_RELEASE_BINARY=" + releaseBinary}, "-s", "1.2.3")
+	if result.code != 0 {
+		t.Fatalf("install should continue without checksums: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
+	}
+	if !strings.Contains(result.stderr, "Checksum verification will be skipped") {
+		t.Fatalf("expected checksum warning, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+
+	installedBinary := filepath.Join(env.installDir, "typo")
+	output, err := exec.Command(installedBinary).CombinedOutput()
+	if err != nil {
+		t.Fatalf("installed release binary failed to execute: %v\n%s", err, output)
+	}
+	if strings.TrimSpace(string(output)) != "installed-without-checksum" {
+		t.Fatalf("unexpected installed release binary output: %q", output)
+	}
+}
+
+func TestInstallScriptFailsWhenChecksumManifestDownloadErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh e2e is only supported on Unix hosts")
+	}
+
+	env := newInstallScriptEnv(t)
+	releaseBinary := filepath.Join(env.tmpDir, "release-typo")
+	if err := os.WriteFile(releaseBinary, []byte("#!/bin/sh\necho unverified\n"), 0755); err != nil {
+		t.Fatalf("failed to write fake release binary: %v", err)
+	}
+
+	env.writeBinScript(t, "uname", installTestUnameScript())
+	env.writeBinScript(t, "curl", `#!/bin/sh
+set -eu
+url=""
+output=""
+expect_output=0
+for arg in "$@"; do
+  if [ "$expect_output" -eq 1 ]; then
+    output="$arg"
+    expect_output=0
+    continue
+  fi
+  if [ "$arg" = "-o" ]; then
+    expect_output=1
+    continue
+  fi
+  case "$arg" in
+    http://*|https://*) url="$arg" ;;
+  esac
+done
+case "$url" in
+  "https://github.com/yuluo-yx/typo/releases/download/v1.2.3/typo-linux-amd64")
+    cp "$TYPO_TEST_RELEASE_BINARY" "$output"
+    chmod 755 "$output"
+    ;;
+  "https://github.com/yuluo-yx/typo/releases/download/v1.2.3/checksums.txt")
+    printf '500'
+    exit 22
+    ;;
+  *)
+    echo "unexpected curl URL: $url" >&2
+    exit 1
+    ;;
+esac
+`)
+
+	result := env.runWithEnv(t, []string{"TYPO_TEST_RELEASE_BINARY=" + releaseBinary}, "-s", "1.2.3")
+	if result.code == 0 {
+		t.Fatalf("expected checksum manifest download error to fail: stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if !strings.Contains(result.stderr, "Refusing to install an unverified binary") {
+		t.Fatalf("expected unverified binary refusal, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(env.installDir, "typo")); !os.IsNotExist(err) {
+		t.Fatalf("binary should not be installed when checksum manifest download fails: %v", err)
+	}
+}
+
+func TestInstallScriptFailsOnChecksumMismatch(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh e2e is only supported on Unix hosts")
+	}
+
+	env := newInstallScriptEnv(t)
+	releaseBinary := filepath.Join(env.tmpDir, "release-typo")
+	if err := os.WriteFile(releaseBinary, []byte("#!/bin/sh\necho tampered\n"), 0755); err != nil {
+		t.Fatalf("failed to write fake release binary: %v", err)
+	}
+
+	env.writeBinScript(t, "uname", installTestUnameScript())
+	env.writeBinScript(t, "curl", installTestReleaseCurlScript("0000000000000000000000000000000000000000000000000000000000000000  typo-linux-amd64\n"))
+
+	result := env.runWithEnv(t, []string{"TYPO_TEST_RELEASE_BINARY=" + releaseBinary}, "-s", "1.2.3")
+	if result.code == 0 {
+		t.Fatalf("expected checksum mismatch to fail: stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if !strings.Contains(result.stderr, "Checksum verification failed") {
+		t.Fatalf("expected checksum failure in stderr, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(env.installDir, "typo")); !os.IsNotExist(err) {
+		t.Fatalf("binary should not be installed on checksum mismatch: %v", err)
+	}
+}
+
+func TestInstallScriptFailsWhenChecksumEntryIsMissing(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh e2e is only supported on Unix hosts")
+	}
+
+	env := newInstallScriptEnv(t)
+	releaseBinary := filepath.Join(env.tmpDir, "release-typo")
+	if err := os.WriteFile(releaseBinary, []byte("#!/bin/sh\necho missing-entry\n"), 0755); err != nil {
+		t.Fatalf("failed to write fake release binary: %v", err)
+	}
+
+	env.writeBinScript(t, "uname", installTestUnameScript())
+	env.writeBinScript(t, "curl", installTestReleaseCurlScript("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff  typo-darwin-arm64\n"))
+
+	result := env.runWithEnv(t, []string{"TYPO_TEST_RELEASE_BINARY=" + releaseBinary}, "-s", "1.2.3")
+	if result.code == 0 {
+		t.Fatalf("expected missing checksum entry to fail: stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if !strings.Contains(result.stderr, "Unable to find checksum entry for typo-linux-amd64") {
+		t.Fatalf("expected missing checksum entry error, got stdout=%q stderr=%q", result.stdout, result.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(env.installDir, "typo")); !os.IsNotExist(err) {
+		t.Fatalf("binary should not be installed without checksum entry: %v", err)
 	}
 }
 
@@ -355,4 +544,55 @@ func writeTarDir(t *testing.T, tarWriter *tar.Writer, createdDirs map[string]boo
 		t.Fatalf("failed to write tar directory %s: %v", dir, err)
 	}
 	createdDirs[dir] = true
+}
+
+func sha256Hex(data []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+func installTestUnameScript() string {
+	return `#!/bin/sh
+case "${1:-}" in
+  -s) echo Linux ;;
+  -m) echo x86_64 ;;
+  *) echo Linux ;;
+esac
+`
+}
+
+func installTestReleaseCurlScript(checksums string) string {
+	return fmt.Sprintf(`#!/bin/sh
+set -eu
+url=""
+output=""
+expect_output=0
+for arg in "$@"; do
+  if [ "$expect_output" -eq 1 ]; then
+    output="$arg"
+    expect_output=0
+    continue
+  fi
+  if [ "$arg" = "-o" ]; then
+    expect_output=1
+    continue
+  fi
+  case "$arg" in
+    http://*|https://*) url="$arg" ;;
+  esac
+done
+case "$url" in
+  "https://github.com/yuluo-yx/typo/releases/download/v1.2.3/typo-linux-amd64")
+    cp "$TYPO_TEST_RELEASE_BINARY" "$output"
+    chmod 755 "$output"
+    ;;
+  "https://github.com/yuluo-yx/typo/releases/download/v1.2.3/checksums.txt")
+    cat > "$output" <<'EOF'
+%sEOF
+    ;;
+  *)
+    echo "unexpected curl URL: $url" >&2
+    exit 1
+    ;;
+esac
+`, checksums)
 }
