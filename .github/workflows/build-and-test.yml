@@ -32,28 +32,15 @@ on:
       - '.github/workflows/**'
 
 jobs:
-  test:
-    name: Test
+  ci:
+    name: CI Checks
     runs-on: ubuntu-latest
     if: github.repository == 'yuluo-yx/typo'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./tools/github-setup-deps
       - run: make download
-      - run: make test
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    if: github.repository == 'yuluo-yx/typo'
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./tools/github-setup-deps
-      - run: |
-          make install-golangcilint
-          make install-codespell
-          make codespell-check
-          make lint-go
+      - run: make ci
 
   build:
     name: Build

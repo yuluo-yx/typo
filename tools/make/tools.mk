@@ -8,6 +8,10 @@ GOLANGCI_LINT_VERSION_NUMBER := $(patsubst v%,%,$(GOLANGCI_LINT_VERSION))
 install-tools: ## Install tools
 install-tools: install-precommit install-golangcilint install-markdownlint install-codespell
 
+.PHONY: ci-tools
+ci-tools: ## Install tools required by make ci
+ci-tools: install-golangcilint install-codespell
+
 .PHONY: install-golangcilint
 install-golangcilint: ## Install golangci-lint
 	@$(LOG_TARGET)
