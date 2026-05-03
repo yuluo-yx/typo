@@ -131,15 +131,26 @@ v1 支持以下安装方式（均可通过 `typo doctor` 验证）：
 如果使用 Homebrew 安装，请通过 Homebrew 升级：
 
 ```bash
-brew update
-brew upgrade typo
+typo update
 ```
 
-如果使用安装脚本，重新运行即可获取最新版本：
+如果使用安装脚本，请使用 `typo update`。默认行为是本地构建 `main` 分支，因此需要 Go：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
+typo update
 ```
+
+`typo update --version main` 和 `typo update --version latest` 是同一套 main 分支源码构建的
+别名。不要使用 `--version @latest`；`@latest` 是 Go module 的版本语法。
+
+如果要通过脚本托管路径安装指定 Release：
+
+```bash
+typo update --version 1.1.0
+```
+
+`typo update` 会拒绝 `go install`、手动 Release 和 Windows quick-install 安装的二进制。
+这些安装方式请使用 `typo doctor` 输出的对应命令。
 
 ## 升级后检查清单
 

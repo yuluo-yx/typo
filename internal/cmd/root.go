@@ -137,9 +137,9 @@ Usage:
   typo history list                       List correction history
   typo history clear                      Clear correction history
   typo stats [--since <days>] [--top <n>] Analyze accepted correction history
-  typo update                             Update typo to the latest version
-  typo update --check                     Only check for updates
-  typo update --version <tag>             Install a specific version
+  typo update                             Build main for script installs; use brew for Homebrew installs
+  typo update --check                     Check update support without installing
+  typo update --version <tag>             Install a Release tag for script installs, e.g. 1.1.0
   typo update --dry-run                   Simulate without making changes
   typo init zsh                           Print zsh integration script
   typo init bash                          Print bash integration script

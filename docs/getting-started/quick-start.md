@@ -17,9 +17,11 @@ brew install typo
 Upgrade an existing Homebrew installation:
 
 ```bash
-brew update
-brew upgrade typo
+typo update
 ```
+
+`typo update` runs `brew update` and `brew upgrade typo` when the running
+`typo` binary is managed by Homebrew.
 
 Uninstall typo and remove the tap:
 
@@ -50,6 +52,28 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 # Build from the main branch source (requires Go)
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -b
 ```
+
+Upgrade an existing script installation:
+
+```bash
+# Build from main and replace the running typo binary (requires Go)
+typo update
+
+# Equivalent explicit main-branch aliases
+typo update --version main
+typo update --version latest
+
+# Install a specific Release version
+typo update --version 1.1.0
+```
+
+Do not use `--version @latest`; `@latest` is Go module syntax. For typo's own
+update command, use `typo update` to build from main or `typo update --version
+<tag>` to install a Release.
+
+`typo update` intentionally does not replace `go install`, manual Release, or
+Windows quick-install binaries. Run `typo doctor` first if you need to confirm
+which binary a normal `typo` invocation resolves to.
 
 Notes:
 
