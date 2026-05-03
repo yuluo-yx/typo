@@ -139,15 +139,29 @@ v1 supports these install methods (all verified by `typo doctor`):
 If you installed with Homebrew, upgrade through Homebrew:
 
 ```bash
-brew update
-brew upgrade typo
+typo update
 ```
 
-If you used the install script, re-run it to get the latest version:
+If you used the install script, use `typo update`. By default it builds the
+`main` branch locally and requires Go:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
+typo update
 ```
+
+`typo update --version main` and `typo update --version latest` are accepted
+aliases for the same main-branch source build. Do not use `--version @latest`;
+`@latest` is Go module syntax.
+
+To install a specific Release through the script-managed path:
+
+```bash
+typo update --version 1.1.0
+```
+
+`typo update` intentionally rejects `go install`, manual Release, and Windows
+quick-install binaries. Use the command printed by `typo doctor` for those
+install methods.
 
 ## Post-upgrade checklist
 

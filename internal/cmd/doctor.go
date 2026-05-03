@@ -130,6 +130,11 @@ func checkDoctorInstallMethod(shellName, shellRC, typoPath string) {
 		fmt.Println("  Install/update:")
 		fmt.Printf("    %s\n", method.action)
 	}
+	if method.updateSupported {
+		fmt.Println("  typo update: supported")
+	} else {
+		fmt.Println("  typo update: unsupported")
+	}
 	if shellName != "" {
 		fmt.Printf("  Shell config: %s\n", shellRC)
 		fmt.Printf("  Shell init: %s\n", shellInitCommand(shellName))
@@ -218,14 +223,29 @@ func doctorShellMisconfiguration(shellName string) string {
 
 // doctorInstallMethod represents detected install method details.
 type doctorInstallMethod struct {
-	name   string
-	detail string
-	action string
+	kind            doctorInstallKind
+	name            string
+	detail          string
+	path            string
+	action          string
+	updateSupported bool
 }
+
+type doctorInstallKind int
+
+const (
+	doctorInstallUnknown doctorInstallKind = iota
+	doctorInstallGo
+	doctorInstallWindowsQuick
+	doctorInstallHomebrew
+	doctorInstallScript
+	doctorInstallManual
+)
 
 func detectDoctorInstallMethod(typoPath string) doctorInstallMethod {
 	if typoPath == "" {
 		return doctorInstallMethod{
+			kind:   doctorInstallUnknown,
 			name:   UnknownValue,
 			action: "Install with: curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash",
 		}
@@ -233,36 +253,48 @@ func detectDoctorInstallMethod(typoPath string) doctorInstallMethod {
 
 	if isGoInstallPath(typoPath) {
 		return doctorInstallMethod{
+			kind:   doctorInstallGo,
 			name:   "go install",
 			detail: filepath.Dir(filepath.Clean(typoPath)),
+			path:   filepath.Clean(typoPath),
 			action: "go install github.com/yuluo-yx/typo/cmd/typo@latest",
 		}
 	}
 	if isWindowsQuickInstallPath(typoPath) {
 		return doctorInstallMethod{
+			kind:   doctorInstallWindowsQuick,
 			name:   "Windows quick install",
 			detail: filepath.Dir(filepath.Clean(typoPath)),
+			path:   filepath.Clean(typoPath),
 			action: "iwr -useb https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/quick-install.ps1 | iex",
 		}
 	}
 	if isHomebrewInstallPath(typoPath) {
 		return doctorInstallMethod{
-			name:   "Homebrew",
-			detail: filepath.Dir(filepath.Clean(typoPath)),
-			action: "brew upgrade typo",
+			kind:            doctorInstallHomebrew,
+			name:            "Homebrew",
+			detail:          filepath.Dir(filepath.Clean(typoPath)),
+			path:            filepath.Clean(typoPath),
+			action:          "brew update && brew upgrade typo",
+			updateSupported: true,
 		}
 	}
 	if isScriptInstallPath(typoPath) {
 		return doctorInstallMethod{
-			name:   "curl/install.sh",
-			detail: filepath.Dir(filepath.Clean(typoPath)),
-			action: "curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash",
+			kind:            doctorInstallScript,
+			name:            "curl/install.sh",
+			detail:          filepath.Dir(filepath.Clean(typoPath)),
+			path:            filepath.Clean(typoPath),
+			action:          "typo update",
+			updateSupported: true,
 		}
 	}
 
 	return doctorInstallMethod{
+		kind:   doctorInstallManual,
 		name:   "manual release",
 		detail: filepath.Dir(filepath.Clean(typoPath)),
+		path:   filepath.Clean(typoPath),
 		action: "Download the matching GitHub Release binary, verify checksums.txt, then place typo in a PATH directory.",
 	}
 }

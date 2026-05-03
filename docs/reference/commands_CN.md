@@ -153,6 +153,41 @@ typo init powershell
 - `powershell`
 - `pwsh` 可作为别名使用，内部会归一化为 `powershell`
 
+## `typo update`
+
+更新当前正在运行的 `typo` 二进制。如果你按常规方式从 `PATH` 调用 `typo`，更新目标和
+安装方式会与 `typo doctor` 报告的结果一致。
+
+```bash
+# 脚本安装从 main 分支构建；Homebrew 安装会调用 brew
+typo update
+
+# 检查当前版本、最新 Release 和 main 最新提交
+typo update --check
+
+# 只展示将执行的动作，不下载、不构建、不调用 brew
+typo update --dry-run
+
+# 为脚本安装安装指定 Release tag
+typo update --version 1.1.0
+```
+
+支持的更新路径：
+
+- macOS 和 Linux 上通过 curl `install.sh` 安装的二进制。`typo update` 默认从
+  `main` 分支源码构建，需要本地有 `go`。`typo update --version main` 和
+  `typo update --version latest` 是同一套 main 分支源码构建的别名。
+- `typo update --version <tag>` 会通过同一脚本安装指定 Release，例如
+  `typo update --version 1.1.0`。
+- Homebrew 安装会执行 `brew update` 和 `brew upgrade typo`。`typo update --version`
+  不支持 Homebrew 版本固定。
+
+不支持的更新路径：
+
+- `go install` 二进制。请使用 `go install github.com/yuluo-yx/typo/cmd/typo@latest`。
+- 手动放置的 Release 二进制。请改用安装脚本或 Homebrew，以便后续托管更新。
+- Windows quick install。请重新运行 PowerShell quick-install 命令。
+
 ## `typo doctor`
 
 检查当前环境、生效配置和 shell 集成提示。
@@ -168,6 +203,7 @@ typo doctor
 - 配置目录状态
 - shell integration 提示
 - Homebrew、curl 安装脚本、手动 Release 二进制、Windows quick install 与 `go install` 的安装方式检测
+- 当前安装方式是否支持 `typo update`
 - 常见 shell 配置错误提示，例如 fish 使用了错误的 init 命令风格
 - 通过 `go install` 安装时的 Go bin `PATH` 提示
 

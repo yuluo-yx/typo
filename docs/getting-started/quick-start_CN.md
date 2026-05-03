@@ -17,9 +17,11 @@ brew install typo
 升级已有的 Homebrew 安装：
 
 ```bash
-brew update
-brew upgrade typo
+typo update
 ```
+
+当当前正在运行的 `typo` 二进制由 Homebrew 管理时，`typo update` 会执行 `brew update`
+和 `brew upgrade typo`。
 
 卸载 typo 并移除 tap：
 
@@ -50,6 +52,26 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 # 从 main 分支源码构建（需要 Go）
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash -s -- -b
 ```
+
+升级已有的脚本安装：
+
+```bash
+# 从 main 构建并替换当前正在运行的 typo 二进制（需要 Go）
+typo update
+
+# 等价的显式 main 分支别名
+typo update --version main
+typo update --version latest
+
+# 安装指定 Release 版本
+typo update --version 1.1.0
+```
+
+不要使用 `--version @latest`；`@latest` 是 Go module 的版本语法。Typo 自己的更新命令中，
+从 main 构建请使用 `typo update`，安装 Release 请使用 `typo update --version <tag>`。
+
+`typo update` 不会替换 `go install`、手动 Release 或 Windows quick-install 安装的二进制。
+如果需要确认普通 `typo` 调用会解析到哪个二进制，请先运行 `typo doctor`。
 
 补充说明：
 

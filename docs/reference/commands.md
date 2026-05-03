@@ -153,6 +153,42 @@ Supported shell names:
 - `powershell`
 - `pwsh` is accepted as an alias and normalizes to `powershell`
 
+## `typo update`
+
+Update the running `typo` binary. When you invoke `typo` normally from `PATH`,
+the target and install method match what `typo doctor` reports.
+
+```bash
+# Build from the main branch for script installs; use brew for Homebrew installs
+typo update
+
+# Check current version, latest Release, and latest main commit
+typo update --check
+
+# Show what would happen without downloading, building, or calling brew
+typo update --dry-run
+
+# Install a specific Release tag for script installs
+typo update --version 1.1.0
+```
+
+Supported update paths:
+
+- curl `install.sh` installs on macOS and Linux. `typo update` builds from the
+  `main` branch by default and requires `go`. `typo update --version main` and
+  `typo update --version latest` are accepted aliases for the same main-branch
+  source build.
+- `typo update --version <tag>` installs a specific Release through the same
+  script, for example `typo update --version 1.1.0`.
+- Homebrew installs run `brew update` and `brew upgrade typo`. Version pinning is
+  not supported through `typo update --version`.
+
+Unsupported update paths:
+
+- `go install` binaries. Use `go install github.com/yuluo-yx/typo/cmd/typo@latest`.
+- manual Release binaries. Reinstall with the script or Homebrew for managed updates.
+- Windows quick install. Re-run the PowerShell quick-install command.
+
 ## `typo doctor`
 
 Check the current environment, effective config, and shell integration hints.
@@ -168,6 +204,7 @@ The output includes:
 - config directory state
 - shell integration guidance
 - install method detection for Homebrew, the curl install script, manual Release binaries, Windows quick install, and `go install`
+- whether `typo update` supports the detected install method
 - common shell setup misconfiguration warnings, such as fish using the wrong init command style
 - Go bin `PATH` guidance when installed through `go install`
 
