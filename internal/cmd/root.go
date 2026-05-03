@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -31,7 +30,6 @@ var (
 	executable    = os.Executable
 	removeAll     = os.RemoveAll
 	statPath      = os.Stat
-	evalSymlinks  = filepath.EvalSymlinks
 
 	// Shell integration scripts.
 	zshIntegrationScript        = install.ZshScript

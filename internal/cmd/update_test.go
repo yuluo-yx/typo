@@ -469,7 +469,7 @@ func TestCmdUpdateScriptInstallCheckRequiresGoForMain(t *testing.T) {
 	if len(*calls) != 0 {
 		t.Fatalf("check should not run commands, got %#v", *calls)
 	}
-	if !strings.Contains(stderr, "Go is required to build typo from main") {
+	if !strings.Contains(stderr, "go is required to build typo from main") {
 		t.Fatalf("missing Go error, got %q", stderr)
 	}
 }
@@ -513,7 +513,7 @@ func TestCmdUpdateHomebrewRejectsVersion(t *testing.T) {
 	if len(*calls) != 0 {
 		t.Fatalf("Homebrew --version should not run commands, got %#v", *calls)
 	}
-	if !strings.Contains(stderr, "Homebrew updates do not support --version") {
+	if !strings.Contains(stderr, "homebrew updates do not support --version") {
 		t.Fatalf("missing Homebrew version error, got %q", stderr)
 	}
 }

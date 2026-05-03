@@ -128,7 +128,7 @@ func updateHomebrew(flags updateFlags, install doctorInstallMethod) error {
 		return err
 	}
 	if mode == updateModeRelease {
-		return fmt.Errorf("Homebrew updates do not support --version %s; use Homebrew directly if you need version pinning", targetVersion)
+		return fmt.Errorf("homebrew updates do not support --version %s; use Homebrew directly if you need version pinning", targetVersion)
 	}
 
 	fmt.Printf("Update target: %s\n", install.detail)
@@ -169,44 +169,25 @@ func updateScriptInstall(flags updateFlags, install doctorInstallMethod) error {
 	if err != nil {
 		return err
 	}
-	targetDir := filepath.Dir(filepath.Clean(install.path))
-	if targetDir == "." || targetDir == "" {
-		return fmt.Errorf("cannot determine install directory for %s", install.path)
+	targetDir, err := scriptInstallTargetDir(install.path)
+	if err != nil {
+		return err
 	}
 
 	fmt.Printf("Update target: %s\n", install.path)
 	fmt.Println("Install method: curl/install.sh")
 
-	if _, err := lookPath("bash"); err != nil {
-		return fmt.Errorf("bash is required to run install.sh: %w", err)
-	}
-
-	if mode == updateModeMain {
-		if _, err := lookPath("go"); err != nil {
-			return fmt.Errorf("Go is required to build typo from main: %w", err)
-		}
+	if err = validateScriptUpdatePrerequisites(mode); err != nil {
+		return err
 	}
 
 	if flags.checkOnly {
 		return checkScriptInstall(flags, mode, targetVersion)
 	}
 
-	scriptArgs := []string{}
-	switch mode {
-	case updateModeMain:
-		scriptArgs = append(scriptArgs, "-b")
-	case updateModeRelease:
-		currentVer, _, _ := resolveVersionInfo()
-		cmp := compareVersions(currentVer, targetVersion)
-		if !flags.force && cmp >= 0 {
-			if cmp == 0 {
-				fmt.Printf("typo %s is already installed\n", normalizeVersionTag(targetVersion))
-			} else {
-				fmt.Printf("Installed version %s is newer than %s\n", currentVer, normalizeVersionTag(targetVersion))
-			}
-			return nil
-		}
-		scriptArgs = append(scriptArgs, "-s", trimVersionPrefix(targetVersion))
+	scriptArgs, stop, err := scriptUpdateArgs(flags, mode, targetVersion)
+	if err != nil || stop {
+		return err
 	}
 
 	if flags.dryRun {
@@ -215,6 +196,62 @@ func updateScriptInstall(flags updateFlags, install doctorInstallMethod) error {
 		return nil
 	}
 
+	if err = runScriptUpdate(scriptArgs, targetDir); err != nil {
+		return err
+	}
+
+	if mode == updateModeMain {
+		fmt.Println("Updated typo from the main branch")
+	} else {
+		fmt.Printf("Updated typo to %s\n", normalizeVersionTag(targetVersion))
+	}
+	return nil
+}
+
+func scriptInstallTargetDir(installPath string) (string, error) {
+	targetDir := filepath.Dir(filepath.Clean(installPath))
+	if targetDir == "." || targetDir == "" {
+		return "", fmt.Errorf("cannot determine install directory for %s", installPath)
+	}
+	return targetDir, nil
+}
+
+func validateScriptUpdatePrerequisites(mode updateMode) error {
+	if _, lookupErr := lookPath("bash"); lookupErr != nil {
+		return fmt.Errorf("bash is required to run install.sh: %w", lookupErr)
+	}
+	if mode != updateModeMain {
+		return nil
+	}
+	if _, lookupErr := lookPath("go"); lookupErr != nil {
+		return fmt.Errorf("go is required to build typo from main: %w", lookupErr)
+	}
+	return nil
+}
+
+func scriptUpdateArgs(flags updateFlags, mode updateMode, targetVersion string) ([]string, bool, error) {
+	if mode == updateModeMain {
+		return []string{"-b"}, false, nil
+	}
+
+	currentVer, _, _ := resolveVersionInfo()
+	cmp := compareVersions(currentVer, targetVersion)
+	if !flags.force && cmp >= 0 {
+		printReleaseNoop(currentVer, targetVersion, cmp)
+		return nil, true, nil
+	}
+	return []string{"-s", trimVersionPrefix(targetVersion)}, false, nil
+}
+
+func printReleaseNoop(currentVer, targetVersion string, cmp int) {
+	if cmp == 0 {
+		fmt.Printf("typo %s is already installed\n", normalizeVersionTag(targetVersion))
+		return
+	}
+	fmt.Printf("Installed version %s is newer than %s\n", currentVer, normalizeVersionTag(targetVersion))
+}
+
+func runScriptUpdate(scriptArgs []string, targetDir string) error {
 	tmpDir, err := os.MkdirTemp("", "typo-update-*")
 	if err != nil {
 		return fmt.Errorf("cannot create temporary update directory: %w", err)
@@ -229,12 +266,6 @@ func updateScriptInstall(flags updateFlags, install doctorInstallMethod) error {
 	args := append([]string{scriptPath}, scriptArgs...)
 	if err := updateRunCommand("bash", args, []string{"TYPO_INSTALL_DIR=" + targetDir}); err != nil {
 		return fmt.Errorf("install script failed: %w", err)
-	}
-
-	if mode == updateModeMain {
-		fmt.Println("Updated typo from the main branch")
-	} else {
-		fmt.Printf("Updated typo to %s\n", normalizeVersionTag(targetVersion))
 	}
 	return nil
 }
