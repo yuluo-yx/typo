@@ -101,13 +101,15 @@ The `~/.typo/` directory layout has expanded:
 
 ### Subcommand cache format
 
-Current v1 builds write `subcommands.json` with `schema_version: 2`. This format
-stores a tree of subcommands so typo can correct nested command paths such as
-`aws cloudformation wait stack-create-complete` and
-`gcloud container clusters list`.
+Current v1 builds write `subcommands.json` with `schema_version: 3`. This format
+stores a tree of subcommands plus long-option metadata so typo can correct nested
+command paths such as `aws cloudformation wait stack-create-complete` and
+`gcloud container clusters list`, and can reuse cached option candidates for
+experimental `--long-option` correction.
 
-Older cache files from previous builds may not have a `schema_version` field or
-may use a flat list format. On first load, typo moves those files aside as
+Older cache files from previous builds may not have a `schema_version` field,
+may use a flat list format, or may use the previous tree-only version 2 format.
+On first load, typo moves those files aside as
 `subcommands.json.corrupt-<timestamp>` and creates a fresh cache when
 subcommand discovery runs again.
 
