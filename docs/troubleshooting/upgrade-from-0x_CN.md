@@ -101,9 +101,9 @@ Invoke-Expression (& typo init powershell | Out-String)
 
 ### 子命令缓存格式
 
-当前 v1 版本写入的 `subcommands.json` 使用 `schema_version: 2`。该格式保存树形子命令，因此 Typo 可以修正 `aws cloudformation wait stack-create-complete`、`gcloud container clusters list` 这类多层命令路径。
+当前 v1 版本写入的 `subcommands.json` 使用 `schema_version: 3`。该格式保存树形子命令和长选项元数据，因此 Typo 可以修正 `aws cloudformation wait stack-create-complete`、`gcloud container clusters list` 这类多层命令路径，也可以复用缓存中的选项候选来支持实验性 `--long-option` 修正。
 
-旧版本生成的缓存可能没有 `schema_version` 字段，也可能使用扁平列表格式。Typo 首次加载时会把这些旧缓存隔离为 `subcommands.json.corrupt-<时间戳>`，并在下一次执行子命令发现时重新生成缓存。
+旧版本生成的缓存可能没有 `schema_version` 字段，也可能使用扁平列表格式，或使用上一版仅包含树形子命令的 v2 格式。Typo 首次加载时会把这些旧缓存隔离为 `subcommands.json.corrupt-<时间戳>`，并在下一次执行子命令发现时重新生成缓存。
 
 不需要手动迁移。该缓存不保存用户规则、历史记录或配置。如果需要强制刷新，可以删除 `~/.typo/subcommands.json`，然后运行会触发子命令修正的命令。
 
