@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.2.0](https://github.com/yuluo-yx/typo/compare/v1.1.0...v1.2.0) (2026-05-05)
+
+
+### Features
+
+* **cmd:** add typo selfupdtae cmd ([#146](https://github.com/yuluo-yx/typo/issues/146)) ([cce626c](https://github.com/yuluo-yx/typo/commit/cce626c4a5016fb0858d212e28441b74b1750c2e))
+* **command:** command candidate index optimization ([#143](https://github.com/yuluo-yx/typo/issues/143)) ([6b470a2](https://github.com/yuluo-yx/typo/commit/6b470a2acd634615376a8704ced391a0665d983b))
+* **distance:** optimize distance ([#142](https://github.com/yuluo-yx/typo/issues/142)) ([5b48ab7](https://github.com/yuluo-yx/typo/commit/5b48ab70e78c44ece7a374b54f6dc1f39c6448f5))
+* **engine:** add command options params support ([#130](https://github.com/yuluo-yx/typo/issues/130)) ([6d90d52](https://github.com/yuluo-yx/typo/commit/6d90d52a23444bc86e87ba88abd5bb30546451a8))
+* enhance typo updatre cmd ([#150](https://github.com/yuluo-yx/typo/issues/150)) ([7ce00c6](https://github.com/yuluo-yx/typo/commit/7ce00c66b3df3a169f98a15c3749abc05754e753))
+* **known:** parallelizing path command discovery ([#141](https://github.com/yuluo-yx/typo/issues/141)) ([dcf2682](https://github.com/yuluo-yx/typo/commit/dcf2682dc302ac6648f18baff87a8efd905cb14b))
+* **parser-git:** feat git pull set upstream bug ([#139](https://github.com/yuluo-yx/typo/issues/139)) ([6fdbb8e](https://github.com/yuluo-yx/typo/commit/6fdbb8e0cbd1ff66a97d4592d45dc071a1087082))
+* **parser:** add generic stderr parser for broad CLI coverage ([#131](https://github.com/yuluo-yx/typo/issues/131)) ([712bb07](https://github.com/yuluo-yx/typo/commit/712bb07544159372f9e9379962feff67dad1bee0))
+* update debug command ([#148](https://github.com/yuluo-yx/typo/issues/148)) ([f7bfd59](https://github.com/yuluo-yx/typo/commit/f7bfd59fe6bc96f5ea19e64fa9b71e1813da62da))
+
+
+### Bug Fixes
+
+* **codespell:** ignore test spell ([d8b2af4](https://github.com/yuluo-yx/typo/commit/d8b2af475e6dd204124433b72651df2731cabf62))
+* **engine:** track command cache version ([#144](https://github.com/yuluo-yx/typo/issues/144)) ([027d8c3](https://github.com/yuluo-yx/typo/commit/027d8c3b23e53e501018f4649c3fc6ab16463f6c))
+* fix makefile target error ([#147](https://github.com/yuluo-yx/typo/issues/147)) ([adfcada](https://github.com/yuluo-yx/typo/commit/adfcadad3593e34c47c8369001bfcdc6795dcb91))
+
+
+### Performance Improvements
+
+* optimize perf ([#135](https://github.com/yuluo-yx/typo/issues/135)) ([91b30b9](https://github.com/yuluo-yx/typo/commit/91b30b9f3c3006a89ca15bae96040a9b712bf965))
+* **parser:** add command-based fast dispatch ([#145](https://github.com/yuluo-yx/typo/issues/145)) ([273c7ae](https://github.com/yuluo-yx/typo/commit/273c7ae4891b4aa90fa507fb673d09f52d8e86f3))
+
 ## [1.1.0](https://github.com/yuluo-yx/typo/compare/v1.0.0...v1.1.0) (2026-04-23)
 
 
