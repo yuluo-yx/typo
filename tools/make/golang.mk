@@ -4,20 +4,21 @@
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
 CMD_PACKAGE := github.com/yuluo-yx/typo/internal/cmd
+GO_BUILD_FLAGS := -trimpath -buildvcs=false
 LDFLAGS := -s -w -X $(CMD_PACKAGE).version=$(VERSION) -X $(CMD_PACKAGE).commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none") -X $(CMD_PACKAGE).date=$(shell date -u +%Y-%m-%d 2>/dev/null || echo "unknown")
 
 .PHONY: build
 build: ## Build the binary for the current platform
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)/$(BINARY_NAME) ./cmd/typo
+	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(shell go env GOOS)-$(shell go env GOARCH)/$(BINARY_NAME) ./cmd/typo
 
 .PHONY: verify-version-metadata
 verify-version-metadata: ## Verify build-time version metadata is injected into the binary
 	@$(LOG_TARGET)
 	@tmp_dir="$$(mktemp -d)"; \
 	trap 'rm -rf "$$tmp_dir"' EXIT; \
-	$(GO) build -ldflags="$(LDFLAGS)" -o "$$tmp_dir/$(BINARY_NAME)" ./cmd/typo; \
+	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o "$$tmp_dir/$(BINARY_NAME)" ./cmd/typo; \
 	output="$$("$$tmp_dir/$(BINARY_NAME)" version)"; \
 	case "$$output" in \
 		*"typo $(VERSION) "*) ;; \
@@ -27,7 +28,7 @@ verify-version-metadata: ## Verify build-time version metadata is injected into 
 .PHONY: install
 install: ## Install the binary to GOPATH/bin
 	@$(LOG_TARGET)
-	$(GO) install -ldflags="$(LDFLAGS)" ./cmd/typo
+	$(GO) install $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" ./cmd/typo
 
 .PHONY: build-all
 build-all: ## Build for all supported platforms
@@ -37,37 +38,37 @@ build-all: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-a
 build-linux-amd64: ## build typo for linux/amd64
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/linux-amd64
-	GOOS=linux GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/linux-amd64/$(BINARY_NAME) ./cmd/typo
+	GOOS=linux GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/linux-amd64/$(BINARY_NAME) ./cmd/typo
 
 .PHONY: build-linux-arm64
 build-linux-arm64: ## build typo for linux/arm64
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/linux-arm64
-	GOOS=linux GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/linux-arm64/$(BINARY_NAME) ./cmd/typo
+	GOOS=linux GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/linux-arm64/$(BINARY_NAME) ./cmd/typo
 
 .PHONY: build-darwin-amd64
 build-darwin-amd64: ## build typo for darwin/amd64
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/darwin-amd64
-	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/darwin-amd64/$(BINARY_NAME) ./cmd/typo
+	GOOS=darwin GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/darwin-amd64/$(BINARY_NAME) ./cmd/typo
 
 .PHONY: build-darwin-arm64
 build-darwin-arm64: ## build typo for darwin/arm64
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/darwin-arm64
-	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/darwin-arm64/$(BINARY_NAME) ./cmd/typo
+	GOOS=darwin GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/darwin-arm64/$(BINARY_NAME) ./cmd/typo
 
 .PHONY: build-windows-amd64
 build-windows-amd64: ## build typo for windows/amd64
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/windows-amd64
-	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-amd64/$(BINARY_NAME).exe ./cmd/typo
+	GOOS=windows GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-amd64/$(BINARY_NAME).exe ./cmd/typo
 
 .PHONY: build-windows-arm64
 build-windows-arm64: ## build typo for windows/arm64
 	@$(LOG_TARGET)
 	@mkdir -p $(BUILD_DIR)/windows-arm64
-	GOOS=windows GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-arm64/$(BINARY_NAME).exe ./cmd/typo
+	GOOS=windows GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/windows-arm64/$(BINARY_NAME).exe ./cmd/typo
 
 ##@ test
 

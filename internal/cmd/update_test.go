@@ -3,15 +3,12 @@ package cmd
 import (
 	"bytes"
 	"errors"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime/debug"
 	"strings"
 	"testing"
-	"time"
 )
 
 type updateCommandCall struct {
@@ -71,7 +68,6 @@ func withUpdateTestHooks(t *testing.T, typoPath string) *[]updateCommandCall {
 	origMainCommit := updateMainCommit
 	origRunCommand := updateRunCommand
 	origCommandOutput := updateCommandOutput
-	origSleep := updateSleep
 	origVersion := version
 	origCommit := commit
 	origDate := date
@@ -106,6 +102,8 @@ func withUpdateTestHooks(t *testing.T, typoPath string) *[]updateCommandCall {
 			return "/usr/local/bin/go", nil
 		case "brew":
 			return "/opt/homebrew/bin/brew", nil
+		case "curl":
+			return "/usr/bin/curl", nil
 		default:
 			return "", os.ErrNotExist
 		}
@@ -138,7 +136,6 @@ func withUpdateTestHooks(t *testing.T, typoPath string) *[]updateCommandCall {
 		})
 		return "", nil
 	}
-	updateSleep = func(d time.Duration) {}
 
 	t.Cleanup(func() {
 		lookPath = origLookPath
@@ -149,7 +146,6 @@ func withUpdateTestHooks(t *testing.T, typoPath string) *[]updateCommandCall {
 		updateMainCommit = origMainCommit
 		updateRunCommand = origRunCommand
 		updateCommandOutput = origCommandOutput
-		updateSleep = origSleep
 		version = origVersion
 		commit = origCommit
 		date = origDate
@@ -157,6 +153,16 @@ func withUpdateTestHooks(t *testing.T, typoPath string) *[]updateCommandCall {
 	})
 
 	return &calls
+}
+
+func TestUpdateProductionCodeDoesNotImportNetHTTP(t *testing.T) {
+	data, err := os.ReadFile("update.go")
+	if err != nil {
+		t.Fatalf("read update.go: %v", err)
+	}
+	if strings.Contains(string(data), "\"net/http\"") {
+		t.Fatalf("update.go must not import net/http; use external download tools to keep the binary small")
+	}
 }
 
 func TestCmdUpdateUsesRunningBinaryInsteadOfPathLookup(t *testing.T) {
@@ -622,103 +628,29 @@ func TestCmdUpdateReportsCommandFailure(t *testing.T) {
 	}
 }
 
-func TestDownloadUpdateFileRetriesRetryableHTTPStatuses(t *testing.T) {
-	tests := []struct {
-		name      string
-		status    int
-		wantSleep time.Duration
-	}{
-		{name: "rate limited", status: http.StatusTooManyRequests, wantSleep: 20 * time.Second},
-		{name: "server error", status: http.StatusBadGateway, wantSleep: 2 * time.Second},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			origDownload := updateHTTPDownload
-			origSleep := updateSleep
-			defer func() {
-				updateHTTPDownload = origDownload
-				updateSleep = origSleep
-			}()
-
-			calls := 0
-			sleeps := make([]time.Duration, 0)
-			updateHTTPDownload = func(req *http.Request) (*http.Response, error) {
-				calls++
-				if calls == 1 {
-					return &http.Response{
-						StatusCode: tt.status,
-						Body:       io.NopCloser(strings.NewReader("")),
-					}, nil
-				}
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader("install script")),
-				}, nil
-			}
-			updateSleep = func(d time.Duration) {
-				sleeps = append(sleeps, d)
-			}
-
-			dst := filepath.Join(t.TempDir(), "install.sh")
-			if err := downloadUpdateFile(installScriptURL, dst); err != nil {
-				t.Fatalf("downloadUpdateFile failed: %v", err)
-			}
-			if calls != 2 {
-				t.Fatalf("calls = %d, want 2", calls)
-			}
-			if !reflect.DeepEqual(sleeps, []time.Duration{tt.wantSleep}) {
-				t.Fatalf("sleeps = %#v, want %#v", sleeps, []time.Duration{tt.wantSleep})
-			}
-			data, err := os.ReadFile(dst)
-			if err != nil {
-				t.Fatalf("read downloaded file: %v", err)
-			}
-			if string(data) != "install script" {
-				t.Fatalf("downloaded content = %q", string(data))
-			}
-		})
-	}
-}
-
-func TestDownloadUpdateFileRetriesTimeout(t *testing.T) {
-	origDownload := updateHTTPDownload
-	origSleep := updateSleep
-	defer func() {
-		updateHTTPDownload = origDownload
-		updateSleep = origSleep
-	}()
-
-	calls := 0
-	sleeps := make([]time.Duration, 0)
-	updateHTTPDownload = func(req *http.Request) (*http.Response, error) {
-		calls++
-		if calls == 1 {
-			return nil, timeoutTestError{}
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader("install script")),
-		}, nil
-	}
-	updateSleep = func(d time.Duration) {
-		sleeps = append(sleeps, d)
-	}
+func TestDownloadUpdateFileUsesCurl(t *testing.T) {
+	origRunCommand := updateRunCommand
+	defer func() { updateRunCommand = origRunCommand }()
 
 	dst := filepath.Join(t.TempDir(), "install.sh")
+	var got updateCommandCall
+	updateRunCommand = func(name string, args []string, extraEnv []string) error {
+		got = updateCommandCall{
+			name:     name,
+			args:     append([]string(nil), args...),
+			extraEnv: append([]string(nil), extraEnv...),
+		}
+		return os.WriteFile(dst, []byte("install script"), 0755)
+	}
+
 	if err := downloadUpdateFile(installScriptURL, dst); err != nil {
 		t.Fatalf("downloadUpdateFile failed: %v", err)
 	}
-	if calls != 2 {
-		t.Fatalf("calls = %d, want 2", calls)
+	if got.name != "curl" {
+		t.Fatalf("download command = %q, want curl", got.name)
 	}
-	if !reflect.DeepEqual(sleeps, []time.Duration{2 * time.Second}) {
-		t.Fatalf("sleeps = %#v, want %#v", sleeps, []time.Duration{2 * time.Second})
+	wantArgs := []string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-o", dst, installScriptURL}
+	if !reflect.DeepEqual(got.args, wantArgs) {
+		t.Fatalf("curl args = %#v, want %#v", got.args, wantArgs)
 	}
 }
-
-type timeoutTestError struct{}
-
-func (timeoutTestError) Error() string   { return "timeout" }
-func (timeoutTestError) Timeout() bool   { return true }
-func (timeoutTestError) Temporary() bool { return true }

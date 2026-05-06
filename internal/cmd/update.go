@@ -5,30 +5,27 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
-const installScriptURL = "https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh"
+const (
+	installScriptURL    = "https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh"
+	latestReleaseAPIURL = "https://api.github.com/repos/yuluo-yx/typo/releases/latest"
+	mainCommitAPIURL    = "https://api.github.com/repos/yuluo-yx/typo/commits/main"
+)
 
-// Injectable for testing.
 var (
-	updateHTTPDownload  func(req *http.Request) (*http.Response, error)
 	updateRunCommand    func(name string, args []string, extraEnv []string) error
 	updateCommandOutput func(name string, args []string, extraEnv []string) (string, error)
 	updateDownloadFile  func(url, dst string) error
 	updateLatestRelease func() (string, error)
 	updateMainCommit    func() (string, error)
-	updateSleep         func(d time.Duration)
 )
 
-// errStop is a sentinel that signals the chain to stop without printing an error.
 var errStop = errors.New("stop")
 
 type updateFlags struct {
@@ -46,14 +43,11 @@ const (
 )
 
 func init() {
-	downloadClient := &http.Client{Timeout: 10 * time.Minute}
-	updateHTTPDownload = downloadClient.Do
 	updateRunCommand = runUpdateCommand
 	updateCommandOutput = runUpdateCommandOutput
 	updateDownloadFile = downloadUpdateFile
 	updateLatestRelease = fetchLatestReleaseTag
 	updateMainCommit = fetchMainCommit
-	updateSleep = time.Sleep
 }
 
 func cmdUpdate(args []string) int {
@@ -177,23 +171,22 @@ func updateScriptInstall(flags updateFlags, install doctorInstallMethod) error {
 	fmt.Printf("Update target: %s\n", install.path)
 	fmt.Println("Install method: curl/install.sh")
 
+	scriptArgs, stop, err := scriptUpdateArgs(flags, mode, targetVersion)
+	if err != nil || stop {
+		return err
+	}
+	if flags.dryRun {
+		fmt.Printf("Would download: %s\n", installScriptURL)
+		fmt.Printf("Would run: TYPO_INSTALL_DIR=%s bash install.sh %s\n", targetDir, strings.Join(scriptArgs, " "))
+		return nil
+	}
+
 	if err = validateScriptUpdatePrerequisites(mode); err != nil {
 		return err
 	}
 
 	if flags.checkOnly {
 		return checkScriptInstall(flags, mode, targetVersion)
-	}
-
-	scriptArgs, stop, err := scriptUpdateArgs(flags, mode, targetVersion)
-	if err != nil || stop {
-		return err
-	}
-
-	if flags.dryRun {
-		fmt.Printf("Would download: %s\n", installScriptURL)
-		fmt.Printf("Would run: TYPO_INSTALL_DIR=%s bash install.sh %s\n", targetDir, strings.Join(scriptArgs, " "))
-		return nil
 	}
 
 	if err = runScriptUpdate(scriptArgs, targetDir); err != nil {
@@ -220,11 +213,13 @@ func validateScriptUpdatePrerequisites(mode updateMode) error {
 	if _, lookupErr := lookPath("bash"); lookupErr != nil {
 		return fmt.Errorf("bash is required to run install.sh: %w", lookupErr)
 	}
-	if mode != updateModeMain {
-		return nil
+	if mode == updateModeMain {
+		if _, lookupErr := lookPath("go"); lookupErr != nil {
+			return fmt.Errorf("go is required to build typo from main: %w", lookupErr)
+		}
 	}
-	if _, lookupErr := lookPath("go"); lookupErr != nil {
-		return fmt.Errorf("go is required to build typo from main: %w", lookupErr)
+	if _, lookupErr := lookPath("curl"); lookupErr != nil {
+		return fmt.Errorf("curl is required to download install.sh: %w", lookupErr)
 	}
 	return nil
 }
@@ -408,27 +403,18 @@ func trimVersionPrefix(version string) string {
 }
 
 func downloadUpdateFile(url, dst string) error {
-	const maxAttempts = 2
-	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := downloadUpdateFileOnce(url, dst)
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-		if attempt == maxAttempts || !shouldRetryUpdateDownload(err) {
-			break
-		}
-		updateSleep(updateDownloadBackoff(err))
+	args := []string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-o", dst, url}
+	if err := updateRunCommand("curl", args, nil); err != nil {
+		return fmt.Errorf("curl download failed: %w", err)
 	}
-	return lastErr
+	return os.Chmod(dst, 0755)
 }
 
 func fetchLatestReleaseTag() (string, error) {
 	var payload struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := fetchUpdateJSON("https://api.github.com/repos/yuluo-yx/typo/releases/latest", &payload); err != nil {
+	if err := fetchUpdateJSON(latestReleaseAPIURL, &payload); err != nil {
 		return "", err
 	}
 	if payload.TagName == "" {
@@ -441,7 +427,7 @@ func fetchMainCommit() (string, error) {
 	var payload struct {
 		SHA string `json:"sha"`
 	}
-	if err := fetchUpdateJSON("https://api.github.com/repos/yuluo-yx/typo/commits/main", &payload); err != nil {
+	if err := fetchUpdateJSON(mainCommitAPIURL, &payload); err != nil {
 		return "", err
 	}
 	if payload.SHA == "" {
@@ -451,106 +437,19 @@ func fetchMainCommit() (string, error) {
 }
 
 func fetchUpdateJSON(url string, out any) error {
-	const maxAttempts = 2
-	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := fetchUpdateJSONOnce(url, out)
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-		if attempt == maxAttempts || !shouldRetryUpdateDownload(err) {
-			break
-		}
-		updateSleep(updateDownloadBackoff(err))
-	}
-	return lastErr
-}
-
-func fetchUpdateJSONOnce(url string, out any) error {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "typo")
+	args := []string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-H", "Accept: application/vnd.github+json", url}
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		args = append([]string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-H", "Accept: application/vnd.github+json", "-H", "Authorization: Bearer " + token}, url)
 	}
 
-	resp, err := updateHTTPDownload(req)
+	output, err := updateCommandOutput("curl", args, nil)
 	if err != nil {
-		return fmt.Errorf("network error: %w (check your connection or proxy settings)", err)
+		return fmt.Errorf("curl request failed: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return updateHTTPStatusError{code: resp.StatusCode}
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
-}
-
-func downloadUpdateFileOnce(url, dst string) error {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
+	if err := json.Unmarshal([]byte(output), out); err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "typo")
-
-	resp, err := updateHTTPDownload(req)
-	if err != nil {
-		return fmt.Errorf("network error: %w (check your connection or proxy settings)", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return updateHTTPStatusError{code: resp.StatusCode}
-	}
-
-	f, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		return err
-	}
-	return os.Chmod(dst, 0755)
-}
-
-type updateHTTPStatusError struct {
-	code int
-}
-
-func (e updateHTTPStatusError) Error() string {
-	return fmt.Sprintf("HTTP %d", e.code)
-}
-
-func shouldRetryUpdateDownload(err error) bool {
-	var statusErr updateHTTPStatusError
-	if errors.As(err, &statusErr) {
-		return statusErr.code == http.StatusTooManyRequests || statusErr.code >= http.StatusInternalServerError
-	}
-	return isTimeoutError(err)
-}
-
-func updateDownloadBackoff(err error) time.Duration {
-	var statusErr updateHTTPStatusError
-	if errors.As(err, &statusErr) && statusErr.code == http.StatusTooManyRequests {
-		return 20 * time.Second
-	}
-	return 2 * time.Second
-}
-
-func isTimeoutError(err error) bool {
-	if os.IsTimeout(err) {
-		return true
-	}
-	var timeout interface {
-		Timeout() bool
-	}
-	return errors.As(err, &timeout) && timeout.Timeout()
+	return nil
 }
 
 func runUpdateCommand(name string, args []string, extraEnv []string) error {
@@ -572,8 +471,6 @@ func runUpdateCommandOutput(name string, args []string, extraEnv []string) (stri
 	output, err := cmd.Output()
 	return string(output), err
 }
-
-// --- version comparison ---
 
 func compareVersions(a, b string) int {
 	a = trimVersionPrefix(a)
