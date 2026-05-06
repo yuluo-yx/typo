@@ -654,3 +654,9 @@ func TestDownloadUpdateFileUsesCurl(t *testing.T) {
 		t.Fatalf("curl args = %#v, want %#v", got.args, wantArgs)
 	}
 }
+
+func TestNewUpdateCommandRejectsUnexpectedCommand(t *testing.T) {
+	if _, err := newUpdateCommand("sh", nil); err == nil {
+		t.Fatalf("expected unexpected update command to be rejected")
+	}
+}

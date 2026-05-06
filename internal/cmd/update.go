@@ -453,7 +453,10 @@ func fetchUpdateJSON(url string, out any) error {
 }
 
 func runUpdateCommand(name string, args []string, extraEnv []string) error {
-	cmd := exec.Command(name, args...)
+	cmd, err := newUpdateCommand(name, args)
+	if err != nil {
+		return err
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if len(extraEnv) > 0 {
@@ -463,13 +466,32 @@ func runUpdateCommand(name string, args []string, extraEnv []string) error {
 }
 
 func runUpdateCommandOutput(name string, args []string, extraEnv []string) (string, error) {
-	cmd := exec.Command(name, args...)
+	cmd, err := newUpdateCommand(name, args)
+	if err != nil {
+		return "", err
+	}
 	cmd.Stderr = os.Stderr
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)
 	}
 	output, err := cmd.Output()
 	return string(output), err
+}
+
+func newUpdateCommand(name string, args []string) (*exec.Cmd, error) {
+	switch name {
+	case "bash":
+		// #nosec G702 -- update commands are restricted to this whitelist and args are constructed by update flow.
+		return exec.Command("bash", args...), nil
+	case "brew":
+		// #nosec G702 -- update commands are restricted to this whitelist and args are constructed by update flow.
+		return exec.Command("brew", args...), nil
+	case "curl":
+		// #nosec G702 -- update commands are restricted to this whitelist and args are constructed by update flow.
+		return exec.Command("curl", args...), nil
+	default:
+		return nil, fmt.Errorf("unsupported update command %q", name)
+	}
 }
 
 func compareVersions(a, b string) int {
