@@ -200,6 +200,58 @@ func TestCmdUpdateUsesRunningBinaryInsteadOfPathLookup(t *testing.T) {
 	}
 }
 
+func TestCmdUpdateFlagParsingHandlesHelpAndBadFlags(t *testing.T) {
+	code, _, stderr := captureUpdateOutput(t, func() int {
+		return cmdUpdate([]string{"--help"})
+	})
+	if code != 0 {
+		t.Fatalf("help should exit 0, got code=%d stderr=%q", code, stderr)
+	}
+
+	code, _, stderr = captureUpdateOutput(t, func() int {
+		return cmdUpdate([]string{"--bogus"})
+	})
+	if code == 0 {
+		t.Fatalf("bad flag should fail")
+	}
+	if !strings.Contains(stderr, "flag provided but not defined") {
+		t.Fatalf("missing flag parse error, got %q", stderr)
+	}
+}
+
+func TestResolveRunningTypoInstallReportsExecutableError(t *testing.T) {
+	origExecutable := executable
+	defer func() { executable = origExecutable }()
+
+	executable = func() (string, error) {
+		return "", errors.New("exec path unavailable")
+	}
+
+	_, err := resolveRunningTypoInstall()
+	if err == nil || !strings.Contains(err.Error(), "cannot determine running typo binary") {
+		t.Fatalf("expected executable error to be wrapped, got %v", err)
+	}
+}
+
+func TestCmdUpdateReportsExecutableError(t *testing.T) {
+	origExecutable := executable
+	defer func() { executable = origExecutable }()
+
+	executable = func() (string, error) {
+		return "", errors.New("exec path unavailable")
+	}
+
+	code, _, stderr := captureUpdateOutput(t, func() int {
+		return cmdUpdate(nil)
+	})
+	if code == 0 {
+		t.Fatalf("expected executable error")
+	}
+	if !strings.Contains(stderr, "cannot determine running typo binary") {
+		t.Fatalf("missing executable error, got %q", stderr)
+	}
+}
+
 func TestCompareVersions(t *testing.T) {
 	tests := []struct {
 		a, b string
@@ -505,6 +557,142 @@ func TestCmdUpdateHomebrewRunsBrewUpgrade(t *testing.T) {
 	}
 }
 
+func TestCmdUpdateHomebrewDryRunDoesNotRunCommand(t *testing.T) {
+	typoPath := "/opt/homebrew/Cellar/typo/1.1.0/bin/typo"
+	calls := withUpdateTestHooks(t, typoPath)
+
+	code, stdout, stderr := captureUpdateOutput(t, func() int {
+		return cmdUpdate([]string{"--dry-run"})
+	})
+
+	if code != 0 {
+		t.Fatalf("cmdUpdate Homebrew dry-run failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("dry-run should not run commands, got %#v", *calls)
+	}
+	for _, want := range []string{"Would run: brew update", "Would run: brew upgrade typo"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q: %q", want, stdout)
+		}
+	}
+}
+
+func TestCmdUpdateHomebrewCheckReportsUpToDateAndAvailable(t *testing.T) {
+	tests := []struct {
+		name       string
+		output     string
+		wantOutput string
+	}{
+		{
+			name:       "up to date",
+			output:     "",
+			wantOutput: "typo is up to date according to Homebrew",
+		},
+		{
+			name:       "available",
+			output:     "typo\n",
+			wantOutput: "Homebrew update available for typo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			typoPath := "/opt/homebrew/Cellar/typo/1.1.0/bin/typo"
+			calls := withUpdateTestHooks(t, typoPath)
+			updateCommandOutput = func(name string, args []string, extraEnv []string) (string, error) {
+				*calls = append(*calls, updateCommandCall{
+					name:     name,
+					args:     append([]string(nil), args...),
+					extraEnv: append([]string(nil), extraEnv...),
+				})
+				return tt.output, nil
+			}
+
+			code, stdout, stderr := captureUpdateOutput(t, func() int {
+				return cmdUpdate([]string{"--check"})
+			})
+
+			if code != 0 {
+				t.Fatalf("cmdUpdate Homebrew check failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if len(*calls) != 1 || (*calls)[0].name != "brew" ||
+				!reflect.DeepEqual((*calls)[0].args, []string{"outdated", "--quiet", "typo"}) {
+				t.Fatalf("unexpected check calls: %#v", *calls)
+			}
+			if !strings.Contains(stdout, tt.wantOutput) {
+				t.Fatalf("stdout missing %q: %q", tt.wantOutput, stdout)
+			}
+		})
+	}
+}
+
+func TestCmdUpdateHomebrewReportsCheckAndUpgradeFailures(t *testing.T) {
+	t.Run("check failure", func(t *testing.T) {
+		typoPath := "/opt/homebrew/Cellar/typo/1.1.0/bin/typo"
+		withUpdateTestHooks(t, typoPath)
+		updateCommandOutput = func(name string, args []string, extraEnv []string) (string, error) {
+			return "", errors.New("brew unavailable")
+		}
+
+		code, _, stderr := captureUpdateOutput(t, func() int {
+			return cmdUpdate([]string{"--check"})
+		})
+
+		if code == 0 {
+			t.Fatalf("expected Homebrew check failure")
+		}
+		if !strings.Contains(stderr, "failed to check Homebrew updates: brew unavailable") {
+			t.Fatalf("missing check failure, got %q", stderr)
+		}
+	})
+
+	t.Run("brew update failure", func(t *testing.T) {
+		typoPath := "/opt/homebrew/Cellar/typo/1.1.0/bin/typo"
+		withUpdateTestHooks(t, typoPath)
+		updateRunCommand = func(name string, args []string, extraEnv []string) error {
+			return errors.New("update failed")
+		}
+
+		code, _, stderr := captureUpdateOutput(t, func() int {
+			return cmdUpdate(nil)
+		})
+
+		if code == 0 {
+			t.Fatalf("expected brew update failure")
+		}
+		if !strings.Contains(stderr, "brew update failed: update failed") {
+			t.Fatalf("missing brew update failure, got %q", stderr)
+		}
+	})
+
+	t.Run("brew upgrade failure", func(t *testing.T) {
+		typoPath := "/opt/homebrew/Cellar/typo/1.1.0/bin/typo"
+		calls := withUpdateTestHooks(t, typoPath)
+		updateRunCommand = func(name string, args []string, extraEnv []string) error {
+			*calls = append(*calls, updateCommandCall{
+				name: name,
+				args: append([]string(nil), args...),
+			})
+			if len(*calls) == 2 {
+				return errors.New("upgrade failed")
+			}
+			return nil
+		}
+
+		code, _, stderr := captureUpdateOutput(t, func() int {
+			return cmdUpdate(nil)
+		})
+
+		if code == 0 {
+			t.Fatalf("expected brew upgrade failure")
+		}
+		if !strings.Contains(stderr, "brew upgrade typo failed: upgrade failed") {
+			t.Fatalf("missing brew upgrade failure, got %q", stderr)
+		}
+	})
+}
+
 func TestCmdUpdateHomebrewRejectsVersion(t *testing.T) {
 	typoPath := "/opt/homebrew/Cellar/typo/1.1.0/bin/typo"
 	calls := withUpdateTestHooks(t, typoPath)
@@ -581,6 +769,19 @@ func TestCmdUpdateCheckReportsGoInstallUnsupportedWithoutError(t *testing.T) {
 	}
 }
 
+func TestCmdUpdateCheckReportsUnsupportedInstallWithoutAction(t *testing.T) {
+	withUpdateTestHooks(t, filepath.Join(t.TempDir(), ".local", "bin", "typo"))
+
+	stdout := captureStdout(t, func() {
+		printUnsupportedUpdateCheck(doctorInstallMethod{})
+	})
+
+	if !strings.Contains(stdout, "Update supported: no") ||
+		!strings.Contains(stdout, "Run typo doctor for install method details.") {
+		t.Fatalf("missing unsupported check output: %q", stdout)
+	}
+}
+
 func TestPrintUpstreamCheckStatusHandlesUnavailableRemote(t *testing.T) {
 	typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
 	withUpdateTestHooks(t, typoPath)
@@ -609,6 +810,246 @@ func TestPrintUpstreamCheckStatusHandlesUnavailableRemote(t *testing.T) {
 	}
 }
 
+func TestPrintUpstreamCheckStatusPrintsCommitAndBuildDate(t *testing.T) {
+	typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
+	withUpdateTestHooks(t, typoPath)
+	commit = "abcdef123"
+	date = "2026-05-07"
+
+	stdout := captureStdout(t, printUpstreamCheckStatus)
+	for _, want := range []string{
+		"Current commit: abcdef123",
+		"Current build date: 2026-05-07",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q: %q", want, stdout)
+		}
+	}
+}
+
+func TestCmdUpdateScriptInstallReleaseCheckComparesVersions(t *testing.T) {
+	tests := []struct {
+		name       string
+		current    string
+		args       []string
+		wantOutput string
+	}{
+		{
+			name:       "same version",
+			current:    "1.1.0",
+			args:       []string{"--check", "--version", "1.1.0"},
+			wantOutput: "typo v1.1.0 is already installed",
+		},
+		{
+			name:       "same version with force",
+			current:    "1.1.0",
+			args:       []string{"--check", "--force", "--version", "1.1.0"},
+			wantOutput: "typo v1.1.0 is already installed; --force would reinstall it",
+		},
+		{
+			name:       "older installed version",
+			current:    "1.0.0",
+			args:       []string{"--check", "--version", "1.1.0"},
+			wantOutput: "Update available: 1.0.0 -> v1.1.0",
+		},
+		{
+			name:       "newer installed version",
+			current:    "1.2.0",
+			args:       []string{"--check", "--version", "1.1.0"},
+			wantOutput: "Installed version 1.2.0 is newer than v1.1.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
+			calls := withUpdateTestHooks(t, typoPath)
+			version = tt.current
+
+			code, stdout, stderr := captureUpdateOutput(t, func() int {
+				return cmdUpdate(tt.args)
+			})
+
+			if code != 0 {
+				t.Fatalf("cmdUpdate check failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if len(*calls) != 0 {
+				t.Fatalf("check should not run commands, got %#v", *calls)
+			}
+			if !strings.Contains(stdout, tt.wantOutput) {
+				t.Fatalf("stdout missing %q: %q", tt.wantOutput, stdout)
+			}
+		})
+	}
+}
+
+func TestCmdUpdateScriptInstallReleaseNoopStopsBeforePrerequisites(t *testing.T) {
+	typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
+	calls := withUpdateTestHooks(t, typoPath)
+	version = "1.1.0"
+	lookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+
+	code, stdout, stderr := captureUpdateOutput(t, func() int {
+		return cmdUpdate([]string{"--version", "1.1.0"})
+	})
+
+	if code != 0 {
+		t.Fatalf("same release should stop without error: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("release noop should not run commands, got %#v", *calls)
+	}
+	if !strings.Contains(stdout, "typo v1.1.0 is already installed") {
+		t.Fatalf("missing noop output: %q", stdout)
+	}
+}
+
+func TestCmdUpdateScriptInstallPrerequisiteFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		missing    string
+		wantOutput string
+	}{
+		{
+			name:       "missing bash",
+			args:       nil,
+			missing:    "bash",
+			wantOutput: "bash is required to run install.sh",
+		},
+		{
+			name:       "missing curl",
+			args:       []string{"--version", "1.1.0"},
+			missing:    "curl",
+			wantOutput: "curl is required to download install.sh",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
+			withUpdateTestHooks(t, typoPath)
+			lookPath = func(file string) (string, error) {
+				if file == tt.missing {
+					return "", os.ErrNotExist
+				}
+				return "/usr/bin/" + file, nil
+			}
+
+			code, _, stderr := captureUpdateOutput(t, func() int {
+				return cmdUpdate(tt.args)
+			})
+
+			if code == 0 {
+				t.Fatalf("expected missing prerequisite to fail")
+			}
+			if !strings.Contains(stderr, tt.wantOutput) {
+				t.Fatalf("stderr missing %q: %q", tt.wantOutput, stderr)
+			}
+		})
+	}
+}
+
+func TestScriptInstallTargetDirRejectsBareCommand(t *testing.T) {
+	if _, err := scriptInstallTargetDir("typo"); err == nil {
+		t.Fatalf("expected bare command path to be rejected")
+	}
+}
+
+func TestUpdateScriptInstallRejectsBareInstallPath(t *testing.T) {
+	err := updateScriptInstall(updateFlags{}, doctorInstallMethod{path: "typo"})
+	if err == nil || !strings.Contains(err.Error(), "cannot determine install directory") {
+		t.Fatalf("expected bare install path error, got %v", err)
+	}
+}
+
+func TestUnsupportedUpdateErrorVariants(t *testing.T) {
+	tests := []struct {
+		name    string
+		install doctorInstallMethod
+		want    string
+	}{
+		{
+			name: "windows quick",
+			install: doctorInstallMethod{
+				kind:   doctorInstallWindowsQuick,
+				action: "iwr install.ps1",
+			},
+			want: "does not support Windows quick install yet",
+		},
+		{
+			name: "manual release",
+			install: doctorInstallMethod{
+				kind:   doctorInstallManual,
+				detail: "/usr/local/bin/typo",
+			},
+			want: "does not replace manual Release binaries",
+		},
+		{
+			name:    "unknown",
+			install: doctorInstallMethod{},
+			want:    "cannot determine a supported install method",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := unsupportedUpdateError(tt.install)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintUpdateComparisons(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func()
+		want string
+	}{
+		{
+			name: "release up to date",
+			run: func() {
+				printReleaseComparison("1.1.0", "v1.1.0")
+			},
+			want: "Release status: up to date",
+		},
+		{
+			name: "release newer installed",
+			run: func() {
+				printReleaseComparison("1.2.0", "v1.1.0")
+			},
+			want: "Release status: installed version 1.2.0 is newer than v1.1.0",
+		},
+		{
+			name: "main matches",
+			run: func() {
+				printMainCommitComparison("abcdef1", "abcdef123456")
+			},
+			want: "Main status: current commit matches main",
+		},
+		{
+			name: "main differs",
+			run: func() {
+				printMainCommitComparison("1111111", "abcdef1")
+			},
+			want: "Main status: current commit differs from main",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout := captureStdout(t, tt.run)
+			if !strings.Contains(stdout, tt.want) {
+				t.Fatalf("stdout missing %q: %q", tt.want, stdout)
+			}
+		})
+	}
+}
+
 func TestCmdUpdateReportsCommandFailure(t *testing.T) {
 	typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
 	withUpdateTestHooks(t, typoPath)
@@ -625,6 +1066,20 @@ func TestCmdUpdateReportsCommandFailure(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "install script failed: boom") {
 		t.Fatalf("missing command failure, got %q", stderr)
+	}
+}
+
+func TestDownloadUpdateFileReportsCurlFailure(t *testing.T) {
+	origRunCommand := updateRunCommand
+	defer func() { updateRunCommand = origRunCommand }()
+
+	updateRunCommand = func(name string, args []string, extraEnv []string) error {
+		return errors.New("curl failed")
+	}
+
+	err := downloadUpdateFile(installScriptURL, filepath.Join(t.TempDir(), "install.sh"))
+	if err == nil || !strings.Contains(err.Error(), "curl download failed: curl failed") {
+		t.Fatalf("expected curl failure, got %v", err)
 	}
 }
 
@@ -652,6 +1107,153 @@ func TestDownloadUpdateFileUsesCurl(t *testing.T) {
 	wantArgs := []string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-o", dst, installScriptURL}
 	if !reflect.DeepEqual(got.args, wantArgs) {
 		t.Fatalf("curl args = %#v, want %#v", got.args, wantArgs)
+	}
+}
+
+func TestNormalizeVersionTagEmpty(t *testing.T) {
+	if got := normalizeVersionTag(" "); got != "" {
+		t.Fatalf("normalizeVersionTag empty = %q", got)
+	}
+}
+
+func TestFetchUpdateJSONUsesCurlAndToken(t *testing.T) {
+	origCommandOutput := updateCommandOutput
+	defer func() { updateCommandOutput = origCommandOutput }()
+
+	t.Setenv("GITHUB_TOKEN", "secret-token")
+	var got updateCommandCall
+	updateCommandOutput = func(name string, args []string, extraEnv []string) (string, error) {
+		got = updateCommandCall{
+			name:     name,
+			args:     append([]string(nil), args...),
+			extraEnv: append([]string(nil), extraEnv...),
+		}
+		return `{"tag_name":"v1.2.3"}`, nil
+	}
+
+	var payload struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := fetchUpdateJSON("https://example.test/releases/latest", &payload); err != nil {
+		t.Fatalf("fetchUpdateJSON failed: %v", err)
+	}
+	if payload.TagName != "v1.2.3" {
+		t.Fatalf("tag_name = %q", payload.TagName)
+	}
+	if got.name != "curl" || !reflect.DeepEqual(got.extraEnv, []string(nil)) {
+		t.Fatalf("unexpected curl call metadata: %#v", got)
+	}
+	if !reflect.DeepEqual(got.args, []string{
+		"-fsSL", "--retry", "1", "--retry-delay", "2",
+		"-H", "Accept: application/vnd.github+json",
+		"-H", "Authorization: Bearer secret-token",
+		"https://example.test/releases/latest",
+	}) {
+		t.Fatalf("curl args = %#v", got.args)
+	}
+}
+
+func TestFetchUpdateJSONReportsCommandAndJSONErrors(t *testing.T) {
+	origCommandOutput := updateCommandOutput
+	defer func() { updateCommandOutput = origCommandOutput }()
+
+	t.Run("command error", func(t *testing.T) {
+		updateCommandOutput = func(name string, args []string, extraEnv []string) (string, error) {
+			return "", errors.New("network down")
+		}
+		err := fetchUpdateJSON("https://example.test", &struct{}{})
+		if err == nil || !strings.Contains(err.Error(), "curl request failed: network down") {
+			t.Fatalf("expected wrapped curl error, got %v", err)
+		}
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		updateCommandOutput = func(name string, args []string, extraEnv []string) (string, error) {
+			return "{", nil
+		}
+		err := fetchUpdateJSON("https://example.test", &struct{}{})
+		if err == nil || !strings.Contains(err.Error(), "unexpected end of JSON input") {
+			t.Fatalf("expected JSON error, got %v", err)
+		}
+	})
+}
+
+func TestFetchLatestReleaseTagAndMainCommit(t *testing.T) {
+	origCommandOutput := updateCommandOutput
+	defer func() { updateCommandOutput = origCommandOutput }()
+
+	responses := map[string]string{
+		latestReleaseAPIURL: `{"tag_name":"v2.0.0"}`,
+		mainCommitAPIURL:    `{"sha":"abcdef1234567890"}`,
+	}
+	updateCommandOutput = func(name string, args []string, extraEnv []string) (string, error) {
+		url := args[len(args)-1]
+		return responses[url], nil
+	}
+
+	tag, err := fetchLatestReleaseTag()
+	if err != nil || tag != "v2.0.0" {
+		t.Fatalf("fetchLatestReleaseTag = %q, %v", tag, err)
+	}
+	sha, err := fetchMainCommit()
+	if err != nil || sha != "abcdef1234567890" {
+		t.Fatalf("fetchMainCommit = %q, %v", sha, err)
+	}
+}
+
+func TestFetchLatestReleaseTagAndMainCommitRejectEmptyFields(t *testing.T) {
+	origCommandOutput := updateCommandOutput
+	defer func() { updateCommandOutput = origCommandOutput }()
+
+	updateCommandOutput = func(name string, args []string, extraEnv []string) (string, error) {
+		return `{}`, nil
+	}
+
+	if _, err := fetchLatestReleaseTag(); err == nil || !strings.Contains(err.Error(), "empty tag_name") {
+		t.Fatalf("expected empty tag_name error, got %v", err)
+	}
+	if _, err := fetchMainCommit(); err == nil || !strings.Contains(err.Error(), "empty sha") {
+		t.Fatalf("expected empty sha error, got %v", err)
+	}
+}
+
+func TestRunUpdateCommandRejectsUnexpectedCommand(t *testing.T) {
+	if err := runUpdateCommand("git", nil, nil); err == nil {
+		t.Fatalf("expected runUpdateCommand to reject unexpected command")
+	}
+	if _, err := runUpdateCommandOutput("git", nil, nil); err == nil {
+		t.Fatalf("expected runUpdateCommandOutput to reject unexpected command")
+	}
+}
+
+func TestRunUpdateCommandExecutesWhitelistedBash(t *testing.T) {
+	if _, err := newUpdateCommand("bash", []string{"-c", "exit 0"}); err != nil {
+		t.Skipf("bash command unavailable: %v", err)
+	}
+
+	if err := runUpdateCommand("bash", []string{"-c", "exit 0"}, []string{"TYPO_TEST_VALUE=ok"}); err != nil {
+		t.Fatalf("runUpdateCommand bash failed: %v", err)
+	}
+	output, err := runUpdateCommandOutput("bash", []string{"-c", "printf %s \"$TYPO_TEST_VALUE\""}, []string{"TYPO_TEST_VALUE=ok"})
+	if err != nil {
+		t.Fatalf("runUpdateCommandOutput bash failed: %v", err)
+	}
+	if output != "ok" {
+		t.Fatalf("runUpdateCommandOutput = %q, want ok", output)
+	}
+}
+
+func TestNewUpdateCommandAllowsWhitelistedCommands(t *testing.T) {
+	for _, name := range []string{"bash", "brew", "curl"} {
+		t.Run(name, func(t *testing.T) {
+			cmd, err := newUpdateCommand(name, []string{"--version"})
+			if err != nil {
+				t.Fatalf("newUpdateCommand(%q) failed: %v", name, err)
+			}
+			if filepath.Base(cmd.Path) != name {
+				t.Fatalf("command path = %q, want basename %q", cmd.Path, name)
+			}
+		})
 	}
 }
 

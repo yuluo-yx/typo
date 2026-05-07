@@ -829,6 +829,66 @@ func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
 	}
 }
 
+func TestGitParser_ParseDidYouMeanShellParseFallback(t *testing.T) {
+	stderr := "git: 'statsu' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tstatus\n"
+	result := NewGitParser().Parse(itypes.ParserContext{
+		Command: "git statsu '",
+		Stderr:  stderr,
+	})
+	if !result.Fixed || result.Command != "git status '" || result.Message != "git suggested: status" {
+		t.Fatalf("Parse fallback = %+v", result)
+	}
+}
+
+func TestGitPullRebaseFallbackHelpers(t *testing.T) {
+	tests := []struct {
+		name    string
+		run     func() (string, bool)
+		wantCmd string
+		wantOK  bool
+	}{
+		{
+			name: "plain pull parse fallback",
+			run: func() (string, bool) {
+				return addGitPullRebaseFlag("git pull origin main '")
+			},
+			wantCmd: "git pull --rebase origin main '",
+			wantOK:  true,
+		},
+		{
+			name: "git-prefixed parse fallback",
+			run: func() (string, bool) {
+				return addGitPrefixedPullRebaseFlag("git-pull origin main '")
+			},
+			wantCmd: "git-pull --rebase origin main '",
+			wantOK:  true,
+		},
+		{
+			name: "no pull token",
+			run: func() (string, bool) {
+				return addGitPullRebaseFlag("git fetch origin main '")
+			},
+			wantOK: false,
+		},
+		{
+			name: "empty prefixed command",
+			run: func() (string, bool) {
+				return addGitPrefixedPullRebaseFlag("")
+			},
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := tt.run()
+			if ok != tt.wantOK || got != tt.wantCmd {
+				t.Fatalf("helper = %q, %v; want %q, %v", got, ok, tt.wantCmd, tt.wantOK)
+			}
+		})
+	}
+}
+
 func gitDivergentPullStderr() string {
 	return "$ git pull\n" +
 		"hint: You have divergent branches and need to specify how to reconcile them.\n" +

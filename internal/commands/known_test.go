@@ -174,6 +174,10 @@ func TestIsExecutable(t *testing.T) {
 	if IsExecutable("/nonexistent/file") {
 		t.Error("Expected non-existent file to return false")
 	}
+
+	if IsExecutable(tmpDir) {
+		t.Error("Expected directory to return false")
+	}
 }
 
 func TestGetPath(t *testing.T) {
@@ -189,6 +193,20 @@ func TestGetPath(t *testing.T) {
 	path = GetPath("nonexistentcommand12345")
 	if path != "" {
 		t.Errorf("Expected empty path for non-existent command, got %s", path)
+	}
+}
+
+func TestGetPathFindsExecutableInCustomPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	createTestCommand(t, tmpDir, "customcmd")
+	t.Setenv("PATH", tmpDir)
+
+	path := GetPath("customcmd")
+	if path == "" {
+		t.Fatalf("Expected custom command to be found")
+	}
+	if filepath.Dir(path) != tmpDir {
+		t.Fatalf("GetPath returned %q outside %q", path, tmpDir)
 	}
 }
 
@@ -333,6 +351,39 @@ func TestDiscoverInDir_FileInfoError(t *testing.T) {
 
 	if !commands["testcmd"] {
 		t.Error("Expected 'testcmd' to be discovered")
+	}
+}
+
+func TestWindowsExecutableHelpers(t *testing.T) {
+	t.Setenv("PATHEXT", " .EXE ; ; .Cmd ;.BAT ")
+	wantExts := []string{".exe", ".cmd", ".bat"}
+	if got := windowsExecutableExtensions(); !slices.Equal(got, wantExts) {
+		t.Fatalf("windowsExecutableExtensions() = %v, want %v", got, wantExts)
+	}
+
+	if !isWindowsExecutablePath("typo.EXE") {
+		t.Fatalf("expected .EXE path to be treated as Windows executable")
+	}
+	if isWindowsExecutablePath("typo") {
+		t.Fatalf("extensionless path should not be treated as Windows executable")
+	}
+	if isWindowsExecutablePath("typo.sh") {
+		t.Fatalf("unknown extension should not be treated as Windows executable")
+	}
+
+	if got := trimExecutableSuffix("Typo.EXE"); got != "Typo" {
+		t.Fatalf("trimExecutableSuffix() = %q, want Typo", got)
+	}
+	if got := trimExecutableSuffix("typo.sh"); got != "typo.sh" {
+		t.Fatalf("trimExecutableSuffix() = %q, want typo.sh", got)
+	}
+}
+
+func TestWindowsExecutableExtensionsDefault(t *testing.T) {
+	t.Setenv("PATHEXT", "")
+	want := []string{".com", ".exe", ".bat", ".cmd"}
+	if got := windowsExecutableExtensions(); !slices.Equal(got, want) {
+		t.Fatalf("windowsExecutableExtensions default = %v, want %v", got, want)
 	}
 }
 
