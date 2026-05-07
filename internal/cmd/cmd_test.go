@@ -3528,6 +3528,42 @@ _typo_bashexit
 `)
 }
 
+func TestBashIntegrationFallsBackWhenDirectEscBindingIsNotActive(t *testing.T) {
+	runBashIntegrationScript(t, `
+(( BASH_VERSINFO[0] >= 5 )) || exit 0
+
+TYPO_DIRECT_ATTEMPTS=0
+TYPO_FALLBACK_COMMAND_BINDING=0
+TYPO_FALLBACK_MACRO_BINDING=0
+
+bind() {
+    if [[ "$1" == "-x" && "$2" == '"\e\e":"_typo_fix_command"' ]]; then
+        TYPO_DIRECT_ATTEMPTS=$((TYPO_DIRECT_ATTEMPTS + 1))
+        return 0
+    fi
+    if [[ "$1" == "-X" ]]; then
+        return 0
+    fi
+    if [[ "$1" == "-x" && "$2" == '"\C-x\C-_":"_typo_fix_command"' ]]; then
+        TYPO_FALLBACK_COMMAND_BINDING=1
+        return 0
+    fi
+    if [[ "$1" == '"\e\e":"\C-x\C-_"' ]]; then
+        TYPO_FALLBACK_MACRO_BINDING=1
+        return 0
+    fi
+    return 0
+}
+
+source "$1"
+trap - DEBUG
+
+[[ "$TYPO_DIRECT_ATTEMPTS" -eq 1 ]] || exit 71
+[[ "$TYPO_FALLBACK_COMMAND_BINDING" -eq 1 ]] || exit 72
+[[ "$TYPO_FALLBACK_MACRO_BINDING" -eq 1 ]] || exit 73
+`)
+}
+
 func TestPowerShellIntegrationRegistersHandlersAndState(t *testing.T) {
 	output := runPowerShellIntegrationScript(t, `
 . $InitScriptPath

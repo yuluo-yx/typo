@@ -117,12 +117,18 @@ set -o emacs
 source "$1"
 trap - DEBUG
 bind_s="$(bind -S 2>/dev/null)"
+direct_binding='"\e\e": "_typo_fix_command"'
+fallback_command_binding='"\C-x\C-_": "_typo_fix_command"'
 
 if (( BASH_VERSINFO[0] >= 5 )); then
 	bind_x="$(bind -X 2>/dev/null)"
-	[[ "$bind_x" == *'"\e\e": "_typo_fix_command"'* ]] || exit 48
-	[[ "$bind_x" != *'"\C-x\C-_": "_typo_fix_command"'* ]] || exit 49
-	[[ "$bind_s" != *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 50
+	if [[ "$bind_x" == *"$direct_binding"* ]]; then
+		[[ "$bind_x" != *"$fallback_command_binding"* ]] || exit 49
+		[[ "$bind_s" != *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 50
+	else
+		[[ "$bind_x" == *"$fallback_command_binding"* ]] || exit 48
+		[[ "$bind_s" == *'\e\e outputs \C-x\C-_'* || "$bind_s" == *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 50
+	fi
 else
 	[[ "$bind_s" == *'\e\e outputs \C-x\C-_'* || "$bind_s" == *'"\e\e" outputs "\C-x\C-_"'* ]] || exit 51
 fi

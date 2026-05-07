@@ -407,6 +407,7 @@ _typo_install_exit_hook() {
 
 _typo_install_fix_binding() {
     local bash_major="${BASH_VERSINFO[0]:-0}"
+    local bind_x
 
     bind -r '\e\e' 2>/dev/null
     bind -r '\e\e[C' 2>/dev/null
@@ -416,15 +417,22 @@ _typo_install_fix_binding() {
     if (( bash_major >= 5 )); then
         # Bash 5.x handles a direct Esc+Esc binding more reliably and avoids
         # the macro indirection path leaking `_typo_fix_command` into execution.
-        bind -x '"\e\e":"_typo_fix_command"' 2>/dev/null
-    else
-        # Bash 4.x is less reliable with a direct \e\e binding because readline
-        # treats \e as the meta prefix. Keep the macro indirection there and
-        # shorten the timeout so the second Esc is captured promptly.
-        bind 'set keyseq-timeout 50' 2>/dev/null
-        bind -x '"\C-x\C-_":"_typo_fix_command"' 2>/dev/null
-        bind '"\e\e":"\C-x\C-_"' 2>/dev/null
+        if bind -x '"\e\e":"_typo_fix_command"' 2>/dev/null; then
+            bind_x="$(bind -X 2>/dev/null)"
+            if [[ "$bind_x" == *'"\e\e": "_typo_fix_command"'* ]]; then
+                return
+            fi
+            bind -r '\e\e' 2>/dev/null
+        fi
     fi
+
+    # Bash 4.x is less reliable with a direct \e\e binding because readline
+    # treats \e as the meta prefix. Some Windows Git Bash environments also
+    # accept the direct bind command without reporting an active binding, so use
+    # the same macro indirection fallback when runtime verification fails.
+    bind 'set keyseq-timeout 50' 2>/dev/null
+    bind -x '"\C-x\C-_":"_typo_fix_command"' 2>/dev/null
+    bind '"\e\e":"\C-x\C-_"' 2>/dev/null
 }
 
 _typo_init_stderr_cache
