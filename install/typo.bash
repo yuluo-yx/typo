@@ -419,7 +419,7 @@ _typo_install_fix_binding() {
         # the macro indirection path leaking `_typo_fix_command` into execution.
         if bind -x '"\e\e":"_typo_fix_command"' 2>/dev/null; then
             bind_x="$(bind -X 2>/dev/null)"
-            if [[ "$bind_x" == *'"\e\e": "_typo_fix_command"'* ]]; then
+            if [[ "$bind_x" == *'\e\e'*'_typo_fix_command'* ]]; then
                 return
             fi
             bind -r '\e\e' 2>/dev/null
