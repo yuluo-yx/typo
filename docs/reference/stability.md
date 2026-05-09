@@ -62,6 +62,8 @@ removed during v1.x:
 - `auto_learn_threshold`
 - `keyboard`
 - `history.enabled`
+- `candidates.enabled`
+- `candidates.limit`
 - `rules.<scope>.enabled`
 
 The `typo config` CLI uses hyphenated key names for the top-level numeric
@@ -106,7 +108,7 @@ The following top-level subcommands and their documented flags are stable:
 
 | Command | Stable flags |
 |---------|-------------|
-| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history`, `--alias-context <file>`, `--debug`, `--debug=json`, `--trace-file <file>` |
+| `typo fix <cmd>` | `-s <file>`, `--exit-code <n>`, `--no-history`, `--alias-context <file>`, `--select`, `--debug`, `--debug=json`, `--trace-file <file>` |
 | `typo explain <cmd>` | `-s <file>`, `--exit-code <n>`, `--alias-context <file>` |
 | `typo learn <from> <to>` | *(none)* |
 | `typo config list` | *(none)* |
@@ -155,6 +157,10 @@ contract:
 - **Trigger binding**: `Esc` `Esc` is the default keybinding and will remain the
   default. Users may rebind to an alternative key as documented in the
   troubleshooting guide.
+- **Candidate selection**: when `candidates.enabled=true`, shell integrations
+  use `typo fix --select` to show a terminal menu. The menu accepts number keys,
+  Up/Down plus Enter, and `q`/Esc cancellation. stdout remains the selected
+  command only.
 - **Environment variable**: `TYPO_SHELL_INTEGRATION=1` is set when shell
   integration is active. Scripts may check this variable to detect whether Typo
   integration is loaded.

@@ -3653,12 +3653,14 @@ bind | string match -q "*bind escape,escape _typo_fix_command*"; or exit 83
 _typo_fix_command
 test "$TYPO_TEST_BUFFER" = "git status && docker ps"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 84; end
 string match -q "*--no-history*" "$TYPO_TEST_ARGS"; or exit 85
+string match -q "*--select*" "$TYPO_TEST_ARGS"; or exit 90
 
 set -g TYPO_TEST_BUFFER ""
 set -gx TYPO_LAST_EXIT_CODE 1
 _typo_fix_command
 test "$TYPO_TEST_BUFFER" = "git status"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 86; end
 string match -q "*--exit-code 1*" "$TYPO_TEST_ARGS"; or exit 87
+string match -q "*--select*" "$TYPO_TEST_ARGS"; or exit 91
 
 _typo_preexec git stauts
 test "$TYPO_LAST_COMMAND" = "git stauts"; or exit 88
@@ -4260,15 +4262,23 @@ func TestConfigCommandLifecycle(t *testing.T) {
 	assertConfigValue(t, "keyboard", "qwerty", "after config gen")
 	assertCLISucceeds(t, []string{"typo", "config", "set", "keyboard", "dvorak"}, "config set keyboard")
 	assertCLISucceeds(t, []string{"typo", "config", "set", "auto-learn-threshold", "5"}, "config set auto-learn-threshold")
+	assertCLISucceeds(t, []string{"typo", "config", "set", "candidates.enabled", "true"}, "config set candidates enabled")
+	assertCLISucceeds(t, []string{"typo", "config", "set", "candidates.limit", "5"}, "config set candidates limit")
 	assertCLISucceeds(t, []string{"typo", "config", "set", "experimental.long-option-correction.enabled", "true"}, "config set experimental long option")
 	assertConfigValue(t, "auto-learn-threshold", "5", "after config set")
+	assertConfigValue(t, "candidates.enabled", "true", "after config set")
+	assertConfigValue(t, "candidates.limit", "5", "after config set")
 	assertConfigValue(t, "experimental.long-option-correction.enabled", "true", "after config set")
 	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "keyboard=dvorak", "config list")
 	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "auto-learn-threshold=5", "config list")
+	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "candidates.enabled=true", "config list")
+	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "candidates.limit=5", "config list")
 	assertCLISucceedsWithOutput(t, []string{"typo", "config", "list"}, "experimental.long-option-correction.enabled=true", "config list")
 	assertCLISucceeds(t, []string{"typo", "config", "reset"}, "config reset")
 	assertConfigValue(t, "keyboard", "qwerty", "after config reset")
 	assertConfigValue(t, "auto-learn-threshold", "3", "after config reset")
+	assertConfigValue(t, "candidates.enabled", "false", "after config reset")
+	assertConfigValue(t, "candidates.limit", "3", "after config reset")
 	assertConfigValue(t, "experimental.long-option-correction.enabled", "false", "after config reset")
 }
 

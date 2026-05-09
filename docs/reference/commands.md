@@ -20,9 +20,18 @@ Useful flags:
 - `--exit-code <n>`: reuse the previous exit code as additional correction context.
 - `--no-history`: do not persist the accepted correction into history.
 - `--alias-context <file>`: read the shell correction context captured by shell integration.
+- `--select`: when candidate selection is enabled, show a terminal menu for multiple correction candidates.
 - `--debug`: print the fix trace to stderr without changing the corrected command written to stdout.
 - `--debug=json`: print the same trace as structured JSON with `schema_version=1`.
 - `--trace-file <file>`: write the structured JSON trace to a file without changing stdout.
+
+`--select` is used by shell integrations. When `candidates.enabled=true` and
+at least two valid candidates are available, Typo opens a terminal menu showing
+up to `candidates.limit` choices. Press `1`-`9` to choose directly, use Up/Down
+plus Enter to choose the highlighted command, or press `q`/Esc to cancel. The
+menu is written to the terminal; stdout still contains only the selected command
+so shell buffers are updated with one command. If no interactive terminal is
+available, Typo falls back to the best candidate.
 
 `--alias-context` is mainly used by `typo init <shell>` scripts. The context is
 temporary and session-local; it lets Typo expand aliases such as `k=kubectl`,
@@ -85,6 +94,8 @@ The current configurable keys are:
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `candidates.enabled` *(default: `false`)*
+- `candidates.limit` *(default: `3`, valid range: `1..10`; this is a maximum, not a quota)*
 - `experimental.long-option-correction.enabled` *(Experimental; default: `false`)*
 - `rules.<scope>.enabled`
 

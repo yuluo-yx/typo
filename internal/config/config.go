@@ -19,12 +19,15 @@ const (
 	defaultMaxEditDistance     = 2
 	defaultMaxFixPasses        = 32
 	defaultAutoLearnThreshold  = 3
+	defaultCandidateLimit      = 3
 	defaultKeyboardLayout      = "qwerty"
 	minSimilarityThreshold     = 0.0
 	maxSimilarityThreshold     = 1.0
 	minMaxEditDistance         = 0
 	minMaxFixPasses            = 1
 	minAutoLearnThreshold      = 0
+	minCandidateLimit          = 1
+	maxCandidateLimit          = 10
 )
 
 var (
@@ -71,12 +74,18 @@ type fileUserConfig struct {
 	AutoLearnThreshold  *int                      `json:"auto_learn_threshold,omitempty"`
 	Keyboard            *string                   `json:"keyboard,omitempty"`
 	History             *fileHistoryConfig        `json:"history,omitempty"`
+	Candidates          *fileCandidateConfig      `json:"candidates,omitempty"`
 	Experimental        *fileExperimentalConfig   `json:"experimental,omitempty"`
 	Rules               map[string]fileRuleConfig `json:"rules,omitempty"`
 }
 
 type fileHistoryConfig struct {
 	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type fileCandidateConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+	Limit   *int  `json:"limit,omitempty"`
 }
 
 type fileExperimentalConfig struct {
@@ -114,6 +123,7 @@ func DefaultUserConfig() itypes.UserConfig {
 		AutoLearnThreshold:  defaultAutoLearnThreshold,
 		Keyboard:            defaultKeyboardLayout,
 		History:             itypes.HistoryConfig{Enabled: true},
+		Candidates:          itypes.CandidateConfig{Enabled: false, Limit: defaultCandidateLimit},
 		Experimental: itypes.ExperimentalConfig{
 			LongOptionCorrection: itypes.LongOptionCorrectionConfig{Enabled: false},
 		},
@@ -187,7 +197,7 @@ func (c *Config) Generate(force bool) error {
 
 // ListSettings returns config items for `typo config list`.
 func (c *Config) ListSettings() []Setting {
-	settings := make([]Setting, 0, 7+len(c.User.Rules))
+	settings := make([]Setting, 0, 9+len(c.User.Rules))
 	settings = append(settings,
 		Setting{Key: "similarity-threshold", Value: formatFloat(c.User.SimilarityThreshold)},
 		Setting{Key: "max-edit-distance", Value: strconv.Itoa(c.User.MaxEditDistance)},
@@ -195,6 +205,8 @@ func (c *Config) ListSettings() []Setting {
 		Setting{Key: "auto-learn-threshold", Value: strconv.Itoa(c.User.AutoLearnThreshold)},
 		Setting{Key: "keyboard", Value: c.User.Keyboard},
 		Setting{Key: "history.enabled", Value: strconv.FormatBool(c.User.History.Enabled)},
+		Setting{Key: "candidates.enabled", Value: strconv.FormatBool(c.User.Candidates.Enabled)},
+		Setting{Key: "candidates.limit", Value: strconv.Itoa(c.User.Candidates.Limit)},
 		Setting{
 			Key:   "experimental.long-option-correction.enabled",
 			Value: strconv.FormatBool(c.User.Experimental.LongOptionCorrection.Enabled),
@@ -226,6 +238,10 @@ func (c *Config) Get(key string) (string, error) {
 		return c.User.Keyboard, nil
 	case "history.enabled":
 		return strconv.FormatBool(c.User.History.Enabled), nil
+	case "candidates.enabled":
+		return strconv.FormatBool(c.User.Candidates.Enabled), nil
+	case "candidates.limit":
+		return strconv.Itoa(c.User.Candidates.Limit), nil
 	case "experimental.long-option-correction.enabled":
 		return strconv.FormatBool(c.User.Experimental.LongOptionCorrection.Enabled), nil
 	default:
@@ -278,52 +294,69 @@ func (c *Config) updatedUserConfig(key, value string) (itypes.UserConfig, error)
 }
 
 func applyUserConfigValue(next *itypes.UserConfig, key, value string) error {
+	if handled, err := applyNumericConfigValue(next, key, value); handled || err != nil {
+		return err
+	}
+	if handled, err := applyBooleanConfigValue(next, key, value); handled || err != nil {
+		return err
+	}
+
 	switch key {
-	case "similarity-threshold":
-		parsed, err := parseConfigFloatValue(value, key)
-		if err != nil {
-			return err
-		}
-		next.SimilarityThreshold = parsed
-	case "max-edit-distance":
-		parsed, err := parseConfigIntValue(value, key)
-		if err != nil {
-			return err
-		}
-		next.MaxEditDistance = parsed
-	case "max-fix-passes":
-		parsed, err := parseConfigIntValue(value, key)
-		if err != nil {
-			return err
-		}
-		next.MaxFixPasses = parsed
-	case "auto-learn-threshold":
-		parsed, err := parseConfigIntValue(value, key)
-		if err != nil {
-			return err
-		}
-		next.AutoLearnThreshold = parsed
 	case "keyboard":
 		if err := applyKeyboardLayoutValue(next, value); err != nil {
 			return err
 		}
-	case "history.enabled":
-		parsed, err := parseConfigBoolValue(value, key)
-		if err != nil {
-			return err
-		}
-		next.History.Enabled = parsed
-	case "experimental.long-option-correction.enabled":
-		parsed, err := parseConfigBoolValue(value, key)
-		if err != nil {
-			return err
-		}
-		next.Experimental.LongOptionCorrection.Enabled = parsed
 	default:
 		return applyRuleScopeValue(next, key, value)
 	}
 
 	return nil
+}
+
+func applyNumericConfigValue(next *itypes.UserConfig, key, value string) (bool, error) {
+	switch key {
+	case "similarity-threshold":
+		parsed, err := parseConfigFloatValue(value, key)
+		next.SimilarityThreshold = parsed
+		return true, err
+	case "max-edit-distance":
+		parsed, err := parseConfigIntValue(value, key)
+		next.MaxEditDistance = parsed
+		return true, err
+	case "max-fix-passes":
+		parsed, err := parseConfigIntValue(value, key)
+		next.MaxFixPasses = parsed
+		return true, err
+	case "auto-learn-threshold":
+		parsed, err := parseConfigIntValue(value, key)
+		next.AutoLearnThreshold = parsed
+		return true, err
+	case "candidates.limit":
+		parsed, err := parseConfigIntValue(value, key)
+		next.Candidates.Limit = parsed
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func applyBooleanConfigValue(next *itypes.UserConfig, key, value string) (bool, error) {
+	switch key {
+	case "history.enabled":
+		parsed, err := parseConfigBoolValue(value, key)
+		next.History.Enabled = parsed
+		return true, err
+	case "candidates.enabled":
+		parsed, err := parseConfigBoolValue(value, key)
+		next.Candidates.Enabled = parsed
+		return true, err
+	case "experimental.long-option-correction.enabled":
+		parsed, err := parseConfigBoolValue(value, key)
+		next.Experimental.LongOptionCorrection.Enabled = parsed
+		return true, err
+	default:
+		return false, nil
+	}
 }
 
 func parseConfigFloatValue(value, key string) (float64, error) {
@@ -390,6 +423,9 @@ func ValidateUserConfig(u itypes.UserConfig) error {
 	if u.AutoLearnThreshold < minAutoLearnThreshold {
 		return fmt.Errorf("auto_learn_threshold must be >= %d", minAutoLearnThreshold)
 	}
+	if u.Candidates.Limit < minCandidateLimit || u.Candidates.Limit > maxCandidateLimit {
+		return fmt.Errorf("candidates.limit must be between %d and %d", minCandidateLimit, maxCandidateLimit)
+	}
 
 	keyboard := strings.ToLower(strings.TrimSpace(u.Keyboard))
 	if !supportedKeyboardLayouts[keyboard] {
@@ -435,6 +471,12 @@ func (c *Config) loadUserConfig() {
 }
 
 func applyFileConfig(dst *itypes.UserConfig, src fileUserConfig) {
+	applyFileScalarConfig(dst, src)
+	applyFileNestedConfig(dst, src)
+	applyFileRuleConfig(dst, src.Rules)
+}
+
+func applyFileScalarConfig(dst *itypes.UserConfig, src fileUserConfig) {
 	if src.SimilarityThreshold != nil {
 		dst.SimilarityThreshold = *src.SimilarityThreshold
 	}
@@ -450,15 +492,29 @@ func applyFileConfig(dst *itypes.UserConfig, src fileUserConfig) {
 	if src.Keyboard != nil {
 		dst.Keyboard = strings.ToLower(strings.TrimSpace(*src.Keyboard))
 	}
+}
+
+func applyFileNestedConfig(dst *itypes.UserConfig, src fileUserConfig) {
 	if src.History != nil && src.History.Enabled != nil {
 		dst.History.Enabled = *src.History.Enabled
+	}
+	if src.Candidates != nil {
+		if src.Candidates.Enabled != nil {
+			dst.Candidates.Enabled = *src.Candidates.Enabled
+		}
+		if src.Candidates.Limit != nil {
+			dst.Candidates.Limit = *src.Candidates.Limit
+		}
 	}
 	if src.Experimental != nil &&
 		src.Experimental.LongOptionCorrection != nil &&
 		src.Experimental.LongOptionCorrection.Enabled != nil {
 		dst.Experimental.LongOptionCorrection.Enabled = *src.Experimental.LongOptionCorrection.Enabled
 	}
-	for scope, rule := range src.Rules {
+}
+
+func applyFileRuleConfig(dst *itypes.UserConfig, rules map[string]fileRuleConfig) {
+	for scope, rule := range rules {
 		if rule.Enabled == nil {
 			continue
 		}

@@ -216,6 +216,38 @@ func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 	return e.attachDebug(e.fixWithoutAliasContext(input), debugInfo, startedAt)
 }
 
+// FixCandidatesWithContext returns selectable correction candidates for the input.
+func (e *Engine) FixCandidatesWithContext(input itypes.ParserContext, limit int) []itypes.FixCandidate {
+	input.Command = strings.TrimSpace(input.Command)
+	if e == nil || input.Command == "" || limit < 1 {
+		return nil
+	}
+
+	candidates := make([]itypes.FixCandidate, 0, limit)
+	seen := make(map[string]bool, limit)
+	addResult := func(result itypes.FixResult) {
+		if len(candidates) >= limit || !isMeaningfulFix(input.Command, result) || seen[result.Command] {
+			return
+		}
+		seen[result.Command] = true
+		candidates = append(candidates, itypes.FixCandidate{
+			Command: result.Command,
+			Source:  result.Source,
+			Message: result.Message,
+		})
+	}
+
+	addResult(e.FixWithContext(input))
+	for _, result := range e.distanceFixCandidates(input.Command, limit) {
+		addResult(result)
+		if len(candidates) >= limit {
+			break
+		}
+	}
+
+	return candidates
+}
+
 func (e *Engine) beginDebugTrace(input itypes.ParserContext) *itypes.FixDebugInfo {
 	if e == nil || !e.debugEnabled {
 		return nil
@@ -860,6 +892,83 @@ func (e *Engine) tryDistanceWithShell(cmd string) (itypes.FixResult, bool) {
 	return itypes.FixResult{Fixed: false}, true
 }
 
+func (e *Engine) distanceFixCandidates(cmd string, limit int) []itypes.FixResult {
+	if limit < 1 {
+		return nil
+	}
+	if results, parsed := e.distanceFixCandidatesWithShell(cmd, limit); parsed {
+		return results
+	}
+
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 || e.isProtectedCommandWord(parts[0]) {
+		return nil
+	}
+
+	results := make([]itypes.FixResult, 0, limit)
+	for _, candidate := range e.rankedKnownCommandCandidates(parts[0]) {
+		if candidate.name == parts[0] {
+			continue
+		}
+		command := candidate.name
+		if len(parts) > 1 {
+			command += " " + strings.Join(parts[1:], " ")
+		}
+		result := itypes.FixResult{
+			Fixed:   true,
+			Command: command,
+			Source:  fixSourceDistance,
+		}
+		if e.toolTrees != nil {
+			result = e.fixSubcommandInResult(result)
+		}
+		if isMeaningfulFix(cmd, result) {
+			results = append(results, result)
+		}
+		if len(results) >= limit {
+			break
+		}
+	}
+
+	return results
+}
+
+func (e *Engine) distanceFixCandidatesWithShell(cmd string, limit int) ([]itypes.FixResult, bool) {
+	lines, err := parseShellCommandLines(cmd)
+	if err != nil {
+		return nil, false
+	}
+
+	results := make([]itypes.FixResult, 0, limit)
+	for _, line := range lines {
+		cmdWord := line.commandWord()
+		if e.isProtectedCommandWord(cmdWord) {
+			continue
+		}
+		for _, candidate := range e.rankedKnownCommandCandidates(cmdWord) {
+			if candidate.name == cmdWord {
+				continue
+			}
+			result := itypes.FixResult{
+				Fixed:   true,
+				Command: line.replaceCommandWord(candidate.name),
+				Source:  fixSourceDistance,
+			}
+			if e.toolTrees != nil {
+				result = e.fixSubcommandInResult(result)
+			}
+			if isMeaningfulFix(cmd, result) {
+				results = append(results, result)
+			}
+			if len(results) >= limit {
+				return results, true
+			}
+		}
+	}
+
+	return results, true
+}
+
 func (e *Engine) tryToolOptionFix(cmd string) itypes.FixResult {
 	if e.toolTrees == nil {
 		return itypes.FixResult{Fixed: false}
@@ -1338,6 +1447,45 @@ func (e *Engine) closestKnownCommand(cmd string) (string, int) {
 	return e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance))
 }
 
+func (e *Engine) rankedKnownCommandCandidates(cmd string) []commandCandidate {
+	matchCfg := e.distanceMatchConfig()
+	candidates := e.rankedKnownCommandCandidatesFrom(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance), matchCfg)
+	if len(candidates) > 0 || e.commandLoader == nil || e.commandsFullyLoad {
+		return candidates
+	}
+
+	e.loadCommands()
+	return e.rankedKnownCommandCandidatesFrom(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance), matchCfg)
+}
+
+func (e *Engine) rankedKnownCommandCandidatesFrom(cmd string, knownCommands []commandRuneCandidate, matchCfg distanceMatchConfig) []commandCandidate {
+	cmdRunes := []rune(cmd)
+	candidates := make([]commandCandidate, 0, len(knownCommands))
+	seen := make(map[string]bool, len(knownCommands))
+
+	for _, known := range knownCommands {
+		if known.name == "" || seen[known.name] {
+			continue
+		}
+		seen[known.name] = true
+
+		d := distanceRunes(cmdRunes, known.runes, e.keyboard)
+		if !isGoodCommandDistanceMatch(cmd, known.name, d, matchCfg) {
+			continue
+		}
+		candidates = append(candidates, commandCandidate{
+			name:       known.name,
+			distance:   d,
+			similarity: SimilarityFromDistance(len(cmd), len(known.name), d),
+			priority:   e.commandPriority(known.name),
+			transposed: utils.IsSingleAdjacentTransposition(cmd, known.name),
+		})
+	}
+
+	sortCommandCandidates(candidates)
+	return candidates
+}
+
 func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []commandRuneCandidate) (string, int) {
 	cmdRunes := []rune(cmd)
 	candidates := make([]commandCandidate, 0, len(knownCommands))
@@ -1363,21 +1511,7 @@ func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []c
 		return "", 999
 	}
 
-	sort.Slice(candidates, func(i, j int) bool {
-		// Exact matches must stay first; otherwise, prefer adjacent
-		// transpositions over ordinary fuzzy matches from PATH.
-		if cmp := compareFuzzyCandidateOrder(
-			candidates[i].distance, candidates[j].distance,
-			candidates[i].transposed, candidates[j].transposed,
-			candidates[i].similarity, candidates[j].similarity,
-		); cmp != 0 {
-			return cmp < 0
-		}
-		if candidates[i].priority != candidates[j].priority {
-			return candidates[i].priority > candidates[j].priority
-		}
-		return candidates[i].name < candidates[j].name
-	})
+	sortCommandCandidates(candidates)
 
 	return candidates[0].name, candidates[0].distance
 }
@@ -2117,6 +2251,24 @@ type commandCandidate struct {
 	similarity float64
 	priority   int
 	transposed bool
+}
+
+func sortCommandCandidates(candidates []commandCandidate) {
+	sort.Slice(candidates, func(i, j int) bool {
+		// Exact matches must stay first; otherwise, prefer adjacent
+		// transpositions over ordinary fuzzy matches from PATH.
+		if cmp := compareFuzzyCandidateOrder(
+			candidates[i].distance, candidates[j].distance,
+			candidates[i].transposed, candidates[j].transposed,
+			candidates[i].similarity, candidates[j].similarity,
+		); cmp != 0 {
+			return cmp < 0
+		}
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority > candidates[j].priority
+		}
+		return candidates[i].name < candidates[j].name
+	})
 }
 
 func compareFuzzyCandidateOrder(distanceA, distanceB int, transposedA, transposedB bool, similarityA, similarityB float64) int {

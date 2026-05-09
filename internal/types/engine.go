@@ -13,6 +13,13 @@ type FixResult struct {
 	Debug      *FixDebugInfo // Optional debug trace for the current fix attempt.
 }
 
+// FixCandidate represents one selectable correction candidate.
+type FixCandidate struct {
+	Command string
+	Source  string
+	Message string
+}
+
 // FixDebugInfo carries one `typo fix --debug` trace.
 type FixDebugInfo struct {
 	InputCommand           string

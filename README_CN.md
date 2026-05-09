@@ -113,9 +113,14 @@ cd $HOME/project
 typo fix "gut status && dcoker ps"
 typo learn "gst" "git status"
 typo config list
+typo config set candidates.enabled true
+typo config set candidates.limit 3
 typo rules list
 typo history list
 ```
+
+开启候选选择后，shell 集成会在按两次 `Esc` 时展示最多配置数量的有效修正候选。
+可直接按 `1`-`9` 选择，也可用上下键移动后按回车确认。
 
 完整命令和参数说明请看 [命令参考](docs/reference/commands_CN.md)。
 
