@@ -482,6 +482,28 @@ func TestCmdUpdateRejectsGoStyleLatestVersionBeforeInstallMethod(t *testing.T) {
 	}
 }
 
+func TestCmdUpdateRejectsInvalidReleaseVersionBeforeInstallMethod(t *testing.T) {
+	tmpHome := t.TempDir()
+	typoPath := filepath.Join(tmpHome, "go", "bin", "typo")
+	calls := withUpdateTestHooks(t, typoPath)
+	t.Setenv("GOPATH", filepath.Join(tmpHome, "go"))
+
+	code, _, stderr := captureUpdateOutput(t, func() int {
+		return cmdUpdate([]string{"--version", "abc"})
+	})
+
+	if code == 0 {
+		t.Fatalf("expected invalid release version to fail")
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("invalid release version should not run commands, got %#v", *calls)
+	}
+	if !strings.Contains(stderr, "invalid --version \"abc\"") ||
+		!strings.Contains(stderr, "use '--version <release>' such as '--version 1.1.0'") {
+		t.Fatalf("missing invalid version guidance, got %q", stderr)
+	}
+}
+
 func TestCmdUpdateDryRunDoesNotRunCommand(t *testing.T) {
 	typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
 	calls := withUpdateTestHooks(t, typoPath)

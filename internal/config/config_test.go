@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -145,6 +146,15 @@ func TestDefaultUserConfig(t *testing.T) {
 	}
 	if !cfg.Rules["git"].Enabled {
 		t.Fatal("rules.git.enabled should default to true")
+	}
+}
+
+func TestValidateUserConfigRejectsNonFiniteSimilarityThreshold(t *testing.T) {
+	cfg := DefaultUserConfig()
+	cfg.SimilarityThreshold = math.NaN()
+
+	if err := ValidateUserConfig(cfg); err == nil {
+		t.Fatal("ValidateUserConfig should reject NaN similarity_threshold")
 	}
 }
 

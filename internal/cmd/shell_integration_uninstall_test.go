@@ -178,6 +178,17 @@ _typo_bashexit
 `)
 }
 
+func TestBashIntegrationPreservesExistingExitTrap(t *testing.T) {
+	output := runBashIntegrationScript(t, `
+trap 'printf "previous-exit-trap\n"' EXIT
+source "$1"
+`)
+
+	if !bytes.Contains(output, []byte("previous-exit-trap")) {
+		t.Fatalf("expected previous EXIT trap to run, got:\n%s", output)
+	}
+}
+
 func TestBashIntegrationFallsBackWhenDirectEscBindingIsNotActive(t *testing.T) {
 	runBashIntegrationScript(t, `
 (( BASH_VERSINFO[0] >= 5 )) || exit 0
