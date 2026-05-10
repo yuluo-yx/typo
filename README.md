@@ -140,9 +140,13 @@ Development requires Go 1.25+ and GNU Make.
 
 ```bash
 make setup
+make test-unit
 make test
 make ci
 ```
+
+Use `make test-unit` for fast local Go feedback. Use `make test` and `make ci`
+before submitting changes.
 
 Before submitting changes, make sure the Git pre-commit hooks pass. See [Contributing](CONTRIBUTING.md) for coding standards, test expectations, and commit message format.
 
