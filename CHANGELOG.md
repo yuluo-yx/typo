@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/yuluo-yx/typo/compare/v1.2.0...v1.3.0) (2026-05-10)
+
+
+### Features
+
+* **cmd:** add selectable fix candidates ([#155](https://github.com/yuluo-yx/typo/issues/155)) ([13a839f](https://github.com/yuluo-yx/typo/commit/13a839f197ff74eef545a23cf5be36f125d52c44))
+
+
+### Bug Fixes
+
+* **bash:** use substring matching for key binding detection across bash versions ([9d58869](https://github.com/yuluo-yx/typo/commit/9d58869a0eab26e724d33bf725b93292c564f4ec))
+* optimize existing reliability issues ([#157](https://github.com/yuluo-yx/typo/issues/157)) ([228d93c](https://github.com/yuluo-yx/typo/commit/228d93c84446ceb42fedbd366eee1a69b3508310))
+* reduce update command binary size ([#152](https://github.com/yuluo-yx/typo/issues/152)) ([214b6f5](https://github.com/yuluo-yx/typo/commit/214b6f5c3a18e7dc0c276fb0bac8552bcc9c5c3f))
+* tighten cli validation and bash exit trap ([#158](https://github.com/yuluo-yx/typo/issues/158)) ([771c738](https://github.com/yuluo-yx/typo/commit/771c738d4b8b5ed59b779e1473e082b1fa044f9a))
+
 ## [1.2.0](https://github.com/yuluo-yx/typo/compare/v1.1.0...v1.2.0) (2026-05-05)
 
 
