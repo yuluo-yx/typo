@@ -68,7 +68,8 @@ func cmdFix(args []string) int {
 }
 
 func parseFixOptions(args []string) (fixOptions, bool) {
-	fs := flag.NewFlagSet("fix", flag.ExitOnError)
+	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
 	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
 	noHistory := fs.Bool("no-history", false, "do not persist correction history")
@@ -78,7 +79,9 @@ func parseFixOptions(args []string) (fixOptions, bool) {
 	traceFile := fs.String("trace-file", "", "write structured debug trace to a JSON file")
 	selectMode := fs.Bool("select", false, "select from configured correction candidates")
 
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fixOptions{}, false
+	}
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "Error: command required")

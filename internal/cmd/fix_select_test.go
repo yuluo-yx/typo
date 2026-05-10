@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -63,6 +64,31 @@ func TestSelectFixCandidateDefaultsToFirstOnEnter(t *testing.T) {
 	}
 	if selected.Command != "git status" {
 		t.Fatalf("selected command = %q, want git status", selected.Command)
+	}
+}
+
+func TestSelectedIndexWrapsAtBoundaries(t *testing.T) {
+	tests := []struct {
+		name      string
+		selected  int
+		count     int
+		direction int
+		want      int
+	}{
+		{name: "empty list keeps selection", selected: 2, count: 0, direction: 1, want: 2},
+		{name: "zero direction keeps selection", selected: 1, count: 3, direction: 0, want: 1},
+		{name: "up wraps from first to last", selected: 0, count: 3, direction: -1, want: 2},
+		{name: "up moves to previous", selected: 2, count: 3, direction: -1, want: 1},
+		{name: "down wraps from last to first", selected: 2, count: 3, direction: 1, want: 0},
+		{name: "down moves to next", selected: 0, count: 3, direction: 1, want: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := selectedIndex(tt.selected, tt.count, tt.direction); got != tt.want {
+				t.Fatalf("selectedIndex(%d, %d, %d) = %d, want %d", tt.selected, tt.count, tt.direction, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -141,6 +167,27 @@ func TestSelectFixResultCancel(t *testing.T) {
 
 	if _, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2); ok {
 		t.Fatal("selectFixResult should report cancellation")
+	}
+}
+
+func TestSelectFixResultFallsBackToFirstCandidateWhenTerminalFails(t *testing.T) {
+	eng := engine.NewEngine(
+		engine.WithCommands([]string{"git", "get"}),
+		engine.WithMaxEditDistance(3),
+		engine.WithSimilarityThreshold(0.2),
+	)
+	oldChoose := chooseFixCandidateFromTerminalFunc
+	defer func() { chooseFixCandidateFromTerminalFunc = oldChoose }()
+	chooseFixCandidateFromTerminalFunc = func(candidates []itypes.FixCandidate) (itypes.FixCandidate, bool, error) {
+		return itypes.FixCandidate{}, false, errors.New("terminal unavailable")
+	}
+
+	result, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2)
+	if !ok {
+		t.Fatal("selectFixResult should fall back when terminal selection fails")
+	}
+	if result.Command != "git status" {
+		t.Fatalf("fallback command = %q, want git status", result.Command)
 	}
 }
 

@@ -49,7 +49,9 @@ make setup           # One-time dev environment setup (pre-commit + hooks)
 make build           # Build for current platform
 make build-all       # Cross-compile for all supported platforms
 make install         # Install to $GOPATH/bin
+make test-unit       # Run non-E2E Go tests with race detection
 make test            # Run unit tests with race detection
+make coverage-unit   # Run non-E2E tests and report coverage
 make coverage        # Run tests and report coverage
 make benchmark       # Run benchmarks
 make test-e2e        # Run end-to-end tests locally
@@ -61,6 +63,8 @@ make lint            # Run spelling and Markdown lint checks
 make ci              # CI-aligned: format check, Go lint, spelling, tests
 ```
 
+Use `make test-unit` for fast local feedback while editing Go code. Run
+`make test` before handing off changes because it also covers the E2E package.
 Run `make ci` before pushing any changes. This is the explicit local marker for
 the non-E2E checks that GitHub Actions runs through the repository Makefile.
 

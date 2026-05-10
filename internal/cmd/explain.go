@@ -13,12 +13,15 @@ import (
 
 func cmdExplain(args []string) int {
 	startedAt := time.Now()
-	fs := flag.NewFlagSet("explain", flag.ExitOnError)
+	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
 	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
 	aliasContextFile := fs.String("alias-context", "", "file containing shell correction context")
 
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 1
+	}
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "Error: command required")

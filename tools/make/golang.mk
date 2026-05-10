@@ -6,6 +6,7 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 win
 CMD_PACKAGE := github.com/yuluo-yx/typo/internal/cmd
 GO_BUILD_FLAGS := -trimpath -buildvcs=false
 LDFLAGS := -s -w -X $(CMD_PACKAGE).version=$(VERSION) -X $(CMD_PACKAGE).commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none") -X $(CMD_PACKAGE).date=$(shell date -u +%Y-%m-%d 2>/dev/null || echo "unknown")
+UNIT_PACKAGES := $(shell $(GO) list ./... | grep -v '/e2e$$' | grep -v '/benchmarks$$')
 
 .PHONY: build
 build: ## Build the binary for the current platform
@@ -99,6 +100,11 @@ test: ## Run project test
 	@$(LOG_TARGET)
 	$(GO) test ./... -v -race
 
+.PHONY: test-unit
+test-unit: ## Run non-E2E Go tests with race detection
+	@$(LOG_TARGET)
+	$(GO) test $(UNIT_PACKAGES) -v -race
+
 .PHONY: ci
 ci: ## Run CI-aligned checks for formatting, linting, spelling, and tests
 ci: ci-tools fmt-check lint-go codespell-check test
@@ -119,6 +125,12 @@ clean: ## Clean build artifacts
 coverage: ## Run tests with coverage
 	@$(LOG_TARGET)
 	$(GO) test ./... -race -coverprofile=coverage.out -covermode=atomic
+	$(GO) tool cover -func=coverage.out | tail -1
+
+.PHONY: coverage-unit
+coverage-unit: ## Run non-E2E tests with coverage
+	@$(LOG_TARGET)
+	$(GO) test $(UNIT_PACKAGES) -race -coverprofile=coverage.out -covermode=atomic
 	$(GO) tool cover -func=coverage.out | tail -1
 
 .PHONY: coverage-check

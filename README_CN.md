@@ -140,9 +140,13 @@ typo history list
 
 ```bash
 make setup
+make test-unit
 make test
 make ci
 ```
+
+日常修改 Go 代码时可先运行 `make test-unit` 获取快速反馈；提交前仍需运行
+`make test` 和 `make ci`。
 
 提交变更前请确保 Git precommit 通过。代码风格、测试要求和提交信息格式请看 [贡献指南](CONTRIBUTING.md)。
 
