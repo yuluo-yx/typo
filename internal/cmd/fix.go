@@ -20,8 +20,54 @@ var (
 	}
 )
 
+type fixOptions struct {
+	command          string
+	stderrFile       string
+	exitCode         int
+	noHistory        bool
+	aliasContextFile string
+	debugMode        fixDebugMode
+	traceFile        string
+	selectMode       bool
+}
+
 func cmdFix(args []string) int {
 	startedAt := time.Now()
+	opts, ok := parseFixOptions(args)
+	if !ok {
+		return 1
+	}
+
+	stderr := readFixStderr(opts.stderrFile)
+	cfg := config.Load()
+	eng := createEngine(cfg)
+	if opts.debugMode.enabled() || opts.traceFile != "" {
+		eng.EnableDebug()
+	}
+
+	input := itypes.ParserContext{
+		Command:      opts.command,
+		Stderr:       stderr,
+		ExitCode:     opts.exitCode,
+		AliasContext: loadAliasContext(opts.aliasContextFile),
+	}
+
+	result := eng.FixWithContext(input)
+	if opts.selectMode && cfg.User.Candidates.Enabled {
+		selected, ok := selectFixResult(eng, input, cfg.User.Candidates.Limit)
+		if !ok {
+			return 1
+		}
+		result = selected
+	}
+
+	if result.Fixed {
+		return finishFixedCommand(startedAt, cfg, eng, opts, result)
+	}
+	return finishUnfixedCommand(startedAt, cfg, opts, result)
+}
+
+func parseFixOptions(args []string) (fixOptions, bool) {
 	fs := flag.NewFlagSet("fix", flag.ExitOnError)
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
 	exitCode := fs.Int("exit-code", -1, "exit code from previous command")
@@ -30,66 +76,100 @@ func cmdFix(args []string) int {
 	debugMode := fixDebugModeOff
 	fs.Var(&debugMode, "debug", "print debug trace to stderr; use --debug=json for structured output")
 	traceFile := fs.String("trace-file", "", "write structured debug trace to a JSON file")
+	selectMode := fs.Bool("select", false, "select from configured correction candidates")
 
 	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "Error: command required")
-		return 1
+		return fixOptions{}, false
+	}
+	if *selectMode && (debugMode.enabled() || *traceFile != "") {
+		fmt.Fprintln(os.Stderr, "Error: --select cannot be combined with --debug or --trace-file")
+		return fixOptions{}, false
 	}
 
-	cmd := strings.Join(fs.Args(), " ")
-	stderr := ""
+	return fixOptions{
+		command:          strings.Join(fs.Args(), " "),
+		stderrFile:       *stderrFile,
+		exitCode:         *exitCode,
+		noHistory:        *noHistory,
+		aliasContextFile: *aliasContextFile,
+		debugMode:        debugMode,
+		traceFile:        *traceFile,
+		selectMode:       *selectMode,
+	}, true
+}
 
-	if *stderrFile != "" {
-		data, err := os.ReadFile(*stderrFile)
-		if err == nil {
-			stderr = string(data)
-		}
+func readFixStderr(stderrFile string) string {
+	if stderrFile == "" {
+		return ""
 	}
-
-	cfg := config.Load()
-	eng := createEngine(cfg)
-	if debugMode.enabled() || *traceFile != "" {
-		eng.EnableDebug()
+	data, err := os.ReadFile(stderrFile)
+	if err != nil {
+		return ""
 	}
+	return string(data)
+}
 
-	result := eng.FixWithContext(itypes.ParserContext{
-		Command:      cmd,
-		Stderr:       stderr,
-		ExitCode:     *exitCode,
-		AliasContext: loadAliasContext(*aliasContextFile),
-	})
-
-	if result.Fixed {
-		autoLearnDebug := skippedAutoLearnDebugInfo(cfg.User.History.Enabled, *noHistory, cmd, result)
-		if cfg.User.History.Enabled && !*noHistory && shouldRecordHistory(cmd, result) {
-			if err := eng.RecordHistory(cmd, result.Command); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				return 1
-			}
-			autoLearnDebug = runAutoLearnWithinTimeout(eng, cmd, result.Command)
-		}
-		attachAutoLearnDebug(&result, autoLearnDebug)
-		attachTotalTimingDebug(&result, time.Since(startedAt))
-		fmt.Println(result.Command)
-		if result.Message != "" {
-			fmt.Fprintf(os.Stderr, "typo: %s\n", result.Message)
-		}
-		if err := emitFixDebug(os.Stderr, result, debugMode, *traceFile); err != nil {
+func finishFixedCommand(startedAt time.Time, cfg *config.Config, eng *engine.Engine, opts fixOptions, result itypes.FixResult) int {
+	autoLearnDebug := skippedAutoLearnDebugInfo(cfg.User.History.Enabled, opts.noHistory, opts.command, result)
+	if cfg.User.History.Enabled && !opts.noHistory && shouldRecordHistory(opts.command, result) {
+		if err := eng.RecordHistory(opts.command, result.Command); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
-		return 0
+		autoLearnDebug = runAutoLearnWithinTimeout(eng, opts.command, result.Command)
 	}
-
-	fmt.Fprintln(os.Stderr, "typo: no correction found")
-	attachAutoLearnDebug(&result, skippedAutoLearnDebugInfo(cfg.User.History.Enabled, *noHistory, cmd, result))
+	attachAutoLearnDebug(&result, autoLearnDebug)
 	attachTotalTimingDebug(&result, time.Since(startedAt))
-	if err := emitFixDebug(os.Stderr, result, debugMode, *traceFile); err != nil {
+	fmt.Println(result.Command)
+	if result.Message != "" {
+		fmt.Fprintf(os.Stderr, "typo: %s\n", result.Message)
+	}
+	if err := emitFixDebug(os.Stderr, result, opts.debugMode, opts.traceFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func finishUnfixedCommand(startedAt time.Time, cfg *config.Config, opts fixOptions, result itypes.FixResult) int {
+	fmt.Fprintln(os.Stderr, "typo: no correction found")
+	attachAutoLearnDebug(&result, skippedAutoLearnDebugInfo(cfg.User.History.Enabled, opts.noHistory, opts.command, result))
+	attachTotalTimingDebug(&result, time.Since(startedAt))
+	if err := emitFixDebug(os.Stderr, result, opts.debugMode, opts.traceFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	}
 	return 1
+}
+
+func selectFixResult(eng *engine.Engine, input itypes.ParserContext, limit int) (itypes.FixResult, bool) {
+	candidates := eng.FixCandidatesWithContext(input, limit)
+	switch len(candidates) {
+	case 0:
+		return itypes.FixResult{Fixed: false}, true
+	case 1:
+		return fixResultFromCandidate(candidates[0]), true
+	default:
+		selected, ok, err := chooseFixCandidateFromTerminalFunc(candidates)
+		if err != nil {
+			return fixResultFromCandidate(candidates[0]), true
+		}
+		if !ok {
+			return itypes.FixResult{Fixed: false}, false
+		}
+		return fixResultFromCandidate(selected), true
+	}
+}
+
+func fixResultFromCandidate(candidate itypes.FixCandidate) itypes.FixResult {
+	return itypes.FixResult{
+		Fixed:   true,
+		Command: candidate.Command,
+		Source:  candidate.Source,
+		Message: candidate.Message,
+	}
 }
 
 func shouldRecordHistory(original string, result itypes.FixResult) bool {

@@ -131,6 +131,12 @@ func TestDefaultUserConfig(t *testing.T) {
 	if cfg.Keyboard != "qwerty" {
 		t.Fatalf("Keyboard = %q, want qwerty", cfg.Keyboard)
 	}
+	if cfg.Candidates.Enabled {
+		t.Fatal("candidates.enabled should default to false")
+	}
+	if cfg.Candidates.Limit != 3 {
+		t.Fatalf("Candidates.Limit = %d, want 3", cfg.Candidates.Limit)
+	}
 	if !cfg.History.Enabled {
 		t.Fatal("History.Enabled should default to true")
 	}
@@ -167,6 +173,10 @@ func TestLoad_MergesPartialConfigFile(t *testing.T) {
   "history": {
     "enabled": false
   },
+  "candidates": {
+    "enabled": true,
+    "limit": 5
+  },
   "experimental": {
     "long_option_correction": {
       "enabled": true
@@ -189,6 +199,12 @@ func TestLoad_MergesPartialConfigFile(t *testing.T) {
 	}
 	if !cfg.User.Experimental.LongOptionCorrection.Enabled {
 		t.Fatal("experimental.long-option-correction.enabled should be true")
+	}
+	if !cfg.User.Candidates.Enabled {
+		t.Fatal("candidates.enabled should be true")
+	}
+	if cfg.User.Candidates.Limit != 5 {
+		t.Fatalf("Candidates.Limit = %d, want 5", cfg.User.Candidates.Limit)
 	}
 	if cfg.User.History.Enabled {
 		t.Fatal("History.Enabled should be false")
@@ -274,6 +290,8 @@ func TestConfigSetGetAndReset(t *testing.T) {
 		"max-fix-passes":       "40",
 		"auto-learn-threshold": "5",
 		"keyboard":             "colemak",
+		"candidates.enabled":   "true",
+		"candidates.limit":     "5",
 		"rules.git.enabled":    "false",
 		"history.enabled":      "false",
 		"experimental.long-option-correction.enabled": "true",
@@ -285,10 +303,14 @@ func TestConfigSetGetAndReset(t *testing.T) {
 	assertConfigValue(t, cfg, "max-edit-distance", "3")
 	assertConfigValue(t, cfg, "max-fix-passes", "40")
 	assertConfigValue(t, cfg, "auto-learn-threshold", "5")
+	assertConfigValue(t, cfg, "candidates.enabled", "true")
+	assertConfigValue(t, cfg, "candidates.limit", "5")
 	assertConfigValue(t, cfg, "history.enabled", "false")
 	assertConfigValue(t, cfg, "experimental.long-option-correction.enabled", "true")
 	assertListSetting(t, cfg.ListSettings(), "rules.git.enabled", "false")
 	assertListSetting(t, cfg.ListSettings(), "auto-learn-threshold", "5")
+	assertListSetting(t, cfg.ListSettings(), "candidates.enabled", "true")
+	assertListSetting(t, cfg.ListSettings(), "candidates.limit", "5")
 	assertListSetting(t, cfg.ListSettings(), "experimental.long-option-correction.enabled", "true")
 	assertResetConfig(t, cfg)
 }
@@ -345,6 +367,12 @@ func assertResetConfig(t *testing.T, cfg *Config) {
 	if cfg.User.Experimental.LongOptionCorrection.Enabled {
 		t.Fatal("experimental.long-option-correction.enabled should reset to false")
 	}
+	if cfg.User.Candidates.Enabled {
+		t.Fatal("candidates.enabled should reset to false")
+	}
+	if cfg.User.Candidates.Limit != 3 {
+		t.Fatalf("Candidates.Limit after reset = %d, want 3", cfg.User.Candidates.Limit)
+	}
 	if !cfg.User.Rules["git"].Enabled {
 		t.Fatal("rules.git.enabled should reset to true")
 	}
@@ -392,6 +420,18 @@ func TestUserConfigValidate(t *testing.T) {
 	if err := ValidateUserConfig(cfg); err == nil {
 		t.Fatal("Validate should reject negative auto learn threshold")
 	}
+
+	cfg = DefaultUserConfig()
+	cfg.Candidates.Limit = 0
+	if err := ValidateUserConfig(cfg); err == nil {
+		t.Fatal("Validate should reject zero candidates limit")
+	}
+
+	cfg = DefaultUserConfig()
+	cfg.Candidates.Limit = 11
+	if err := ValidateUserConfig(cfg); err == nil {
+		t.Fatal("Validate should reject candidates limit above maximum")
+	}
 }
 
 func TestConfigGetAndSetErrors(t *testing.T) {
@@ -412,6 +452,10 @@ func TestConfigGetAndSetErrors(t *testing.T) {
 		{key: "max-edit-distance", value: "abc"},
 		{key: "max-fix-passes", value: "abc"},
 		{key: "auto-learn-threshold", value: "abc"},
+		{key: "candidates.enabled", value: "maybe"},
+		{key: "candidates.limit", value: "abc"},
+		{key: "candidates.limit", value: "0"},
+		{key: "candidates.limit", value: "11"},
 		{key: "history.enabled", value: "maybe"},
 		{key: "experimental.long-option-correction.enabled", value: "maybe"},
 		{key: "rules.git.enabled", value: "maybe"},

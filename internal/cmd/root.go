@@ -117,6 +117,7 @@ Usage:
   typo fix --exit-code <n> <command>      Fix command with previous exit code
   typo fix --alias-context <file> <command>
                                            Fix command with shell correction context
+  typo fix --select <command>             Select from configured correction candidates
   typo fix --debug <command>              Print fix debug trace to stderr
   typo fix --debug=json <command>         Print structured debug trace to stderr
   typo fix --trace-file <file> <command>  Write structured debug trace to a file
@@ -152,6 +153,8 @@ Examples:
   typo explain "gut stattus"
   typo learn "gut" "git"
   typo config set keyboard dvorak
+  typo config set candidates.enabled true
+  typo config set candidates.limit 3
   typo config set experimental.long-option-correction.enabled true
   typo rules add "mytypo" "mycommand"
   typo rules disable git

@@ -298,12 +298,12 @@ function global:__typo_InvokeFix([string]$command, [bool]$useLastCommand) {
         $cachePath = __typo_EnsureStderrCache
         $hasStderr = (Test-Path -LiteralPath $cachePath) -and ((Get-Item -LiteralPath $cachePath).Length -gt 0)
         if ($hasStderr) {
-            $fixed = & typo fix @aliasArgs --exit-code $lastExitCode -s $cachePath $command 2>$null
+            $fixed = & typo fix --select @aliasArgs --exit-code $lastExitCode -s $cachePath $command 2>$null
         } else {
-            $fixed = & typo fix @aliasArgs --exit-code $lastExitCode $command 2>$null
+            $fixed = & typo fix --select @aliasArgs --exit-code $lastExitCode $command 2>$null
         }
      } else {
-        $fixed = & typo fix @aliasArgs --no-history $command 2>$null
+        $fixed = & typo fix --select @aliasArgs --no-history $command 2>$null
     }
 
     if ($null -eq $fixed) {
@@ -434,7 +434,7 @@ function global:__typo_InvokeAcceptedLine {
 function global:__typo_AcceptLine {
 
     $buffer = __typo_GetBufferState
-    
+
     # add null check.
     if ($null -eq $buffer) {
         [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()

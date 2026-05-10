@@ -8,6 +8,7 @@ type UserConfig struct {
 	AutoLearnThreshold  int                      `json:"auto_learn_threshold"`
 	Keyboard            string                   `json:"keyboard"`
 	History             HistoryConfig            `json:"history"`
+	Candidates          CandidateConfig          `json:"candidates"`
 	Experimental        ExperimentalConfig       `json:"experimental"`
 	Rules               map[string]RuleSetConfig `json:"rules"`
 }
@@ -15,6 +16,12 @@ type UserConfig struct {
 // HistoryConfig controls persistence for correction history.
 type HistoryConfig struct {
 	Enabled bool `json:"enabled"`
+}
+
+// CandidateConfig controls interactive correction candidate selection.
+type CandidateConfig struct {
+	Enabled bool `json:"enabled"`
+	Limit   int  `json:"limit"`
 }
 
 // ExperimentalConfig groups opt-in experimental behavior switches.

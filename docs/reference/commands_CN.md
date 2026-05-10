@@ -20,9 +20,16 @@ typo fix "typo hsitory lsit"
 - `--exit-code <n>`：把上一条命令的退出码作为额外修正上下文。
 - `--no-history`：本次修正不写入历史记录。
 - `--alias-context <file>`：读取 shell 集成采集的修正上下文。
+- `--select`：候选选择开启时，为多条修正候选显示终端菜单。
 - `--debug`：把本次修正链路的调试信息输出到 stderr，不影响 stdout 上的修正命令。
 - `--debug=json`：以带 `schema_version=1` 的结构化 JSON 输出同一份 trace。
 - `--trace-file <file>`：把结构化 JSON trace 写入文件，不改变 stdout。
+
+`--select` 主要由 shell 集成使用。当 `candidates.enabled=true` 且存在至少两条有效候选时，
+Typo 会在终端中打开候选菜单，最多展示 `candidates.limit` 条。可直接按 `1`-`9` 选择，
+也可用上下键移动高亮项后按回车确认；按 `q` 或 Esc 取消。菜单写到终端，stdout 仍只输出
+最终选中的命令，因此 shell buffer 只会被替换成一条命令。没有可交互终端时，Typo 会退回
+最佳候选。
 
 `--alias-context` 主要由 `typo init <shell>` 生成的脚本内部使用。该上下文是
 临时的、仅属于当前 shell 会话；Typo 会先展开 `k=kubectl` 这类别名，再把 `$VAR`
@@ -85,6 +92,8 @@ typo config gen --force
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `candidates.enabled` *（默认：`false`）*
+- `candidates.limit` *（默认：`3`，合法范围：`1..10`；这是最大数量，不是必须凑满的数量）*
 - `experimental.long-option-correction.enabled` *（实验性；默认：`false`）*
 - `rules.<scope>.enabled`
 

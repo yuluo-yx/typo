@@ -160,8 +160,14 @@ Typo 会把本地状态保存在 `~/.typo/`：
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `candidates.enabled`
+- `candidates.limit`
 - `experimental.long-option-correction.enabled` *（实验性；默认：`false`）*
 - `rules.<scope>.enabled`
+
+开启候选选择后，shell 集成会调用 `typo fix --select`。Typo 会把现有最佳修正作为
+第一项，再补充有效的命令距离候选，最多展示 `candidates.limit` 条。该限制是最大值；
+Typo 不会为了凑满菜单而展示低质量候选。
 
 支持的键盘布局：
 

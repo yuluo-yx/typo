@@ -37,9 +37,9 @@ function _typo_fix_command
     end
 
     if test "$use_last_command" -eq 1
-        set fixed (typo fix $alias_args --exit-code "$last_exit_code" "$cmd" 2>/dev/null | string collect)
+        set fixed (typo fix --select $alias_args --exit-code "$last_exit_code" "$cmd" 2>/dev/null | string collect)
     else
-        set fixed (typo fix $alias_args --no-history "$cmd" 2>/dev/null | string collect)
+        set fixed (typo fix --select $alias_args --no-history "$cmd" 2>/dev/null | string collect)
     end
 
     if test -n "$fixed"; and test "$fixed" != "$cmd"

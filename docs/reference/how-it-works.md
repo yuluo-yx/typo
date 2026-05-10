@@ -175,8 +175,15 @@ The default configuration currently exposes:
 - `auto-learn-threshold`
 - `keyboard`
 - `history.enabled`
+- `candidates.enabled`
+- `candidates.limit`
 - `experimental.long-option-correction.enabled` *(Experimental; default: `false`)*
 - `rules.<scope>.enabled`
+
+When candidate selection is enabled, shell integrations call `typo fix --select`.
+Typo keeps the existing best correction as the first candidate, then adds valid
+command-distance alternatives up to `candidates.limit`. The limit is a maximum;
+Typo does not pad the menu with low-quality candidates.
 
 Supported keyboard layouts:
 

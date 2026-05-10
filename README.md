@@ -112,9 +112,15 @@ Use the CLI directly when you want explicit output or custom rules:
 typo fix "gut status && dcoker ps"
 typo learn "gst" "git status"
 typo config list
+typo config set candidates.enabled true
+typo config set candidates.limit 3
 typo rules list
 typo history list
 ```
+
+With candidate selection enabled, shell integrations show up to the configured
+number of valid correction candidates after `Esc` `Esc`. Choose with `1`-`9`, or
+move with Up/Down and press Enter.
 
 See [Command Reference](docs/reference/commands.md) for all subcommands and flags.
 

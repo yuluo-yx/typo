@@ -1835,6 +1835,72 @@ func TestEngineMaxFixPasses(t *testing.T) {
 	}
 }
 
+func TestEngineFixCandidatesWithContextReturnsRankedCommandChoices(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "get", "gti-tool", "go"}),
+		WithMaxEditDistance(4),
+		WithSimilarityThreshold(0.2),
+	)
+
+	candidates := eng.FixCandidatesWithContext(itypes.ParserContext{Command: "gti status"}, 3)
+	if len(candidates) != 3 {
+		t.Fatalf("FixCandidatesWithContext() returned %d candidates, want 3: %+v", len(candidates), candidates)
+	}
+	if candidates[0].Command != "git status" {
+		t.Fatalf("first candidate = %q, want git status", candidates[0].Command)
+	}
+	seen := map[string]bool{}
+	for _, candidate := range candidates {
+		if candidate.Command == "gti status" {
+			t.Fatalf("candidate should not equal original command: %+v", candidate)
+		}
+		if seen[candidate.Command] {
+			t.Fatalf("duplicate candidate %q in %+v", candidate.Command, candidates)
+		}
+		seen[candidate.Command] = true
+	}
+}
+
+func TestEngineFixCandidatesWithContextPreservesShellCommandShape(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "get"}),
+		WithMaxEditDistance(3),
+		WithSimilarityThreshold(0.2),
+	)
+
+	candidates := eng.FixCandidatesWithContext(itypes.ParserContext{Command: `echo ok && gti commit -m "a   b"`}, 2)
+	if len(candidates) != 2 {
+		t.Fatalf("FixCandidatesWithContext() returned %d candidates, want 2: %+v", len(candidates), candidates)
+	}
+	if candidates[0].Command != `echo ok && git commit -m "a   b"` {
+		t.Fatalf("first candidate = %q, want shell-preserving git replacement", candidates[0].Command)
+	}
+	if candidates[1].Command != `echo ok && get commit -m "a   b"` {
+		t.Fatalf("second candidate = %q, want shell-preserving get replacement", candidates[1].Command)
+	}
+}
+
+func TestEngineFixCandidatesWithContextHonorsLimitAndNoMatch(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "get", "go"}),
+		WithMaxEditDistance(3),
+		WithSimilarityThreshold(0.2),
+	)
+
+	if candidates := eng.FixCandidatesWithContext(itypes.ParserContext{Command: "gti status"}, 1); len(candidates) != 1 {
+		t.Fatalf("FixCandidatesWithContext(limit=1) returned %+v, want one candidate", candidates)
+	}
+
+	strict := NewEngine(
+		WithCommands([]string{"git"}),
+		WithMaxEditDistance(1),
+		WithSimilarityThreshold(0.95),
+	)
+	if candidates := strict.FixCandidatesWithContext(itypes.ParserContext{Command: "zzzz"}, 3); len(candidates) != 0 {
+		t.Fatalf("FixCandidatesWithContext(no match) returned %+v, want empty", candidates)
+	}
+}
+
 func TestEngineOptionsAndDisabledCommands(t *testing.T) {
 	eng := NewEngine(
 		WithSimilarityThreshold(0.8),

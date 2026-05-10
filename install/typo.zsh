@@ -40,13 +40,13 @@ _typo_fix_command() {
     fi
 
     if [[ "$use_last_command" -eq 1 && -f "$stderr_file" && -s "$stderr_file" ]]; then
-        fixed=$(typo fix "${alias_args[@]}" --exit-code "$last_exit_code" -s "$stderr_file" "$cmd" 2>/dev/null)
+        fixed=$(typo fix --select "${alias_args[@]}" --exit-code "$last_exit_code" -s "$stderr_file" "$cmd" 2>/dev/null)
     elif [[ "$use_last_command" -eq 1 ]]; then
-        fixed=$(typo fix "${alias_args[@]}" --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
+        fixed=$(typo fix --select "${alias_args[@]}" --exit-code "$last_exit_code" "$cmd" 2>/dev/null)
     else
         # Preview fixes for the current buffer should not pollute history.
         # Only fixes applied after a failed command should be persisted.
-        fixed=$(typo fix "${alias_args[@]}" --no-history "$cmd" 2>/dev/null)
+        fixed=$(typo fix --select "${alias_args[@]}" --no-history "$cmd" 2>/dev/null)
     fi
 
     if [[ -n "$fixed" && "$fixed" != "$cmd" ]]; then
