@@ -207,6 +207,50 @@ func TestExplainCommandOutput(t *testing.T) {
 	}
 }
 
+func TestFixAndExplainFlagErrorsReturnThroughRun(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantCode   int
+		wantStderr string
+	}{
+		{
+			name:       "fix bad flag",
+			args:       []string{"typo", "fix", "--bogus"},
+			wantCode:   1,
+			wantStderr: "flag provided but not defined",
+		},
+		{
+			name:       "explain bad flag",
+			args:       []string{"typo", "explain", "--bogus"},
+			wantCode:   1,
+			wantStderr: "flag provided but not defined",
+		},
+		{
+			name:     "fix help",
+			args:     []string{"typo", "fix", "--help"},
+			wantCode: 0,
+		},
+		{
+			name:     "explain help",
+			args:     []string{"typo", "explain", "--help"},
+			wantCode: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, _, stderr := runCLI(t, tt.args)
+			if code != tt.wantCode {
+				t.Fatalf("Run() code = %d, want %d; stderr=%q", code, tt.wantCode, stderr)
+			}
+			if tt.wantStderr != "" && !strings.Contains(stderr, tt.wantStderr) {
+				t.Fatalf("stderr missing %q: %q", tt.wantStderr, stderr)
+			}
+		})
+	}
+}
+
 func TestFixCommand(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()

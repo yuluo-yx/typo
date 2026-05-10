@@ -384,7 +384,30 @@ func normalizeUpdateTarget(target string) (updateMode, string, error) {
 	if strings.HasPrefix(target, "@") {
 		return updateModeMain, "", fmt.Errorf("unsupported --version %q; use 'typo update' for main, or '--version <release>' such as '--version 1.1.0'", target)
 	}
+	if !isReleaseVersionSelector(target) {
+		return updateModeMain, "", fmt.Errorf("invalid --version %q; use '--version <release>' such as '--version 1.1.0'", target)
+	}
 	return updateModeRelease, normalizeVersionTag(target), nil
+}
+
+func isReleaseVersionSelector(target string) bool {
+	target = trimVersionPrefix(target)
+	if target == "" {
+		return false
+	}
+
+	parts := strings.Split(target, ".")
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func normalizeVersionTag(version string) string {

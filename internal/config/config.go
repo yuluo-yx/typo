@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -411,7 +412,10 @@ func applyRuleScopeValue(next *itypes.UserConfig, key, value string) error {
 
 // ValidateUserConfig checks whether the user config matches allowed ranges and known enums.
 func ValidateUserConfig(u itypes.UserConfig) error {
-	if u.SimilarityThreshold < minSimilarityThreshold || u.SimilarityThreshold > maxSimilarityThreshold {
+	if math.IsNaN(u.SimilarityThreshold) ||
+		math.IsInf(u.SimilarityThreshold, 0) ||
+		u.SimilarityThreshold < minSimilarityThreshold ||
+		u.SimilarityThreshold > maxSimilarityThreshold {
 		return fmt.Errorf("similarity_threshold must be between %.1f and %.1f", minSimilarityThreshold, maxSimilarityThreshold)
 	}
 	if u.MaxEditDistance < minMaxEditDistance {

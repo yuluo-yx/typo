@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -33,8 +34,12 @@ type fixOptions struct {
 
 func cmdFix(args []string) int {
 	startedAt := time.Now()
-	opts, ok := parseFixOptions(args)
-	if !ok {
+	opts, err := parseFixOptions(args)
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
 
@@ -67,7 +72,7 @@ func cmdFix(args []string) int {
 	return finishUnfixedCommand(startedAt, cfg, opts, result)
 }
 
-func parseFixOptions(args []string) (fixOptions, bool) {
+func parseFixOptions(args []string) (fixOptions, error) {
 	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	stderrFile := fs.String("s", "", "file containing stderr from previous command")
@@ -80,16 +85,14 @@ func parseFixOptions(args []string) (fixOptions, bool) {
 	selectMode := fs.Bool("select", false, "select from configured correction candidates")
 
 	if err := fs.Parse(args); err != nil {
-		return fixOptions{}, false
+		return fixOptions{}, err
 	}
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "Error: command required")
-		return fixOptions{}, false
+		return fixOptions{}, fmt.Errorf("command required")
 	}
 	if *selectMode && (debugMode.enabled() || *traceFile != "") {
-		fmt.Fprintln(os.Stderr, "Error: --select cannot be combined with --debug or --trace-file")
-		return fixOptions{}, false
+		return fixOptions{}, fmt.Errorf("--select cannot be combined with --debug or --trace-file")
 	}
 
 	return fixOptions{
@@ -101,7 +104,7 @@ func parseFixOptions(args []string) (fixOptions, bool) {
 		debugMode:        debugMode,
 		traceFile:        *traceFile,
 		selectMode:       *selectMode,
-	}, true
+	}, nil
 }
 
 func readFixStderr(stderrFile string) string {

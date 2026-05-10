@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -20,6 +21,10 @@ func cmdExplain(args []string) int {
 	aliasContextFile := fs.String("alias-context", "", "file containing shell correction context")
 
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
 

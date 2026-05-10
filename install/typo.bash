@@ -341,6 +341,14 @@ _typo_bashexit() {
     unset _TYPO_STDERR_FIFO
 }
 
+_typo_bash_exit_trap() {
+    _typo_bashexit
+
+    if [[ -n "${_TYPO_PREV_EXIT_TRAP:-}" ]]; then
+        eval -- "$_TYPO_PREV_EXIT_TRAP"
+    fi
+}
+
 _typo_debug_trap() {
     # Guard against recursive DEBUG trap execution.
     if [[ "${_TYPO_DEBUG_ACTIVE:-0}" -eq 1 ]]; then
@@ -394,15 +402,16 @@ _typo_install_exit_hook() {
     local current_exit_trap
 
     current_exit_trap=$(trap -p EXIT)
-    if [[ "$current_exit_trap" == *"_typo_bashexit"* ]]; then
+    if [[ "$current_exit_trap" == *"_typo_bashexit"* || "$current_exit_trap" == *"_typo_bash_exit_trap"* ]]; then
         return
     fi
 
+    _TYPO_PREV_EXIT_TRAP=""
     if [[ "$current_exit_trap" =~ ^trap\ --\ \'(.*)\'\ EXIT$ ]]; then
-        trap "_typo_bashexit; ${BASH_REMATCH[1]}" EXIT
-    else
-        trap '_typo_bashexit' EXIT
+        _TYPO_PREV_EXIT_TRAP="${BASH_REMATCH[1]}"
     fi
+
+    trap '_typo_bash_exit_trap' EXIT
 }
 
 _typo_install_fix_binding() {
