@@ -23,7 +23,7 @@ jobs:
         run: go install golang.org/x/perf/cmd/benchstat@latest
 
       - name: Restore baseline
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: baseline.txt
           key: benchmark-baseline-${{ github.run_id }}
@@ -70,14 +70,14 @@ jobs:
         run: cp current.txt baseline.txt
 
       - name: Save baseline
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: baseline.txt
           key: benchmark-baseline-${{ github.run_id }}
 
       - name: Open regression issue
         if: steps.compare.outputs.regression == 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
         with:
           script: |
             const fs = require('fs');
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: benchmark-results
           path: |

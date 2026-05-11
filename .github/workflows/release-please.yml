@@ -16,7 +16,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v4.4.0 (pin SHA to avoid supply chain attacks))
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v4.4.0 (pinned SHA)
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -39,7 +39,10 @@ jobs:
         run: |
           TAG="${{ needs.release-please.outputs.tag_name }}"
           test -n "$TAG"
-          echo "VERSION=${TAG#v}" >> $GITHUB_OUTPUT
+          echo "VERSION=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Run release gate checks
+        run: make ci
 
       - name: Build all platforms
         run: make build-all VERSION=${{ steps.version.outputs.VERSION }}
@@ -84,7 +87,7 @@ jobs:
           done
 
       - name: Upload release artifacts
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2.6.1 (pin SHA to avoid supply chain attacks)
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2.6.1 (pinned SHA)
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           fail_on_unmatched_files: true

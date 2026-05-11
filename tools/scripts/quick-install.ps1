@@ -174,11 +174,11 @@ function Download-File {
     Invoke-WebRequest -Uri $Uri -OutFile $OutFile | Out-Null
 }
 
-function Try-Download-File {
+function Try-Download-ChecksumFile {
     param(
         [string]$Uri,
         [string]$OutFile,
-        [string]$WarningMessage
+        [string]$Tag
     )
 
     try {
@@ -189,8 +189,17 @@ function Try-Download-File {
             Remove-Item -Path $OutFile -Force -ErrorAction SilentlyContinue
         }
 
-        Write-Warning "$WarningMessage Error: $($_.Exception.Message)"
-        return $false
+        $statusCode = $null
+        if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+
+        if ($statusCode -eq 404) {
+            Write-Warning "checksums.txt is not available for $Tag. Checksum verification will be skipped. Error: $($_.Exception.Message)"
+            return $false
+        }
+
+        throw "Unable to download checksums.txt for $Tag. Refusing to install an unverified binary because the checksum manifest download failed. Error: $($_.Exception.Message)"
     }
 }
 
@@ -370,10 +379,10 @@ function Invoke-TypoQuickInstall {
         Download-File -Uri $binaryUrl -OutFile $binaryPath
 
         Write-Host "Downloading checksums.txt from $checksumsUrl"
-        $hasChecksums = Try-Download-File `
+        $hasChecksums = Try-Download-ChecksumFile `
             -Uri $checksumsUrl `
             -OutFile $checksumsPath `
-            -WarningMessage "Unable to download checksums.txt for $tag. Checksum verification will be skipped."
+            -Tag $tag
 
         if ($hasChecksums) {
             $expectedHash = Get-ExpectedChecksum -ChecksumsFile $checksumsPath -AssetName $assetName

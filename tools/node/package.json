@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "devDependencies": {
+    "markdownlint-cli": "latest"
+  }
+}

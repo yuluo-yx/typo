@@ -30,16 +30,8 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --skip=.git,.idea
+          - --skip=.git,.idea,.github/CONTRIBUTORS.svg,tools/node/node_modules
           - --ignore-words=./tools/linter/codespell/.codespell.ignorewords
-
-  # ── Markdown linting (Docker-based, no local Node.js requirement) ─
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.48.0
-    hooks:
-      - id: markdownlint-docker
-        args:
-          - --config=./tools/linter/markdownlint/markdown_lint_config.yml
 
   # ── Secret / credential detection ────────────────────────────────
   - repo: https://github.com/gitleaks/gitleaks
@@ -57,10 +49,17 @@ repos:
         pass_filenames: false
         files: (\.go|go\.mod|go\.sum)$
 
+      - id: markdownlint
+        name: markdownlint
+        entry: bash -c 'make markdown-lint'
+        language: system
+        pass_filenames: false
+        files: \.(md|markdown)$
+
       - id: govulncheck
         name: govulncheck
         entry: govulncheck ./...
         language: golang
-        additional_dependencies: ["golang.org/x/vuln/cmd/govulncheck@latest"]
+        additional_dependencies: ["golang.org/x/vuln/cmd/govulncheck@v1.3.0"]
         pass_filenames: false
         files: (\.go|go\.mod|go\.sum)$

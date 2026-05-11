@@ -217,7 +217,7 @@ func TestAutoLearnNonPromotionReasons(t *testing.T) {
 
 	t.Run("context fallback and empty pair", func(t *testing.T) {
 		eng := NewEngine(WithAutoLearnThreshold(1))
-		ctx := context.TODO()
+		ctx := context.Background()
 		if autoLearnContext(ctx) != ctx {
 			t.Fatalf("existing context should be preserved")
 		}

@@ -5,7 +5,6 @@ Thank you for your interest in contributing to Typo! This document outlines the 
 ## Prerequisites
 
 - [Go 1.25+](https://golang.org/dl/)
-- [pre-commit](https://pre-commit.com/#install)
 - [Docker](https://docs.docker.com/get-docker/) (optional, for end-to-end tests)
 - [GNU Make](https://www.gnu.org/software/make/)
 
@@ -17,17 +16,19 @@ After cloning the repository, run the one-time setup:
 make setup
 ```
 
-This installs `pre-commit` (if not already present) and configures Git to use
-the project's hook directory. From this point on, every `git commit` will
-automatically run linting, formatting, spell checking, and security scans. The
-pre-commit framework downloads and caches the correct version of every tool for
-you -- no need to install `golangci-lint`, `codespell`, or `markdownlint`
-manually.
+This creates the project-local Python virtual environment in `.venv/`, installs
+the pinned `pre-commit` there, and configures Git to use the project's hook
+directory. From this point on, every `git commit` will automatically run
+linting, formatting, spell checking, and security scans. The pre-commit
+framework downloads and caches the correct version of every hook-managed tool
+for you. Make targets install project-local Python and Node.js tools when
+needed; no Python or Node.js lint tool is installed into the system or user
+environment.
 
 To run all hooks against the full repository at any time:
 
 ```bash
-pre-commit run --all-files
+.venv/bin/pre-commit run --all-files
 ```
 
 > **Behind a firewall or proxy?** Pre-commit downloads hooks from GitHub on
@@ -36,7 +37,7 @@ pre-commit run --all-files
 >
 > ```bash
 > export HTTPS_PROXY=http://your-proxy:port
-> pre-commit run --all-files
+> .venv/bin/pre-commit run --all-files
 > ```
 >
 > After the initial download, all subsequent runs use the local cache with no
@@ -56,11 +57,12 @@ make coverage        # Run tests and report coverage
 make benchmark       # Run benchmarks
 make test-e2e        # Run end-to-end tests locally
 make test-e2e-docker # Run end-to-end tests in Docker
-make fmt             # Format code with gofmt and goimports
+make fmt             # Format code with gofmt
 make fmt-check       # Check Go formatting without modifying files
 make lint-go         # Run golangci-lint (pinned version required)
 make lint            # Run spelling and Markdown lint checks
-make ci              # CI-aligned: format check, Go lint, spelling, tests
+make security-check  # Run govulncheck and gitleaks
+make ci              # CI-aligned: format, lint, spelling, security, tests
 ```
 
 Use `make test-unit` for fast local feedback while editing Go code. Run
@@ -73,6 +75,7 @@ the non-E2E checks that GitHub Actions runs through the repository Makefile.
 - Follow standard [Go conventions](https://go.dev/doc/effective_go) and the [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) guide.
 - Run `make fmt` before committing. The project uses `gofmt` with simplification.
 - All Go lint checks defined in `tools/linter/go/.golangci.yml` must pass. Run `make lint-go` or `make ci` to verify.
+- Dependency vulnerability checks and secret scanning must pass. Run `make security-check` or `make ci` to verify.
 - Keep functions focused and cyclomatic complexity under 15.
 - Export only what needs to be exported.
 - Use `internal/types` only for stable data contracts shared across packages; keep package-owned behavior, storage, validation, discovery, and lifecycle details in their owning packages.

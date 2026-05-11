@@ -230,6 +230,22 @@ func TestWindowsQuickInstallFailsOnChecksumMismatch(t *testing.T) {
 	)
 }
 
+func TestWindowsQuickInstallRefusesUnverifiedBinaryOnChecksumDownloadError(t *testing.T) {
+	scriptPath := filepath.Join(repoRoot(t), "tools", "scripts", "quick-install.ps1")
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("failed to read quick-install.ps1: %v", err)
+	}
+
+	text := string(script)
+	if !strings.Contains(text, "StatusCode") || !strings.Contains(text, "404") {
+		t.Fatal("quick-install.ps1 should inspect checksum download status and only skip verification for 404")
+	}
+	if !strings.Contains(text, "Refusing to install an unverified binary because the checksum manifest download failed") {
+		t.Fatal("quick-install.ps1 should refuse install when checksum manifest download fails for non-404 errors")
+	}
+}
+
 func containsRequest(requests []string, target string) bool {
 	for _, request := range requests {
 		if request == target {

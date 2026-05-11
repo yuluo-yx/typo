@@ -435,7 +435,6 @@ function global:__typo_AcceptLine {
 
     $buffer = __typo_GetBufferState
 
-    # add null check.
     if ($null -eq $buffer) {
         [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
         return
@@ -444,6 +443,16 @@ function global:__typo_AcceptLine {
 
     if (-not [string]::IsNullOrWhiteSpace($line)) {
         $global:TYPO_PS_STATE.LastAcceptedLine = $line
+    }
+
+    if (__typo_ShouldWrapAcceptedLine $line) {
+        $global:TYPO_PS_STATE.PendingOriginalLine = $line
+        __typo_ClearStderrCache | Out-Null
+        $wrapperCommand = "__typo_InvokeAcceptedLine"
+        [Microsoft.PowerShell.PSConsoleReadLine]::Replace(0, $buffer.Line.Length, $wrapperCommand)
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($wrapperCommand.Length)
+        [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
+        return
     }
 
     __typo_ClearStderrCache | Out-Null
