@@ -47,7 +47,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@5e316336eb4f107009e477d4bfbfff13d7250fae # v4
+        uses: github/codeql-action/init@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
         if: github.repository == 'yuluo-yx/typo'
         with:
           languages: ${{ matrix.language }}
@@ -59,7 +59,7 @@ jobs:
         run: make build
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@5e316336eb4f107009e477d4bfbfff13d7250fae # v4
+        uses: github/codeql-action/analyze@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
         if: github.repository == 'yuluo-yx/typo'
         with:
           category: "/language:${{ matrix.language }}"
