@@ -521,6 +521,23 @@ func TestPrintPowerShellIntegration(t *testing.T) {
 	}
 }
 
+func TestPowerShellIntegrationEnterWrapsExternalCommands(t *testing.T) {
+	script, code := printIntegrationScript("powershell")
+	if code != 0 {
+		t.Fatalf("Expected code 0, got %d", code)
+	}
+
+	if !strings.Contains(script, "__typo_ShouldWrapAcceptedLine") {
+		t.Fatal("Expected PowerShell integration to keep external-command wrapping predicate")
+	}
+	if !strings.Contains(script, "$global:TYPO_PS_STATE.PendingOriginalLine = $line") {
+		t.Fatal("Expected PowerShell Enter handler to queue external commands for stderr capture")
+	}
+	if !strings.Contains(script, "__typo_InvokeAcceptedLine") {
+		t.Fatal("Expected PowerShell integration to invoke queued external commands")
+	}
+}
+
 func TestPrintPowerShellIntegrationAddsTrailingNewline(t *testing.T) {
 	output := captureStdout(t, func() {
 		printScript("Write-Host test")

@@ -1,2 +1,4 @@
 .git
 .idea
+.github/CONTRIBUTORS.svg
+tools/node/node_modules

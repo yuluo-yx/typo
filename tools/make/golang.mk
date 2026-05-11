@@ -106,14 +106,28 @@ test-unit: ## Run non-E2E Go tests with race detection
 	$(GO) test $(UNIT_PACKAGES) -v -race
 
 .PHONY: ci
-ci: ## Run CI-aligned checks for formatting, linting, spelling, and tests
-ci: ci-tools fmt-check lint-go codespell-check test
+ci: ## Run CI-aligned checks for formatting, linting, spelling, security, and tests
+ci: ci-tools fmt-check lint-go codespell-check markdown-lint security-check test
 
 .PHONY: lint-go
 lint-go: ## Run golangci-lint
 	@$(LOG_TARGET)
 	@golangci-lint version | grep -Eq "version $(GOLANGCI_LINT_VERSION_NUMBER)([^0-9.]|$$)" || (echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required; run make install-golangcilint"; exit 1)
 	golangci-lint run ./... --config tools/linter/go/.golangci.yml
+
+.PHONY: security-check
+security-check: ## Run local security checks
+security-check: govulncheck gitleaks-check
+
+.PHONY: govulncheck
+govulncheck: ## Run govulncheck against all Go packages
+	@$(LOG_TARGET)
+	govulncheck ./...
+
+.PHONY: gitleaks-check
+gitleaks-check: ## Scan the working tree for committed secrets
+	@$(LOG_TARGET)
+	gitleaks detect --source . --no-banner --redact
 
 .PHONY: clean
 clean: ## Clean build artifacts

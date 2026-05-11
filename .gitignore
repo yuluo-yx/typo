@@ -45,5 +45,6 @@ bin/
 # local caches
 .cache/
 
-# codespell python venv
+# Local tool environments
 .venv/
+tools/node/node_modules/

@@ -18,8 +18,6 @@ func (e *Engine) Fix(cmd, stderr string) itypes.FixResult {
 }
 
 // FixWithContext attempts to fix the given command with parser context.
-
-// FixWithContext attempts to fix the given command with parser context.
 func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 	input.Command = strings.TrimSpace(input.Command)
 	debugInfo := e.beginDebugTrace(input)
@@ -36,8 +34,6 @@ func (e *Engine) FixWithContext(input itypes.ParserContext) itypes.FixResult {
 
 	return e.attachDebug(e.fixWithoutAliasContext(input), debugInfo, startedAt)
 }
-
-// FixCandidatesWithContext returns selectable correction candidates for the input.
 
 // FixCandidatesWithContext returns selectable correction candidates for the input.
 func (e *Engine) FixCandidatesWithContext(input itypes.ParserContext, limit int) []itypes.FixCandidate {

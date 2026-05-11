@@ -45,8 +45,8 @@ Typo is a local command-correction CLI. The current implementation has the follo
 - Permission-related logic only suggests a command prefixed with `sudo`; the user decides whether to run it
 - Subcommand discovery looks up tools from the current `PATH` and may call local tools with `--help` or `help` to build cache data
 - The current GitHub Release workflow publishes a `checksums.txt` file with SHA-256 hashes for all platform binaries; some historical Releases may not include that file
-- The macOS/Linux install script currently downloads release binaries from GitHub over HTTPS, or downloads the `main` branch source and builds locally; it does not currently verify checksums or signatures automatically
-- The Windows quick-install script verifies release checksums when `checksums.txt` is available; if that file is missing for a historical Release, it warns and continues without checksum verification
+- The macOS/Linux install script downloads release binaries from GitHub over HTTPS and verifies them against `checksums.txt` when that file is available; if the manifest download fails for reasons other than a missing historical manifest, the script refuses to install the unverified binary
+- The Windows quick-install script verifies release checksums when `checksums.txt` is available; if that file is missing for a historical Release, it warns and continues without checksum verification, but other manifest download failures stop the install
 
 As a result, the following may be security-relevant:
 
