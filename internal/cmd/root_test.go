@@ -207,6 +207,44 @@ func TestRunInvalidFlagReturnsOne(t *testing.T) {
 	}
 }
 
+func TestPrintUsageIsGroupedByWorkflow(t *testing.T) {
+	output := captureStdout(t, printUsage)
+
+	wantSections := []string{
+		"Usage:",
+		"Common:",
+		"Fix options:",
+		"Personalization:",
+		"Shell integration:",
+		"Maintenance:",
+		"Diagnostics:",
+		"Examples:",
+	}
+	for _, section := range wantSections {
+		if !strings.Contains(output, section) {
+			t.Fatalf("usage output missing section %q:\n%s", section, output)
+		}
+	}
+
+	wantCommands := []string{
+		"typo fix <command>",
+		"typo fix --select <command>",
+		"typo learn <from> <to>",
+		"typo config set <key> <value>",
+		"typo rules disable <scope>",
+		"typo history list",
+		"typo stats [--since <days>] [--top <n>]",
+		"typo init powershell",
+		"typo doctor",
+		"typo update --dry-run",
+	}
+	for _, command := range wantCommands {
+		if !strings.Contains(output, command) {
+			t.Fatalf("usage output missing command %q:\n%s", command, output)
+		}
+	}
+}
+
 func TestDiscoverCommandsWithinTimeout(t *testing.T) {
 	t.Run("returns loader result within budget", func(t *testing.T) {
 		result := discoverCommandsWithinTimeout(func() []string {

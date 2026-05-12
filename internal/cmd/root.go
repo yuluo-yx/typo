@@ -112,41 +112,56 @@ func printUsage() {
 	fmt.Println(`typo - Command auto-correction tool
 
 Usage:
-  typo fix <command>                       Fix a command
-  typo fix -s <file> <command>            Fix command with stderr from file
-  typo fix --exit-code <n> <command>      Fix command with previous exit code
-  typo fix --alias-context <file> <command>
-                                           Fix command with shell correction context
-  typo fix --select <command>             Select from configured correction candidates
-  typo fix --debug <command>              Print fix debug trace to stderr
-  typo fix --debug=json <command>         Print structured debug trace to stderr
-  typo fix --trace-file <file> <command>  Write structured debug trace to a file
-  typo explain <command>                  Explain why Typo chose a correction
-  typo learn <from> <to>                  Learn a correction
-  typo config list                        List current configuration values
-  typo config get <key>                   Show a single configuration value
-  typo config set <key> <value>           Persist a configuration override
-  typo config reset                       Reset configuration to defaults
-  typo config gen [--force]               Generate the default config file
-  typo rules list                         List all rules
-  typo rules add <from> <to>              Add a user rule
-  typo rules remove <from>                Remove a user rule
-  typo rules enable <scope>               Enable a builtin rule scope
-  typo rules disable <scope>              Disable a builtin rule scope
-  typo history list                       List correction history
-  typo history clear                      Clear correction history
-  typo stats [--since <days>] [--top <n>] Analyze accepted correction history
-  typo update                             Build main for script installs; use brew for Homebrew installs
-  typo update --check                     Check update support without installing
-  typo update --version <tag>             Install a Release tag for script installs, e.g. 1.1.0
-  typo update --dry-run                   Simulate without making changes
-  typo init zsh                           Print zsh integration script
-  typo init bash                          Print bash integration script
-  typo init fish                          Print fish integration script
-  typo init powershell                    Print PowerShell integration script
-  typo doctor                             Check configuration status
-  typo uninstall                          Remove local config and show remaining cleanup steps
-  typo version                            Print version
+  typo <command> [options]
+
+Common:
+  typo fix <command>                         Print the best correction
+  typo fix --select <command>                Choose from configured candidates
+  typo explain <command>                     Explain why Typo chose a correction
+  typo doctor                                Check install, shell, and config status
+  typo version                               Print version metadata
+
+Fix options:
+  typo fix -s <file> <command>               Use stderr from the previous command
+  typo fix --exit-code <n> <command>         Use the previous command exit code
+  typo fix --alias-context <file> <command>  Use shell aliases and env context
+  typo fix --no-history <command>            Do not record this correction
+
+Personalization:
+  typo learn <from> <to>                     Teach a personal correction
+  typo rules list                            List builtin and user rules
+  typo rules add <from> <to>                 Add a user rule
+  typo rules remove <from>                   Remove a user rule
+  typo rules enable <scope>                  Enable a builtin rule scope
+  typo rules disable <scope>                 Disable a builtin rule scope
+  typo config list                           List current configuration
+  typo config get <key>                      Show one configuration value
+  typo config set <key> <value>              Persist a configuration override
+  typo config reset                          Reset configuration to defaults
+  typo config gen [--force]                  Write the default config file
+
+History and stats:
+  typo history list                          List correction history
+  typo history clear                         Clear correction history
+  typo stats [--since <days>] [--top <n>]    Analyze accepted corrections
+
+Shell integration:
+  typo init zsh                              Print zsh integration script
+  typo init bash                             Print bash integration script
+  typo init fish                             Print fish integration script
+  typo init powershell                       Print PowerShell integration script
+
+Maintenance:
+  typo update                                Update script installs from main
+  typo update --check                        Check update support
+  typo update --version <tag>                Install a Release tag, e.g. 1.1.0
+  typo update --dry-run                      Simulate update actions
+  typo uninstall                             Remove local config and show cleanup steps
+
+Diagnostics:
+  typo fix --debug <command>                 Print a readable debug trace
+  typo fix --debug=json <command>            Print a structured debug trace
+  typo fix --trace-file <file> <command>     Write structured debug trace JSON
 
 Examples:
   typo fix "gut stattus"
@@ -163,21 +178,19 @@ Examples:
   typo update --check
   eval "$(typo init zsh)"
 
-Experimental:
+Config keys:
+  candidates.enabled                         Enable interactive candidate selection
+  candidates.limit                           Number of candidates to show
   experimental.long-option-correction.enabled
-                                           Enable experimental --long-option typo correction
+                                              Enable experimental --long-option fixes
 
-Zsh Integration:
-  After running 'eval "$(typo init zsh)"', press <Esc><Esc> to fix the current command.
+Shell setup:
+  zsh:        eval "$(typo init zsh)"
+  bash:       eval "$(typo init bash)"
+  fish:       typo init fish | source
+  PowerShell: Invoke-Expression (& typo init powershell)
 
-Bash Integration:
-  After running 'eval "$(typo init bash)"', press <Esc><Esc> to fix the current command.
-
-Fish Integration:
-  Add 'typo init fish | source' to ~/.config/fish/config.fish, then press <Esc><Esc> to fix the current command.
-
-PowerShell Integration:
-  Add 'Invoke-Expression (& typo init powershell)' to $PROFILE.CurrentUserCurrentHost, then press <Esc><Esc> to fix the current command.`)
+  Restart the shell, then press <Esc><Esc> to fix the current command.`)
 }
 
 // disabledCommandsFromConfig extracts disabled commands from config rule scopes.
