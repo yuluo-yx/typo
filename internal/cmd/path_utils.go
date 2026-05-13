@@ -1,4 +1,4 @@
-package utils
+package cmd
 
 import (
 	"os"
@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// SameDir reports whether two paths point to the same directory.
-func SameDir(a, b string) bool {
+func sameDir(a, b string) bool {
 	if a == "" || b == "" {
 		return false
 	}
@@ -20,8 +19,7 @@ func SameDir(a, b string) bool {
 	return cleanA == cleanB
 }
 
-// PathWithinDir reports whether path is inside dir or equals dir.
-func PathWithinDir(path, dir string) bool {
+func pathWithinDir(path, dir string) bool {
 	if path == "" || dir == "" {
 		return false
 	}
@@ -36,10 +34,9 @@ func PathWithinDir(path, dir string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
-// PathContainsDir reports whether a PATH-style list contains dir.
-func PathContainsDir(pathValue, dir string) bool {
+func pathContainsDir(pathValue, dir string) bool {
 	for _, item := range filepath.SplitList(pathValue) {
-		if SameDir(item, dir) {
+		if sameDir(item, dir) {
 			return true
 		}
 	}

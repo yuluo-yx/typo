@@ -206,8 +206,8 @@ func closestEnvVar(name string, envNames []string, cfg distanceMatchConfig) (str
 			name:        envName,
 			distance:    distance,
 			similarity:  SimilarityFromDistance(len(name), len(envName), distance),
-			lengthDelta: utils.Abs(len(name) - len(envName)),
-			transposed:  utils.IsSingleAdjacentTransposition(name, envName),
+			lengthDelta: absInt(len(name) - len(envName)),
+			transposed:  isSingleAdjacentTransposition(name, envName),
 		})
 	}
 

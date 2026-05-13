@@ -2,8 +2,7 @@ package utils
 
 import "math"
 
-// OffsetToIndex converts a parser offset to a string index capped by rawLen.
-func OffsetToIndex(offset uint, rawLen int) int {
+func offsetToIndex(offset uint, rawLen int) int {
 	if offset > uint(math.MaxInt) {
 		return rawLen
 	}

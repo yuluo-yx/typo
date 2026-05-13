@@ -1,4 +1,4 @@
-package utils
+package commands
 
 import "testing"
 
@@ -16,13 +16,13 @@ func TestStringSet(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := StringSet(tt.items)
+			got := stringSet(tt.items)
 			if len(got) != len(tt.want) {
-				t.Fatalf("StringSet(%v) returned %d entries, want %d", tt.items, len(got), len(tt.want))
+				t.Fatalf("stringSet(%v) returned %d entries, want %d", tt.items, len(got), len(tt.want))
 			}
 			for k, v := range tt.want {
 				if got[k] != v {
-					t.Fatalf("StringSet(%v)[%q] = %v, want %v", tt.items, k, got[k], v)
+					t.Fatalf("stringSet(%v)[%q] = %v, want %v", tt.items, k, got[k], v)
 				}
 			}
 		})
