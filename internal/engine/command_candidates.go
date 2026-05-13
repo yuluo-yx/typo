@@ -80,7 +80,7 @@ func (e *Engine) rankedKnownCommandCandidatesFrom(cmd string, knownCommands []co
 			distance:   d,
 			similarity: SimilarityFromDistance(len(cmd), len(known.name), d),
 			priority:   e.commandPriority(known.name),
-			transposed: utils.IsSingleAdjacentTransposition(cmd, known.name),
+			transposed: isSingleAdjacentTransposition(cmd, known.name),
 		})
 	}
 
@@ -105,7 +105,7 @@ func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []c
 			distance:   d,
 			similarity: SimilarityFromDistance(len(cmd), len(known.name), d),
 			priority:   e.commandPriority(known.name),
-			transposed: utils.IsSingleAdjacentTransposition(cmd, known.name),
+			transposed: isSingleAdjacentTransposition(cmd, known.name),
 		})
 	}
 

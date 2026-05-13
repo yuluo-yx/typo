@@ -1,4 +1,4 @@
-package utils
+package cmd
 
 import (
 	"os"
@@ -44,8 +44,8 @@ func TestSameDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SameDir(tt.a, tt.b); got != tt.want {
-				t.Fatalf("SameDir(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
+			if got := sameDir(tt.a, tt.b); got != tt.want {
+				t.Fatalf("sameDir(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
 			}
 		})
 	}
@@ -100,8 +100,8 @@ func TestPathWithinDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := PathWithinDir(tt.path, tt.dir); got != tt.want {
-				t.Fatalf("PathWithinDir(%q, %q) = %v, want %v", tt.path, tt.dir, got, tt.want)
+			if got := pathWithinDir(tt.path, tt.dir); got != tt.want {
+				t.Fatalf("pathWithinDir(%q, %q) = %v, want %v", tt.path, tt.dir, got, tt.want)
 			}
 		})
 	}
@@ -147,8 +147,8 @@ func TestPathContainsDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := PathContainsDir(tt.pathValue, tt.dir); got != tt.want {
-				t.Fatalf("PathContainsDir(%q, %q) = %v, want %v", tt.pathValue, tt.dir, got, tt.want)
+			if got := pathContainsDir(tt.pathValue, tt.dir); got != tt.want {
+				t.Fatalf("pathContainsDir(%q, %q) = %v, want %v", tt.pathValue, tt.dir, got, tt.want)
 			}
 		})
 	}

@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
-	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 type commandTreeTokenCandidate struct {
@@ -227,11 +226,11 @@ func (e *Engine) matchCommandTreeChild(token string, node *itypes.CommandTreeNod
 		return "", nil, false
 	}
 
-	if child, ok := node.Child(token); ok {
+	if child, ok := commandTreeChild(node, token); ok {
 		return token, child, true
 	}
 
-	childTokens := node.ChildTokens()
+	childTokens := commandTreeChildTokens(node)
 	if len(childTokens) == 0 {
 		return "", nil, false
 	}
@@ -239,7 +238,7 @@ func (e *Engine) matchCommandTreeChild(token string, node *itypes.CommandTreeNod
 	matchCfg := e.distanceMatchConfig()
 	best := commandTreeTokenCandidate{distance: 999, similarity: -1}
 	for _, childToken := range childTokens {
-		child, _ := node.Child(childToken)
+		child, _ := commandTreeChild(node, childToken)
 		candidate, ok := newCommandTreeTokenCandidate(token, childToken, child, matchCfg, e.keyboard)
 		if !ok {
 			continue
@@ -267,7 +266,7 @@ func newCommandTreeTokenCandidate(original, candidate string, node *itypes.Comma
 		node:        node,
 		distance:    distance,
 		similarity:  SimilarityFromDistance(len(original), len(candidate), distance),
-		lengthDelta: utils.Abs(len([]rune(original)) - len([]rune(candidate))),
+		lengthDelta: absInt(len([]rune(original)) - len([]rune(candidate))),
 	}, true
 }
 
@@ -293,7 +292,7 @@ func isGoodCommandTreeTokenMatch(original, candidate string, distance int, cfg d
 		return false
 	}
 
-	if utils.IsSingleAdjacentTransposition(original, candidate) {
+	if isSingleAdjacentTransposition(original, candidate) {
 		return true
 	}
 

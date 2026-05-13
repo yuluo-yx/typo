@@ -2,7 +2,7 @@ package utils
 
 import "testing"
 
-func TestOffsetToIndex(t *testing.T) {
+func TestOffsetConversion(t *testing.T) {
 	tests := []struct {
 		name   string
 		offset uint
@@ -31,8 +31,8 @@ func TestOffsetToIndex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := OffsetToIndex(tt.offset, tt.rawLen); got != tt.want {
-				t.Fatalf("OffsetToIndex(%d, %d) = %d, want %d", tt.offset, tt.rawLen, got, tt.want)
+			if got := offsetToIndex(tt.offset, tt.rawLen); got != tt.want {
+				t.Fatalf("offsetToIndex(%d, %d) = %d, want %d", tt.offset, tt.rawLen, got, tt.want)
 			}
 		})
 	}

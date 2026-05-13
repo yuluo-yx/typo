@@ -90,7 +90,7 @@ func TestTreeNodeToCommandTreeNode(t *testing.T) {
 	if node.Alias != "canonical" {
 		t.Fatalf("Expected alias to be preserved, got %q", node.Alias)
 	}
-	child, ok := node.Child("child")
+	child, ok := node.Children["child"]
 	if !ok {
 		t.Fatal("Expected converted child node")
 	}

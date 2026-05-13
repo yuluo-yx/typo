@@ -252,7 +252,7 @@ func (e *Engine) commonTranspositionCandidate(cmd string) string {
 		if candidate == cmdWord || !commands.IsCommonCommand(candidate) {
 			continue
 		}
-		if utils.IsSingleAdjacentTransposition(cmdWord, candidate) {
+		if isSingleAdjacentTransposition(cmdWord, candidate) {
 			return candidate
 		}
 	}
@@ -1024,9 +1024,9 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 		if !isGoodSubcommandMatch(subcmd, known, d, cfg) {
 			continue
 		}
-		lengthDelta := utils.Abs(len(subcmd) - len(known))
+		lengthDelta := absInt(len(subcmd) - len(known))
 		similarity := SimilarityFromDistance(len(subcmd), len(known), d)
-		transposed := utils.IsSingleAdjacentTransposition(subcmd, known)
+		transposed := isSingleAdjacentTransposition(subcmd, known)
 		if d < bestDistance ||
 			(d == bestDistance && transposed && !bestTransposition) ||
 			(d == bestDistance && transposed == bestTransposition && lengthDelta < bestLengthDelta) ||
@@ -1059,7 +1059,7 @@ func isGoodSubcommandMatch(original, candidate string, distance int, cfg distanc
 		return false
 	}
 
-	if utils.IsSingleAdjacentTransposition(original, candidate) {
+	if isSingleAdjacentTransposition(original, candidate) {
 		return true
 	}
 
@@ -1080,7 +1080,7 @@ func isShortPluralTranspositionMatch(original, candidate string) bool {
 		return false
 	}
 
-	return utils.IsSingleAdjacentTransposition(original, string(candidateRunes[:len(candidateRunes)-1]))
+	return isSingleAdjacentTransposition(original, string(candidateRunes[:len(candidateRunes)-1]))
 }
 
 func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {
@@ -1092,7 +1092,7 @@ func isGoodCommandDistanceMatch(original, candidate string, distance int, cfg di
 		return false
 	}
 
-	return utils.IsSingleAdjacentTransposition(original, candidate)
+	return isSingleAdjacentTransposition(original, candidate)
 }
 
 func isMeaningfulFix(original string, result itypes.FixResult) bool {
@@ -1322,7 +1322,7 @@ func isGoodLongOptionMatch(original, candidate string, distance int, cfg distanc
 		return false
 	}
 
-	if utils.IsSingleAdjacentTransposition(original, candidate) {
+	if isSingleAdjacentTransposition(original, candidate) {
 		return cfg.maxEditDistance >= 1
 	}
 
@@ -1341,13 +1341,13 @@ func longOptionHeuristicDistance(original, candidate string) int {
 	if original == candidate {
 		return 0
 	}
-	if utils.IsSingleAdjacentTransposition(original, candidate) {
+	if isSingleAdjacentTransposition(original, candidate) {
 		return 1
 	}
 
 	originalRunes := []rune(original)
 	candidateRunes := []rune(candidate)
-	if utils.Abs(len(originalRunes)-len(candidateRunes)) != 1 {
+	if absInt(len(originalRunes)-len(candidateRunes)) != 1 {
 		return 999
 	}
 
@@ -1368,7 +1368,7 @@ func longOptionHeuristicDistance(original, candidate string) int {
 		if reducedText == shorterText {
 			return 1
 		}
-		if utils.IsSingleAdjacentTransposition(reducedText, shorterText) {
+		if isSingleAdjacentTransposition(reducedText, shorterText) {
 			return 2
 		}
 	}
@@ -1385,7 +1385,7 @@ func isLongBoundaryPreservingMatch(original, candidate string) bool {
 	if len(originalRunes) < 6 || len(candidateRunes) < 6 {
 		return false
 	}
-	if utils.Abs(len(originalRunes)-len(candidateRunes)) > 1 {
+	if absInt(len(originalRunes)-len(candidateRunes)) > 1 {
 		return false
 	}
 

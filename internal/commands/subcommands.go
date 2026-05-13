@@ -112,8 +112,8 @@ func (n *TreeNode) refreshChildTokens() {
 
 	n.LongOptions = normalizeLongOptions(n.LongOptions)
 	n.LongOptionsWithValues = normalizeLongOptions(n.LongOptionsWithValues)
-	n.longOptionSetCache = utils.StringSet(n.LongOptions)
-	n.longOptionWithValueSetCache = utils.StringSet(n.LongOptionsWithValues)
+	n.longOptionSetCache = stringSet(n.LongOptions)
+	n.longOptionWithValueSetCache = stringSet(n.LongOptionsWithValues)
 
 	if len(n.Children) == 0 {
 		n.childTokensCache = nil

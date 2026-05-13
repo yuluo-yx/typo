@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-
-	"github.com/yuluo-yx/typo/internal/utils"
 )
 
 const maxPathDiscoveryWorkers = 16
@@ -161,7 +159,7 @@ func DiscoverCommon() []string {
 	}
 }
 
-var commonCommandSet = utils.StringSet(DiscoverCommon())
+var commonCommandSet = stringSet(DiscoverCommon())
 
 // ShellBuiltins returns a list of shell builtin commands.
 // These commands are built into the shell and not found in PATH.
@@ -180,7 +178,7 @@ func ShellBuiltins() []string {
 	}
 }
 
-var shellBuiltinSet = utils.StringSet(ShellBuiltins())
+var shellBuiltinSet = stringSet(ShellBuiltins())
 
 // Filter filters commands by prefix.
 func Filter(commands []string, prefix string) []string {
