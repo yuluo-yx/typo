@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/yuluo-yx/typo/compare/v1.3.0...v1.4.0) (2026-05-14)
+
+
+### Features
+
+* add config example ([#166](https://github.com/yuluo-yx/typo/issues/166)) ([675c577](https://github.com/yuluo-yx/typo/commit/675c57732dba05508822d091edc031995e9ba3af))
+* **cmd:** reorganize CLI help output ([#162](https://github.com/yuluo-yx/typo/issues/162)) ([e2d5529](https://github.com/yuluo-yx/typo/commit/e2d5529cfbe293fa3009b6a84785830f1065e726))
+
+
+### Bug Fixes
+
+* **cmd:** explain disabled select mode ([#165](https://github.com/yuluo-yx/typo/issues/165)) ([6d8dbbc](https://github.com/yuluo-yx/typo/commit/6d8dbbcd71c0aaf3609a272a491569e97de7b13e))
+
 ## [1.3.0](https://github.com/yuluo-yx/typo/compare/v1.2.0...v1.3.0) (2026-05-10)
 
 
