@@ -64,6 +64,8 @@ func cmdFix(args []string) int {
 			return 1
 		}
 		result = selected
+	} else if opts.selectMode {
+		fmt.Fprintln(os.Stderr, "typo: --select ignored because candidates.enabled=false; run `typo config set candidates.enabled true` to enable the candidate menu")
 	}
 
 	if result.Fixed {
