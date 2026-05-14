@@ -1,0 +1,81 @@
+{
+  // 匹配候选命令时要求的最低相似度，范围为 0.0 到 1.0。
+  "similarity_threshold": 0.6,
+
+  // 单个命令词允许的最大编辑距离，值越大匹配越宽松。
+  "max_edit_distance": 2,
+
+  // 一次修正流程最多执行的轮数，用于防止循环修正。
+  "max_fix_passes": 32,
+
+  // 同一修正被接受多少次后自动学习为用户规则；设为 0 可关闭自动学习。
+  "auto_learn_threshold": 3,
+
+  // 键盘布局会影响相邻按键的编辑距离权重，可选值：qwerty、dvorak、colemak。
+  "keyboard": "qwerty",
+
+  // 是否记录修正历史，用于后续排序和自动学习。
+  "history": {
+    "enabled": true
+  },
+
+  // 是否在交互式修正中展示多个候选项，以及候选项数量上限。
+  "candidates": {
+    "enabled": false,
+    "limit": 3
+  },
+
+  // 实验性功能默认关闭，升级时应按发布说明确认行为变化。
+  "experimental": {
+    // 是否启用长选项修正，例如将 --verison 修正为 --version。
+    "long_option_correction": {
+      "enabled": false
+    }
+  },
+
+  // 内置规则作用域开关；关闭某个作用域后，对应工具的内置纠正规则不再生效。
+  "rules": {
+    "brew": {
+      "enabled": true
+    },
+    "cargo": {
+      "enabled": true
+    },
+    "docker": {
+      "enabled": true
+    },
+    "git": {
+      "enabled": true
+    },
+    "go": {
+      "enabled": true
+    },
+    "helm": {
+      "enabled": true
+    },
+    "java": {
+      "enabled": true
+    },
+    "kubectl": {
+      "enabled": true
+    },
+    "npm": {
+      "enabled": true
+    },
+    "pip": {
+      "enabled": true
+    },
+    "python": {
+      "enabled": true
+    },
+    "system": {
+      "enabled": true
+    },
+    "terraform": {
+      "enabled": true
+    },
+    "yarn": {
+      "enabled": true
+    }
+  }
+}
