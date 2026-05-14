@@ -202,3 +202,21 @@ func TestFixSelectRejectsDebugModes(t *testing.T) {
 		t.Fatalf("expected select/debug error, got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
+
+func TestFixSelectWarnsWhenCandidateSelectionDisabled(t *testing.T) {
+	useTempHome(t)
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "fix", "--select", "gti", "status"})
+	if code != 0 {
+		t.Fatalf("fix --select should still return the best correction: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if strings.TrimSpace(stdout) != "git status" {
+		t.Fatalf("stdout = %q, want git status", stdout)
+	}
+	if !strings.Contains(stderr, "candidates.enabled=false") {
+		t.Fatalf("stderr should explain why --select did not open a menu, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "typo config set candidates.enabled true") {
+		t.Fatalf("stderr should include the enabling command, got %q", stderr)
+	}
+}

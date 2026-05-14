@@ -33,6 +33,11 @@ menu is written to the terminal; stdout still contains only the selected command
 so shell buffers are updated with one command. If no interactive terminal is
 available, Typo falls back to the best candidate.
 
+If `typo fix --select ...` prints only the best correction and no menu appears,
+check `typo config get candidates.enabled`. When it is `false`, Typo writes a
+stderr hint and keeps stdout limited to the best correction. Enable the menu with
+`typo config set candidates.enabled true`.
+
 `--alias-context` is mainly used by `typo init <shell>` scripts. The context is
 temporary and session-local; it lets Typo expand aliases such as `k=kubectl`,
 match `$VAR` tokens against live environment variable names such as `$HOME`, and
