@@ -1,21 +1,21 @@
 class Typo < Formula
   desc "Command auto-correction tool"
   homepage "https://github.com/yuluo-yx/typo"
-  version "1.3.0"
+  version "1.4.0"
   license "MIT"
 
   if OS.mac? && Hardware::CPU.arm?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.3.0/typo-darwin-arm64", using: :nounzip
-    sha256 "574e9490cc4017e34eff19af1888003a858834f41c2f91f86ea90bbddcd96f60"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.4.0/typo-darwin-arm64", using: :nounzip
+    sha256 "1680776f7e0ca745a3fb86083f32b7397785c546009c14ae8bad4a114ea6cf1e"
   elsif OS.mac?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.3.0/typo-darwin-amd64", using: :nounzip
-    sha256 "27a43933992723bb7a5275b24462cad6eb4450350b829590234a3ce31ce68dca"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.4.0/typo-darwin-amd64", using: :nounzip
+    sha256 "e2c91d587dcdf1d5d65cd1d5eee3cfb0e3df6977fbf3107d919bc287847cf1d3"
   elsif OS.linux? && Hardware::CPU.arm?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.3.0/typo-linux-arm64", using: :nounzip
-    sha256 "4c72ce28a89c659e22b298e554ddb19d52ffeec5c05eb2d5d5410da47033a814"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.4.0/typo-linux-arm64", using: :nounzip
+    sha256 "b866e894612a7d02229262ba3ce8f5abdc448eb22d058d3188dd830ca59dd817"
   elsif OS.linux?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.3.0/typo-linux-amd64", using: :nounzip
-    sha256 "29a684471e88acb137276c7340eef60952c97184ec648b27519dfed2f90c050e"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.4.0/typo-linux-amd64", using: :nounzip
+    sha256 "218e82a628b91c29ac9799b577cf979999a81d46c40b19b93de45e63796d3088"
   end
 
   def install
