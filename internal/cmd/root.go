@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -233,23 +234,27 @@ func DisabledCommandsForRuleScope(scope string) ([]string, bool) {
 }
 
 // discoverCommandsWithinTimeout discovers commands with a timeout.
-func discoverCommandsWithinTimeout(loader func() []string, timeout time.Duration) []string {
+// The loader receives a context so it can cancel work early when the timeout fires.
+func discoverCommandsWithinTimeout(loader func(ctx context.Context) []string, timeout time.Duration) []string {
 	if loader == nil {
 		return nil
 	}
 	if timeout <= 0 {
-		return loader()
+		return loader(context.Background())
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	resultCh := make(chan []string, 1)
 	go func() {
-		resultCh <- loader()
+		resultCh <- loader(ctx)
 	}()
 
 	select {
 	case result := <-resultCh:
 		return result
-	case <-time.After(timeout):
+	case <-ctx.Done():
 		return nil
 	}
 }
@@ -288,7 +293,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithParser(parser.NewRegistry()),
 		engine.WithCommands(seedCommands),
 		engine.WithCommandLoader(func() []string {
-			return discoverCommandsWithinTimeout(commands.Discover, CommandDiscoveryTimeout)
+			return discoverCommandsWithinTimeout(commands.DiscoverContext, CommandDiscoveryTimeout)
 		}),
 		engine.WithToolTrees(toolTreeRegistry),
 		engine.WithCommandTrees(commandTreeRegistry),

@@ -460,10 +460,11 @@ func fetchMainCommit() (string, error) {
 }
 
 func fetchUpdateJSON(url string, out any) error {
-	args := []string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-H", "Accept: application/vnd.github+json", url}
+	args := []string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-H", "Accept: application/vnd.github+json"}
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		args = append([]string{"-fsSL", "--retry", "1", "--retry-delay", "2", "-H", "Accept: application/vnd.github+json", "-H", "Authorization: Bearer " + token}, url)
+		args = append(args, "-H", "Authorization: Bearer "+token)
 	}
+	args = append(args, url)
 
 	output, err := updateCommandOutput("curl", args, nil)
 	if err != nil {

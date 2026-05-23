@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -384,6 +385,16 @@ func TestWindowsExecutableExtensionsDefault(t *testing.T) {
 	want := []string{".com", ".exe", ".bat", ".cmd"}
 	if got := windowsExecutableExtensions(); !slices.Equal(got, want) {
 		t.Fatalf("windowsExecutableExtensions default = %v, want %v", got, want)
+	}
+}
+
+func TestDiscoverContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cmds := DiscoverContext(ctx)
+	if len(cmds) != 0 {
+		t.Fatalf("DiscoverContext with cancelled context should return empty, got %d commands", len(cmds))
 	}
 }
 
