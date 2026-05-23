@@ -568,6 +568,118 @@ func TestLoadAliasContextRejectsLargeFile(t *testing.T) {
 	}
 }
 
+func TestIsSafeAliasName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"valid simple", "k", true},
+		{"valid multi-char", "gst", true},
+		{"valid with dash", "my-alias", true},
+		{"valid with underscore", "my_alias", true},
+		{"valid with dot", "g.s", true},
+		{"empty", "", false},
+		{"space", "a b", false},
+		{"tab", "a\tb", false},
+		{"carriage return", "a\rb", false},
+		{"newline", "a\nb", false},
+		{"null byte", "a\x00b", false},
+		{"pipe", "a|b", false},
+		{"ampersand", "a&b", false},
+		{"semicolon", "a;b", false},
+		{"less than", "a<b", false},
+		{"greater than", "a>b", false},
+		{"backtick", "a`b", false},
+		{"dollar", "a$b", false},
+		{"open paren", "a(b", false},
+		{"close paren", "a)b", false},
+		{"open brace", "a{b", false},
+		{"close brace", "a}b", false},
+		{"open bracket", "a[b", false},
+		{"close bracket", "a]b", false},
+		{"only pipe", "|", false},
+		{"only dollar", "$", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSafeAliasName(tt.in); got != tt.want {
+				t.Errorf("isSafeAliasName(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsSafeAliasExpansion(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"valid simple", "kubectl", true},
+		{"valid with space", "git status", true},
+		{"valid with args", "kubectl get pods", true},
+		{"valid with flags", "git log --oneline", true},
+		{"valid with path", "cd /tmp", true},
+		{"valid with equals", "FOO=bar cmd", true},
+		{"empty", "", false},
+		{"tab", "a\tb", false},
+		{"carriage return", "a\rb", false},
+		{"newline", "a\nb", false},
+		{"null byte", "a\x00b", false},
+		{"pipe injection", "kubectl | rm -rf /", false},
+		{"ampersand injection", "git status && rm -rf /", false},
+		{"semicolon injection", "git status; rm -rf /", false},
+		{"redirect out", "echo > /etc/passwd", false},
+		{"redirect in", "cat < /etc/shadow", false},
+		{"backtick injection", "git `rm -rf /`", false},
+		{"dollar injection", "echo $(rm -rf /)", false},
+		{"subshell parens", "git (rm -rf /)", false},
+		{"brace expansion", "a{b,c}", false},
+		{"bracket glob", "a[b]", false},
+		{"space allowed unlike name", "a b", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSafeAliasExpansion(tt.in); got != tt.want {
+				t.Errorf("isSafeAliasExpansion(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsSafeEnvName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"valid simple", "HOME", true},
+		{"valid with underscore", "MY_VAR", true},
+		{"valid lowercase", "path", true},
+		{"valid mixed", "Go_PATH", true},
+		{"valid with digits", "VAR123", true},
+		{"valid underscore prefix", "_PRIVATE", true},
+		{"valid with spaces trimmed", " HOME ", true},
+		{"empty", "", false},
+		{"starts with digit", "1VAR", false},
+		{"contains dash", "MY-VAR", false},
+		{"contains dot", "MY.VAR", false},
+		{"contains space", "MY VAR", false},
+		{"contains dollar", "$HOME", false},
+		{"contains equals", "A=B", false},
+		{"only spaces", "   ", false},
+		{"injection attempt", "HOME; rm -rf /", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSafeEnvName(tt.in); got != tt.want {
+				t.Errorf("isSafeEnvName(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFixWithAliasContextFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	contextFile := filepath.Join(tmpDir, "aliases.tsv")

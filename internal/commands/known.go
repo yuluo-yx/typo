@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,8 +15,11 @@ const windowsOS = "windows"
 
 // Discover discovers commands from the system PATH.
 func Discover() []string {
-	commands := make(map[string]bool)
+	return DiscoverContext(context.Background())
+}
 
+// DiscoverContext discovers commands from the system PATH, respecting context cancellation.
+func DiscoverContext(ctx context.Context) []string {
 	path := os.Getenv("PATH")
 	if path == "" {
 		return []string{}
@@ -33,39 +37,62 @@ func Discover() []string {
 	var wg sync.WaitGroup
 	wg.Add(workerCount)
 	for range workerCount {
-		go func() {
-			defer wg.Done()
-			for p := range jobs {
-				if names := discoverNamesInDir(p); len(names) > 0 {
-					results <- names
-				}
-			}
-		}()
+		go discoverWorker(ctx, &wg, jobs, results)
 	}
 
-	go func() {
-		for _, p := range paths {
-			jobs <- p
-		}
-		close(jobs)
-		wg.Wait()
-		close(results)
-	}()
+	go discoverDispatcher(ctx, paths, jobs, &wg, results)
 
+	return collectDiscoverResults(results)
+}
+
+func discoverWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan string, results chan<- []string) {
+	defer wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case p, ok := <-jobs:
+			if !ok {
+				return
+			}
+			if names := discoverNamesInDir(p); len(names) > 0 {
+				select {
+				case results <- names:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}
+}
+
+func discoverDispatcher(ctx context.Context, paths []string, jobs chan<- string, wg *sync.WaitGroup, results chan<- []string) {
+	for _, p := range paths {
+		select {
+		case jobs <- p:
+		case <-ctx.Done():
+			goto done
+		}
+	}
+done:
+	close(jobs)
+	wg.Wait()
+	close(results)
+}
+
+func collectDiscoverResults(results <-chan []string) []string {
+	commands := make(map[string]bool)
 	for names := range results {
 		for _, cmd := range names {
 			commands[cmd] = true
 		}
 	}
 
-	// Convert to slice
 	result := make([]string, 0, len(commands))
 	for cmd := range commands {
 		result = append(result, cmd)
 	}
-
 	sort.Strings(result)
-
 	return result
 }
 

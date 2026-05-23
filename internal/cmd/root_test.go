@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -247,7 +248,7 @@ func TestPrintUsageIsGroupedByWorkflow(t *testing.T) {
 
 func TestDiscoverCommandsWithinTimeout(t *testing.T) {
 	t.Run("returns loader result within budget", func(t *testing.T) {
-		result := discoverCommandsWithinTimeout(func() []string {
+		result := discoverCommandsWithinTimeout(func(ctx context.Context) []string {
 			return []string{"foo", "bar"}
 		}, 100*time.Millisecond)
 
@@ -256,11 +257,11 @@ func TestDiscoverCommandsWithinTimeout(t *testing.T) {
 		}
 	})
 
-	t.Run("returns quickly when loader blocks", func(t *testing.T) {
+	t.Run("returns quickly when loader respects context", func(t *testing.T) {
 		start := time.Now()
-		result := discoverCommandsWithinTimeout(func() []string {
-			time.Sleep(time.Second)
-			return []string{"slow"}
+		result := discoverCommandsWithinTimeout(func(ctx context.Context) []string {
+			<-ctx.Done()
+			return nil
 		}, 50*time.Millisecond)
 		elapsed := time.Since(start)
 
@@ -279,7 +280,7 @@ func TestDiscoverCommandsWithinTimeout(t *testing.T) {
 	})
 
 	t.Run("uses direct loader when timeout disabled", func(t *testing.T) {
-		if got := discoverCommandsWithinTimeout(func() []string { return []string{"direct"} }, 0); len(got) != 1 || got[0] != "direct" {
+		if got := discoverCommandsWithinTimeout(func(ctx context.Context) []string { return []string{"direct"} }, 0); len(got) != 1 || got[0] != "direct" {
 			t.Fatalf("unexpected direct discovery result: %v", got)
 		}
 	})
