@@ -974,6 +974,7 @@ func TestEngine_TrySubcommandFix_CommonToolMatrix(t *testing.T) {
 		{name: "brew search", cmd: "brew serach ripgrep", wantCmd: "brew search ripgrep"},
 		{name: "brew nested services", cmd: "brew servics strat nginx", wantCmd: "brew services start nginx"}, //nolint:misspell // Intentional misspelled command input.
 		{name: "terraform plan", cmd: "terraform pln -out tfplan", wantCmd: "terraform plan -out tfplan"},
+		{name: "terraform init adjacent transposition", cmd: "terraform inti", wantCmd: "terraform init"},
 		{name: "terraform option before subcommand", cmd: "terraform -chdir infra valdiate", wantCmd: "terraform -chdir infra validate"},
 		{name: "terraform nested state", cmd: "terraform state lst", wantCmd: "terraform state list"},
 		{name: "helm upgrade", cmd: "helm upgarde release chart", wantCmd: "helm upgrade release chart"}, //nolint:misspell // Intentional misspelled command input.

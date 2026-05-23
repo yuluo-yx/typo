@@ -133,6 +133,7 @@ func TestE2EInventory_SupportedTools(t *testing.T) {
 		{name: "brew subcommand", command: "brew upgarde", want: "brew upgrade\n"},
 		{name: "terraform main command", command: "terrafrom plan", want: "terraform plan\n"},
 		{name: "terraform subcommand", command: "terraform valdiate", want: "terraform validate\n"},
+		{name: "terraform init transposition", command: "terraform inti", want: "terraform init\n"},
 		{name: "terraform subcommand after global option with value", command: "terraform -chdir infra valdiate", want: "terraform -chdir infra validate\n"},
 		{name: "helm main command", command: "helmm list", want: "helm list\n"},
 		{name: "helm subcommand", command: "helm temlpate chart", want: "helm template chart\n"},

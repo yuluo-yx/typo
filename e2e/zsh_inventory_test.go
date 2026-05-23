@@ -35,6 +35,11 @@ func TestE2EZshInventoryFlows(t *testing.T) {
 			want:   "terraform -chdir infra validate && helm --kube-context prod template chart",
 		},
 		{
+			name:   "terraform init transposition",
+			buffer: `terraform inti`,
+			want:   "terraform init",
+		},
+		{
 			name:   "remote and package commands",
 			buffer: `scpp build.tar.gz deploy@example.com:/srv/app/ && chmdo 755 deploy.sh && pip3 instlal typo`,
 			want:   "scp build.tar.gz deploy@example.com:/srv/app/ && chmod 755 deploy.sh && pip3 install typo",
