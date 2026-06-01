@@ -1,6 +1,6 @@
 module github.com/yuluo-yx/typo
 
-go 1.25.8
+go 1.26.3
 
 require (
 	golang.org/x/term v0.43.0
