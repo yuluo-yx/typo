@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Typo! This document outlines the 
 
 ## Prerequisites
 
-- [Go 1.25+](https://golang.org/dl/)
+- [Go 1.26.3](https://golang.org/dl/)
 - [Docker](https://docs.docker.com/get-docker/) (optional, for end-to-end tests)
 - [GNU Make](https://www.gnu.org/software/make/)
 

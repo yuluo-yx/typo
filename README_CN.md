@@ -4,7 +4,7 @@
 
 <p align="center"><strong>在终端里直接修正输错的命令。</strong></p>
 
-[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml) [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
+[![Build Status](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/yuluo-yx/typo/actions/workflows/build-and-test.yml) [![Go](https://img.shields.io/badge/Go-1.26.3-00ADD8?logo=go)](https://golang.org) [![Version](https://img.shields.io/github/v/tag/yuluo-yx/typo)](https://github.com/yuluo-yx/typo/releases) [![License](https://img.shields.io/github/license/yuluo-yx/typo)](LICENSE) [![Stars](https://img.shields.io/github/stars/yuluo-yx/typo)](https://github.com/yuluo-yx/typo)
 
 [English](README.md) | 简体中文
 
@@ -136,7 +136,7 @@ typo history list
 
 ## 本地开发
 
-开发环境需要 Go 1.25+ 和 GNU Make。
+开发环境需要 Go 1.26.3 和 GNU Make。
 
 ```bash
 make setup

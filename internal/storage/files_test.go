@@ -81,6 +81,64 @@ func TestWriteFileAtomic_RenameFailure(t *testing.T) {
 	}
 }
 
+func TestWriteFileAtomic_OperationFailuresCleanTempFile(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "data.json")
+
+	tests := []struct {
+		name      string
+		configure func(*fakeAtomicFileOps)
+	}{
+		{
+			name: "chmod",
+			configure: func(ops *fakeAtomicFileOps) {
+				ops.file.chmodErr = errors.New("chmod failed")
+			},
+		},
+		{
+			name: "write",
+			configure: func(ops *fakeAtomicFileOps) {
+				ops.file.writeErr = errors.New("write failed")
+			},
+		},
+		{
+			name: "sync",
+			configure: func(ops *fakeAtomicFileOps) {
+				ops.file.syncErr = errors.New("sync failed")
+			},
+		},
+		{
+			name: "close",
+			configure: func(ops *fakeAtomicFileOps) {
+				ops.file.closeErr = errors.New("close failed")
+			},
+		},
+		{
+			name: "rename",
+			configure: func(ops *fakeAtomicFileOps) {
+				ops.renameErr = errors.New("rename failed")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ops := &fakeAtomicFileOps{file: &fakeAtomicFile{name: "temp-file"}}
+			tt.configure(ops)
+
+			err := writeFileAtomicWithOps(target, []byte("x"), 0600, ops)
+			if err == nil {
+				t.Fatal("expected WriteFileAtomic to return operation failure")
+			}
+			if !strings.Contains(err.Error(), tt.name) {
+				t.Fatalf("expected %s error, got %v", tt.name, err)
+			}
+			if len(ops.removed) != 1 || ops.removed[0] != "temp-file" {
+				t.Fatalf("expected temp file cleanup, got %v", ops.removed)
+			}
+		})
+	}
+}
+
 func TestQuarantineInvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	target := filepath.Join(tmpDir, "broken.json")
@@ -138,4 +196,54 @@ func captureStderr(t *testing.T, fn func()) string {
 		t.Fatalf("failed to read captured stderr: %v", err)
 	}
 	return string(data)
+}
+
+type fakeAtomicFileOps struct {
+	file      *fakeAtomicFile
+	renameErr error
+	removed   []string
+}
+
+func (ops *fakeAtomicFileOps) createTemp(string, string) (atomicFile, error) {
+	return ops.file, nil
+}
+
+func (ops *fakeAtomicFileOps) rename(string, string) error {
+	return ops.renameErr
+}
+
+func (ops *fakeAtomicFileOps) remove(name string) error {
+	ops.removed = append(ops.removed, name)
+	return nil
+}
+
+type fakeAtomicFile struct {
+	name     string
+	chmodErr error
+	writeErr error
+	syncErr  error
+	closeErr error
+}
+
+func (f *fakeAtomicFile) Name() string {
+	return f.name
+}
+
+func (f *fakeAtomicFile) Chmod(os.FileMode) error {
+	return f.chmodErr
+}
+
+func (f *fakeAtomicFile) Write(data []byte) (int, error) {
+	if f.writeErr != nil {
+		return 0, f.writeErr
+	}
+	return len(data), nil
+}
+
+func (f *fakeAtomicFile) Sync() error {
+	return f.syncErr
+}
+
+func (f *fakeAtomicFile) Close() error {
+	return f.closeErr
 }
