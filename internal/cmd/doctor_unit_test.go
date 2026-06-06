@@ -19,7 +19,7 @@ func TestCheckDoctorShellIntegrationWithoutShellName(t *testing.T) {
 	for _, want := range []string{
 		"To enable shell integration, add one of the following:",
 		"eval \"$(typo init zsh)\"",
-		"Invoke-Expression (& typo init powershell)",
+		"Invoke-Expression (& typo init powershell | Out-String)",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("stdout missing %q: %q", want, stdout)
@@ -158,5 +158,20 @@ func TestDoctorInstallCandidatePathsIncludesSymlinkTarget(t *testing.T) {
 	}
 	if len(candidates) != 2 || candidates[0] != filepath.Clean(link) || candidates[1] != filepath.Clean(resolvedTarget) {
 		t.Fatalf("doctorInstallCandidatePaths = %#v", candidates)
+	}
+}
+
+func TestDoctorJSONShellSupportHelpers(t *testing.T) {
+	if !shellSupportsStderrCache("bash") {
+		t.Fatal("bash should support stderr cache")
+	}
+	if shellSupportsStderrCache("fish") {
+		t.Fatal("fish should not report stderr cache support")
+	}
+	if !shellSupportsAliasContext(shellNamePowerShell) {
+		t.Fatal("PowerShell should support alias context")
+	}
+	if shellSupportsAliasContext("") {
+		t.Fatal("unknown shell should not report alias context support")
 	}
 }

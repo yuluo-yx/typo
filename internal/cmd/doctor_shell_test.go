@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -400,11 +401,235 @@ func TestDoctorShowsPowerShellHintsWhenShellIsPowerShell(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("$PROFILE.CurrentUserCurrentHost")) {
 		t.Fatalf("Expected PowerShell profile hint in doctor output, got: %s", output)
 	}
-	if !bytes.Contains([]byte(output), []byte("Invoke-Expression (& typo init powershell)")) {
+	if !bytes.Contains([]byte(output), []byte("Invoke-Expression (& typo init powershell | Out-String)")) {
 		t.Fatalf("Expected PowerShell init hint in doctor output, got: %s", output)
 	}
 	if !bytes.Contains([]byte(output), []byte("shell: powershell")) {
 		t.Fatalf("Expected detected shell to be powershell, got: %s", output)
+	}
+}
+
+func TestDoctorJSONReportsChecksAndShellCapabilities(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(file string) (string, error) {
+		return "/usr/local/bin/typo", nil
+	}
+
+	t.Setenv("SHELL", "/opt/homebrew/bin/fish")
+	t.Setenv("TYPO_ACTIVE_SHELL", "")
+	t.Setenv("TYPO_SHELL_INTEGRATION", "")
+	t.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
+	t.Setenv("PSModulePath", "")
+	t.Setenv("PSExecutionPolicyPreference", "")
+
+	os.Args = []string{"typo", "doctor", "--json"}
+	code := 0
+	output := captureStdout(t, func() {
+		code = Run()
+	})
+
+	if code != 1 {
+		t.Fatalf("Expected doctor --json to preserve failing exit code, got %d output=%s", code, output)
+	}
+	if strings.Contains(output, "Checking typo configuration") {
+		t.Fatalf("doctor --json should not print human output, got %q", output)
+	}
+
+	var payload struct {
+		SchemaVersion int  `json:"schema_version"`
+		OK            bool `json:"ok"`
+		Shell         struct {
+			Name                    string `json:"name"`
+			ConfigFile              string `json:"config_file"`
+			InitCommand             string `json:"init_command"`
+			IntegrationLoaded       bool   `json:"integration_loaded"`
+			StderrCacheSupported    bool   `json:"stderr_cache_supported"`
+			AliasContextSupported   bool   `json:"alias_context_supported"`
+			EnvironmentContextShown bool   `json:"environment_context_supported"`
+		} `json:"shell"`
+		Checks []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"checks"`
+		Config struct {
+			Settings []struct {
+				Key   string `json:"key"`
+				Value string `json:"value"`
+			} `json:"settings"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("doctor --json should emit valid JSON: %v output=%q", err, output)
+	}
+	if payload.SchemaVersion != 1 {
+		t.Fatalf("schema_version = %d, want 1", payload.SchemaVersion)
+	}
+	if payload.OK {
+		t.Fatalf("expected ok=false when shell integration is missing")
+	}
+	if payload.Shell.Name != "fish" || payload.Shell.ConfigFile != "~/.config/fish/config.fish" {
+		t.Fatalf("unexpected shell payload: %+v", payload.Shell)
+	}
+	if payload.Shell.InitCommand != "typo init fish | source" {
+		t.Fatalf("unexpected fish init command: %q", payload.Shell.InitCommand)
+	}
+	if payload.Shell.IntegrationLoaded {
+		t.Fatalf("expected shell integration to be reported unloaded")
+	}
+	if payload.Shell.StderrCacheSupported {
+		t.Fatalf("fish should report stderr_cache_supported=false until real stderr capture is implemented")
+	}
+	if !payload.Shell.AliasContextSupported || !payload.Shell.EnvironmentContextShown {
+		t.Fatalf("fish should report alias and environment context support: %+v", payload.Shell)
+	}
+	if len(payload.Checks) != 6 {
+		t.Fatalf("expected 6 doctor checks, got %+v", payload.Checks)
+	}
+	if len(payload.Config.Settings) == 0 {
+		t.Fatalf("expected effective config settings in JSON payload")
+	}
+}
+
+func TestDoctorJSONReportsSuccessfulConfiguredEnvironment(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+
+	tmpHome := t.TempDir()
+	goBin := filepath.Join(tmpHome, "go", "bin")
+	typoPath := filepath.Join(goBin, "typo")
+	if err := os.MkdirAll(goBin, 0755); err != nil {
+		t.Fatalf("mkdir go bin: %v", err)
+	}
+	lookPath = func(file string) (string, error) {
+		return typoPath, nil
+	}
+
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("GOBIN", "")
+	t.Setenv("GOPATH", filepath.Join(tmpHome, "go"))
+	t.Setenv("PATH", strings.Join([]string{"/usr/bin", goBin}, string(os.PathListSeparator)))
+	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("TYPO_ACTIVE_SHELL", "")
+	t.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	t.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
+	t.Setenv("PSModulePath", "")
+	t.Setenv("PSExecutionPolicyPreference", "")
+
+	cfg := config.Load()
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	os.Args = []string{"typo", "doctor", "--json"}
+	code := 0
+	output := captureStdout(t, func() {
+		code = Run()
+	})
+	if code != 0 {
+		t.Fatalf("Expected doctor --json success, got %d output=%s", code, output)
+	}
+
+	var payload struct {
+		OK    bool `json:"ok"`
+		Shell struct {
+			Name                 string `json:"name"`
+			StderrCacheSupported bool   `json:"stderr_cache_supported"`
+		} `json:"shell"`
+		Config struct {
+			FileExists bool `json:"file_exists"`
+		} `json:"config"`
+		Install struct {
+			Method          string `json:"method"`
+			UpdateSupported bool   `json:"update_supported"`
+		} `json:"install"`
+		GoBinPath struct {
+			TypoInGoBin bool `json:"typo_in_go_bin"`
+			Configured  bool `json:"configured"`
+		} `json:"go_bin_path"`
+	}
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("doctor --json should emit valid JSON: %v output=%q", err, output)
+	}
+	if !payload.OK || payload.Shell.Name != "zsh" || !payload.Shell.StderrCacheSupported {
+		t.Fatalf("unexpected success shell payload: %+v", payload)
+	}
+	if !payload.Config.FileExists {
+		t.Fatalf("expected config file to be reported")
+	}
+	if payload.Install.Method != "go install" || payload.Install.UpdateSupported {
+		t.Fatalf("unexpected install payload: %+v", payload.Install)
+	}
+	if !payload.GoBinPath.TypoInGoBin || !payload.GoBinPath.Configured {
+		t.Fatalf("unexpected Go bin payload: %+v", payload.GoBinPath)
+	}
+}
+
+func TestDoctorJSONReportsGoBinPathFailure(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+
+	tmpHome := t.TempDir()
+	goBin := filepath.Join(tmpHome, "go", "bin")
+	typoPath := filepath.Join(goBin, "typo")
+	lookPath = func(file string) (string, error) {
+		return typoPath, nil
+	}
+
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("GOBIN", "")
+	t.Setenv("GOPATH", filepath.Join(tmpHome, "go"))
+	t.Setenv("PATH", "/usr/bin")
+	t.Setenv("SHELL", "/bin/bash")
+	t.Setenv("TYPO_ACTIVE_SHELL", "")
+	t.Setenv("TYPO_SHELL_INTEGRATION", "1")
+	t.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
+	t.Setenv("PSModulePath", "")
+	t.Setenv("PSExecutionPolicyPreference", "")
+
+	os.Args = []string{"typo", "doctor", "--json"}
+	code := 0
+	output := captureStdout(t, func() {
+		code = Run()
+	})
+	if code != 1 {
+		t.Fatalf("Expected doctor --json to fail for missing Go bin PATH, got %d output=%s", code, output)
+	}
+
+	var payload struct {
+		OK      bool `json:"ok"`
+		Actions []struct {
+			ID      string `json:"id"`
+			Command string `json:"command"`
+		} `json:"actions"`
+		Checks []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("doctor --json should emit valid JSON: %v output=%q", err, output)
+	}
+	if payload.OK {
+		t.Fatalf("expected ok=false for missing Go bin PATH")
+	}
+	foundGoBinFailure := false
+	for _, check := range payload.Checks {
+		if check.ID == "go_bin_path" && check.Status == "fail" {
+			foundGoBinFailure = true
+		}
+	}
+	if !foundGoBinFailure {
+		t.Fatalf("expected go_bin_path failure in checks: %+v", payload.Checks)
+	}
+	if len(payload.Actions) == 0 || !strings.Contains(payload.Actions[0].Command, goBin) {
+		t.Fatalf("expected PATH action for Go bin, got %+v", payload.Actions)
 	}
 }
 

@@ -178,6 +178,32 @@ _typo_bashexit
 `)
 }
 
+func TestBashIntegrationWritesTargetedAliasContext(t *testing.T) {
+	runBashIntegrationScript(t, `
+source "$1"
+trap - DEBUG
+
+alias k=kubectl
+alias kk=k
+alias g=git
+alias d=docker
+export TYPO_TEST_ENV_CONTEXT=1
+ktf() { terraform "$@"; }
+unused_wrap() { docker "$@"; }
+
+_typo_write_alias_context 'sudo kk lgo && g stauts && ktf valdiate'
+
+grep -q '^bash	alias	kk	k$' "$TYPO_ALIAS_CONTEXT" || exit 66
+grep -q '^bash	alias	k	kubectl$' "$TYPO_ALIAS_CONTEXT" || exit 67
+grep -q '^bash	alias	g	git$' "$TYPO_ALIAS_CONTEXT" || exit 68
+grep -q '^bash	function	ktf	terraform$' "$TYPO_ALIAS_CONTEXT" || exit 69
+grep -q '^bash	alias	d	docker$' "$TYPO_ALIAS_CONTEXT" && exit 70
+grep -q '^bash	function	unused_wrap	docker$' "$TYPO_ALIAS_CONTEXT" && exit 71
+grep -q '^bash	env	TYPO_TEST_ENV_CONTEXT	TYPO_TEST_ENV_CONTEXT$' "$TYPO_ALIAS_CONTEXT" || exit 72
+true
+`)
+}
+
 func TestBashIntegrationPreservesExistingExitTrap(t *testing.T) {
 	output := runBashIntegrationScript(t, `
 trap 'printf "previous-exit-trap\n"' EXIT
@@ -687,7 +713,7 @@ func TestUninstallWithPowerShellHint(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("manual cleanup required in $PROFILE.CurrentUserCurrentHost")) {
 		t.Fatalf("Expected PowerShell cleanup hint, got %q", output)
 	}
-	if !bytes.Contains([]byte(output), []byte("Invoke-Expression (& typo init powershell)")) {
+	if !bytes.Contains([]byte(output), []byte("Invoke-Expression (& typo init powershell | Out-String)")) {
 		t.Fatalf("Expected PowerShell init cleanup command, got %q", output)
 	}
 }

@@ -71,7 +71,7 @@ func detectPowerShellEnvironment() bool {
 func shellInitCommand(shellName string) string {
 	switch shellName {
 	case shellNamePowerShell:
-		return "Invoke-Expression (& typo init powershell)"
+		return "Invoke-Expression (& typo init powershell | Out-String)"
 	case "fish":
 		return "typo init fish | source"
 	case "bash", "zsh":

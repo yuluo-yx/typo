@@ -208,6 +208,7 @@ typo update --version 1.1.0
 
 ```bash
 typo doctor
+typo doctor --json
 ```
 
 输出主要包括：
@@ -220,6 +221,10 @@ typo doctor
 - 当前安装方式是否支持 `typo update`
 - 常见 shell 配置错误提示，例如 fish 使用了错误的 init 命令风格
 - 通过 `go install` 安装时的 Go bin `PATH` 提示
+
+需要在 issue 或本地工具中读取诊断结果时，可使用 `--json`。JSON 输出保留与普通
+命令相同的退出码语义。`shell.stderr_cache_supported` 字段表示当前 shell 集成是否
+可以把真实 stderr 缓存文件传给 `typo fix -s`；fish 当前会报告 `false`。
 
 ## `typo version`
 

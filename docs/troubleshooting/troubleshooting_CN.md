@@ -72,7 +72,7 @@ Set-PSReadLineKeyHandler -Chord Escape,Escape -ScriptBlock { __typo_FixCommand }
 Set-PSReadLineKeyHandler -Chord Ctrl+t -ScriptBlock { __typo_FixCommand }
 ```
 
-## 4. 为什么 `Invoke-Expression (& typo init powershell)` 在 PowerShell 里会失败？
+## 4. 为什么 `Invoke-Expression (& typo init powershell | Out-String)` 在 PowerShell 里会失败？
 
 常见原因：
 
@@ -102,7 +102,7 @@ Set-PSReadLineKeyHandler -Chord Ctrl+t -ScriptBlock { __typo_FixCommand }
    if (!(Test-Path -Path $PROFILE.CurrentUserCurrentHost)) {
      New-Item -ItemType File -Path $PROFILE.CurrentUserCurrentHost -Force
    }
-   Add-Content -Path $PROFILE.CurrentUserCurrentHost -Value 'Invoke-Expression (& typo init powershell)'
+   Add-Content -Path $PROFILE.CurrentUserCurrentHost -Value 'Invoke-Expression (& typo init powershell | Out-String)'
    ```
 
 4. 如果是执行策略阻止 profile 加载，可为当前用户放开本地脚本：

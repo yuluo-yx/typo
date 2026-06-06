@@ -72,7 +72,7 @@ Set-PSReadLineKeyHandler -Chord Escape,Escape -ScriptBlock { __typo_FixCommand }
 Set-PSReadLineKeyHandler -Chord Ctrl+t -ScriptBlock { __typo_FixCommand }
 ```
 
-## 4. Why does `Invoke-Expression (& typo init powershell)` fail in PowerShell?
+## 4. Why does `Invoke-Expression (& typo init powershell | Out-String)` fail in PowerShell?
 
 Common causes:
 
@@ -102,7 +102,7 @@ Recommended fixes:
    if (!(Test-Path -Path $PROFILE.CurrentUserCurrentHost)) {
      New-Item -ItemType File -Path $PROFILE.CurrentUserCurrentHost -Force
    }
-   Add-Content -Path $PROFILE.CurrentUserCurrentHost -Value 'Invoke-Expression (& typo init powershell)'
+   Add-Content -Path $PROFILE.CurrentUserCurrentHost -Value 'Invoke-Expression (& typo init powershell | Out-String)'
    ```
 
 4. If your profile is blocked by execution policy, allow local profile scripts for the current user:

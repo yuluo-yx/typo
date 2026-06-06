@@ -125,7 +125,7 @@ The following top-level subcommands and their documented flags are stable:
 | `typo history clear` | *(none)* |
 | `typo stats` | `--since <days>`, `--top <n>` |
 | `typo init <shell>` | *(none)* |
-| `typo doctor` | *(none)* |
+| `typo doctor` | `--json` |
 | `typo version` | *(none)* |
 | `typo uninstall` | *(none)* |
 
@@ -179,8 +179,9 @@ contract:
 - The internal implementation of the shell init scripts (function names,
   internal variables) is not part of the public API and may change in any
   release.
-- The exact format of `typo doctor` output is informational and may change in
-  minor releases. Do not parse it programmatically.
+- The exact format of human-readable `typo doctor` output is informational and
+  may change in minor releases. Use `typo doctor --json` for programmatic
+  diagnostics.
 
 ## Exit codes
 
