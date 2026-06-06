@@ -211,7 +211,7 @@ _typo_simple_function_expansion() {
 
 _typo_is_command_separator() {
     case "$1" in
-        '&&'|'||'|';'|'&'|\|)
+        '&&'|'||'|'__TYPO_AND__'|'__TYPO_OR__'|';'|'&'|\|)
             return 0
             ;;
     esac
@@ -231,8 +231,6 @@ _typo_collect_command_words() {
     normalized="${normalized//;/ ; }"
     normalized="${normalized//|/ | }"
     normalized="${normalized//&/ & }"
-    normalized="${normalized//__TYPO_AND__/\&\&}"
-    normalized="${normalized//__TYPO_OR__/||}"
     read -r -a tokens <<< "$normalized"
 
     while (( idx < ${#tokens[@]} )); do
