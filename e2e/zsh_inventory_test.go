@@ -132,8 +132,8 @@ func TestE2EFishInventoryFlows(t *testing.T) {
 		},
 		{
 			name:   "source and docker commands",
-			buffer: `sourc ~/.config/fish/config.fish && dcoker ps`,
-			want:   "source ~/.config/fish/config.fish && docker ps",
+			buffer: "sourc " + fishConfigDisplayPath + " && dcoker ps",
+			want:   "source " + fishConfigDisplayPath + " && docker ps",
 		},
 		{
 			name:   "mixed supported tools",

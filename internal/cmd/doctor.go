@@ -120,7 +120,7 @@ func checkDoctorShellIntegration(shellName, shellRC string) bool {
 	fmt.Println("  eval \"$(typo init zsh)\"")
 	fmt.Println("  # Bash (~/.bashrc)")
 	fmt.Println("  eval \"$(typo init bash)\"")
-	fmt.Println("  # Fish (~/.config/fish/config.fish)")
+	fmt.Printf("  # Fish (%s)\n", shellConfigFishDisplay)
 	fmt.Println("  typo init fish | source")
 	fmt.Println("  # PowerShell ($PROFILE.CurrentUserCurrentHost)")
 	fmt.Printf("  %s\n", shellInitCommand(shellNamePowerShell))

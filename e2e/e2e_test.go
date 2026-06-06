@@ -17,6 +17,8 @@ import (
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
+const fishConfigDisplayPath = "~/.config/fish/config.fish"
+
 var (
 	sharedRepoRoot string
 	sharedBinary   string
@@ -931,7 +933,7 @@ func TestE2EDoctorDetectsFishHints(t *testing.T) {
 	if !strings.Contains(doctor.stdout, "shell: fish") {
 		t.Fatalf("expected fish shell in doctor output, got: %q", doctor.stdout)
 	}
-	if !strings.Contains(doctor.stdout, "~/.config/fish/config.fish") {
+	if !strings.Contains(doctor.stdout, fishConfigDisplayPath) {
 		t.Fatalf("expected fish config hint, got: %q", doctor.stdout)
 	}
 	if !strings.Contains(doctor.stdout, "typo init fish | source") {

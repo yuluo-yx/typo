@@ -636,7 +636,7 @@ func TestUninstallWithFishConfigHint(t *testing.T) {
 		}
 	})
 
-	if !bytes.Contains([]byte(output), []byte("manual cleanup required in ~/.config/fish/config.fish")) {
+	if !bytes.Contains([]byte(output), []byte("manual cleanup required in "+shellConfigFishDisplay)) {
 		t.Fatalf("Expected fish cleanup hint, got %q", output)
 	}
 	if !bytes.Contains([]byte(output), []byte("typo init fish | source")) {

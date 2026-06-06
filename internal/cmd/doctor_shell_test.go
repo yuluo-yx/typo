@@ -319,7 +319,7 @@ func TestDoctorShowsFishHintsWhenShellIsFish(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("shell: fish")) {
 		t.Fatalf("Expected fish shell in doctor output, got: %s", output)
 	}
-	if !bytes.Contains([]byte(output), []byte("~/.config/fish/config.fish")) {
+	if !bytes.Contains([]byte(output), []byte(shellConfigFishDisplay)) {
 		t.Fatalf("Expected fish config hint in doctor output, got: %s", output)
 	}
 	if !bytes.Contains([]byte(output), []byte("typo init fish | source")) {
@@ -470,7 +470,7 @@ func TestDoctorJSONReportsChecksAndShellCapabilities(t *testing.T) {
 	if payload.OK {
 		t.Fatalf("expected ok=false when shell integration is missing")
 	}
-	if payload.Shell.Name != "fish" || payload.Shell.ConfigFile != "~/.config/fish/config.fish" {
+	if payload.Shell.Name != "fish" || payload.Shell.ConfigFile != shellConfigFishDisplay {
 		t.Fatalf("unexpected shell payload: %+v", payload.Shell)
 	}
 	if payload.Shell.InitCommand != "typo init fish | source" {
@@ -711,14 +711,14 @@ func TestShellHelpersSupportFish(t *testing.T) {
 	}
 
 	shellName, shellRC := detectShellIntegrationTarget()
-	if shellName != "fish" || shellRC != "~/.config/fish/config.fish" {
+	if shellName != "fish" || shellRC != shellConfigFishDisplay {
 		t.Fatalf("detectShellIntegrationTarget() = (%q, %q), want fish config", shellName, shellRC)
 	}
 
 	if got := shellInitCommand("fish"); got != "typo init fish | source" {
 		t.Fatalf("shellInitCommand(fish) = %q", got)
 	}
-	if got := shellReloadCommand("fish", "~/.config/fish/config.fish"); got != "source ~/.config/fish/config.fish" {
+	if got := shellReloadCommand("fish", shellConfigFishDisplay); got != "source "+shellConfigFishDisplay {
 		t.Fatalf("shellReloadCommand(fish) = %q", got)
 	}
 	if got := shellPathExportCommand("fish", "/tmp/typo-bin"); got != "fish_add_path /tmp/typo-bin" {
