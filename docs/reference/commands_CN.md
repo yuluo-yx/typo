@@ -226,6 +226,107 @@ typo doctor --json
 命令相同的退出码语义。`shell.stderr_cache_supported` 字段表示当前 shell 集成是否
 可以把真实 stderr 缓存文件传给 `typo fix -s`；fish 当前会报告 `false`。
 
+示例输出：
+
+```json
+{
+  "schema_version": 1,
+  "ok": false,
+  "checks": [
+    {
+      "id": "config_directory",
+      "name": "config directory",
+      "status": "pass",
+      "message": "/Users/alice/.typo",
+      "path": "/Users/alice/.typo"
+    },
+    {
+      "id": "config_file",
+      "name": "config file",
+      "status": "pass",
+      "message": "/Users/alice/.typo/config.json",
+      "path": "/Users/alice/.typo/config.json"
+    },
+    {
+      "id": "typo_command",
+      "name": "typo command",
+      "status": "pass",
+      "message": "available in PATH",
+      "path": "/opt/homebrew/bin/typo"
+    },
+    {
+      "id": "shell_integration",
+      "name": "shell integration",
+      "status": "fail",
+      "message": "not loaded"
+    },
+    {
+      "id": "install_method",
+      "name": "install method",
+      "status": "pass",
+      "message": "Homebrew",
+      "path": "/opt/homebrew/bin/typo"
+    },
+    {
+      "id": "go_bin_path",
+      "name": "Go bin PATH",
+      "status": "skip",
+      "message": "not a go install binary"
+    }
+  ],
+  "shell": {
+    "name": "fish",
+    "config_file": "~/.config/fish/config.fish",
+    "init_command": "typo init fish | source",
+    "reload_command": "source ~/.config/fish/config.fish",
+    "integration_loaded": false,
+    "stderr_cache_supported": false,
+    "alias_context_supported": true,
+    "environment_context_supported": true
+  },
+  "config": {
+    "dir": "/Users/alice/.typo",
+    "dir_exists": true,
+    "file": "/Users/alice/.typo/config.json",
+    "file_exists": true,
+    "settings": [
+      {
+        "key": "similarity-threshold",
+        "value": "0.72"
+      },
+      {
+        "key": "max-edit-distance",
+        "value": "2"
+      },
+      {
+        "key": "history.enabled",
+        "value": "true"
+      }
+    ]
+  },
+  "install": {
+    "method": "Homebrew",
+    "detail": "/opt/homebrew/bin",
+    "path": "/opt/homebrew/bin/typo",
+    "action": "brew update && brew upgrade typo",
+    "update_supported": true
+  },
+  "go_bin_path": {
+    "dir": "/Users/alice/go/bin",
+    "typo_in_go_bin": false,
+    "configured": false
+  },
+  "actions": [
+    {
+      "id": "enable_shell_integration",
+      "command": "typo init fish | source"
+    }
+  ]
+}
+```
+
+JSON 中可能包含本机路径。公开提交 issue 前，如有需要请脱敏用户名或路径。
+
 ## `typo version`
 
 输出当前版本、commit 和构建时间（如果可用）。

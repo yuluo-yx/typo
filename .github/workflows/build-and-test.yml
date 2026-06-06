@@ -62,6 +62,22 @@ jobs:
       - run: make build-e2e-image
       - run: make test-e2e-docker
 
+  e2e-fish:
+    name: E2E fish
+    runs-on: ubuntu-latest
+    if: github.repository == 'yuluo-yx/typo'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./tools/github-setup-deps
+      - name: Install fish
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fish
+      - name: Verify fish
+        run: fish --version
+      - name: Run fish e2e tests
+        run: go test ./e2e -v -run 'TestE2E(Fish(Integration|Inventory)|DoctorDetectsFishHints)'
+
   e2e-host:
     name: E2E ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
