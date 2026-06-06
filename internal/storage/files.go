@@ -19,6 +19,7 @@ type atomicFileOps interface {
 	createTemp(dir, pattern string) (atomicFile, error)
 	rename(oldpath, newpath string) error
 	remove(name string) error
+	syncDir(dir string) error
 }
 
 type osAtomicFileOps struct{}
@@ -76,6 +77,9 @@ func writeFileAtomicWithOps(filename string, data []byte, perm os.FileMode, ops 
 	}
 
 	keepTemp = true
+	if err := ops.syncDir(dir); err != nil {
+		return err
+	}
 	return nil
 }
 

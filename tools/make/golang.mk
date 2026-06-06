@@ -82,13 +82,14 @@ download: ## Download dependencies
 fmt: ## Run go fmt
 	@$(LOG_TARGET)
 	$(GO) fmt ./...
-	gofmt -s -w .
+	@git ls-files '*.go' | while IFS= read -r file; do \
+		gofmt -s -w "$$file"; \
+	done
 
 .PHONY: fmt-check
 fmt-check: ## Check go fmt without modifying files
 	@$(LOG_TARGET)
-	@files="$$(find . -type f -name '*.go' -not -path './.git/*')"; \
-	unformatted="$$(gofmt -s -l $$files)"; \
+	@unformatted="$$(git ls-files '*.go' | while IFS= read -r file; do gofmt -s -l "$$file"; done)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "$$unformatted"; \
 		echo "go files are not formatted; run make fmt" >&2; \
