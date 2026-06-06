@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.0](https://github.com/yuluo-yx/typo/compare/v1.4.0...v1.5.0) (2026-06-06)
+
+
+### Features
+
+* **doctor:** add json diagnostics ([#178](https://github.com/yuluo-yx/typo/issues/178)) ([7546150](https://github.com/yuluo-yx/typo/commit/7546150b457acc3ab6f9d29e3eed8d27407c66f3))
+* update go to 1.26.3 ([#173](https://github.com/yuluo-yx/typo/issues/173)) ([51a2a61](https://github.com/yuluo-yx/typo/commit/51a2a612d4c18166a3b5b82821e5b4320810fa45))
+* **ut:** add terraform inti test ([#169](https://github.com/yuluo-yx/typo/issues/169)) ([b390d26](https://github.com/yuluo-yx/typo/commit/b390d269a291ec975a22be6b9359541b60967679))
+
+
+### Bug Fixes
+
+* resolve P0 bugs in update, discovery, and alias safety ([#171](https://github.com/yuluo-yx/typo/issues/171)) ([279626c](https://github.com/yuluo-yx/typo/commit/279626ce3ba674020f273ed03c69985df0f1f10f))
+
 ## [1.4.0](https://github.com/yuluo-yx/typo/compare/v1.3.0...v1.4.0) (2026-05-14)
 
 
