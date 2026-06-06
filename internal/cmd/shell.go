@@ -7,7 +7,11 @@ import (
 	"strings"
 )
 
-const shellNamePowerShell = "powershell"
+const (
+	shellNamePowerShell       = "powershell"
+	shellConfigFishDisplay    = "~/.config/fish/config.fish"
+	shellConfigUnknownDisplay = "~/.zshrc or ~/.bashrc or " + shellConfigFishDisplay + " or $PROFILE.CurrentUserCurrentHost"
+)
 
 // Shell detection functions.
 
@@ -40,11 +44,11 @@ func detectShellIntegrationTarget() (string, string) {
 	case "zsh":
 		return "zsh", "~/.zshrc"
 	case "fish":
-		return "fish", "~/.config/fish/config.fish"
+		return "fish", shellConfigFishDisplay
 	case shellNamePowerShell:
 		return shellNamePowerShell, "$PROFILE.CurrentUserCurrentHost"
 	default:
-		return "", "~/.zshrc or ~/.bashrc or ~/.config/fish/config.fish or $PROFILE.CurrentUserCurrentHost"
+		return "", shellConfigUnknownDisplay
 	}
 }
 
@@ -71,7 +75,7 @@ func detectPowerShellEnvironment() bool {
 func shellInitCommand(shellName string) string {
 	switch shellName {
 	case shellNamePowerShell:
-		return "Invoke-Expression (& typo init powershell)"
+		return "Invoke-Expression (& typo init powershell | Out-String)"
 	case "fish":
 		return "typo init fish | source"
 	case "bash", "zsh":
@@ -128,7 +132,7 @@ func shellConfigDisplayPath(shellName string) string {
 	case "zsh":
 		return "~/.zshrc"
 	case "fish":
-		return "~/.config/fish/config.fish"
+		return shellConfigFishDisplay
 	default:
 		return "shell config"
 	}

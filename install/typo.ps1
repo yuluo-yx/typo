@@ -2,7 +2,7 @@
 #
 # Installation:
 #   Add the following to $PROFILE.CurrentUserCurrentHost:
-#     Invoke-Expression (& typo init powershell)
+#     Invoke-Expression (& typo init powershell | Out-String)
 #
 # Usage:
 #   1. Press <Esc><Esc> before execution to fix the current command.
@@ -21,7 +21,7 @@ if (-not (Get-Module -Name PSReadLine)) {
     try {
         Import-Module PSReadLine -ErrorAction Stop
     } catch {
-        Write-Error "typo PowerShell integration requires PSReadLine. Install and import PSReadLine, then run 'Invoke-Expression (& typo init powershell)' again."
+        Write-Error "typo PowerShell integration requires PSReadLine. Install and import PSReadLine, then run 'Invoke-Expression (& typo init powershell | Out-String)' again."
         return
     }
 }

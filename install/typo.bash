@@ -33,7 +33,7 @@ _typo_fix_command() {
 
     [[ -z "$cmd" ]] && return
 
-    _typo_write_alias_context
+    _typo_write_alias_context "$cmd"
     if _typo_owns_alias_context && [[ -f "$TYPO_ALIAS_CONTEXT" ]]; then
         alias_context_file="$TYPO_ALIAS_CONTEXT"
         alias_args=(--alias-context "$alias_context_file")
@@ -209,42 +209,209 @@ _typo_simple_function_expansion() {
     printf '%s\n' "$expansion"
 }
 
-_typo_write_alias_context() {
-    _typo_init_alias_context || return
-    : > "$TYPO_ALIAS_CONTEXT" 2>/dev/null || return
+_typo_is_command_separator() {
+    case "$1" in
+        '&&'|'||'|'__TYPO_AND__'|'__TYPO_OR__'|';'|'&'|\|)
+            return 0
+            ;;
+    esac
+    return 1
+}
 
-    local name expansion definition alias_line
-    if declare -p BASH_ALIASES >/dev/null 2>&1; then
-        for name in "${!BASH_ALIASES[@]}"; do
-            expansion="${BASH_ALIASES[$name]}"
-            [[ -n "$name" && -n "$expansion" ]] || continue
-            printf 'bash\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+_typo_collect_command_words() {
+    local raw="$1"
+    local normalized token
+    local -a tokens results
+    local idx=0
+    local expect_value=0
+
+    normalized="$raw"
+    normalized="${normalized//&&/ __TYPO_AND__ }"
+    normalized="${normalized//||/ __TYPO_OR__ }"
+    normalized="${normalized//;/ ; }"
+    normalized="${normalized//|/ | }"
+    normalized="${normalized//&/ & }"
+    read -r -a tokens <<< "$normalized"
+
+    while (( idx < ${#tokens[@]} )); do
+        while (( idx < ${#tokens[@]} )) && _typo_is_command_separator "${tokens[$idx]}"; do
+            idx=$((idx + 1))
         done
-    else
-        while IFS= read -r alias_line; do
-            name="${alias_line#alias }"
-            name="${name%%=*}"
-            expansion="${alias_line#*=}"
-            if [[ "$expansion" == \'*\' ]]; then
-                expansion="${expansion:1:${#expansion}-2}"
+        (( idx >= ${#tokens[@]} )) && break
+
+        while (( idx < ${#tokens[@]} )); do
+            token="${tokens[$idx]}"
+            if _typo_is_command_separator "$token"; then
+                break
             fi
-            [[ -n "$name" && -n "$expansion" ]] || continue
-            printf 'bash\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
-        done < <(alias -p 2>/dev/null)
+
+            case "$token" in
+                builtin|nocorrect|noglob)
+                    idx=$((idx + 1))
+                    continue
+                    ;;
+                command)
+                    idx=$((idx + 1))
+                    while (( idx < ${#tokens[@]} )); do
+                        token="${tokens[$idx]}"
+                        [[ "$token" == "--" ]] && { idx=$((idx + 1)); break; }
+                        [[ "$token" == -* ]] || break
+                        idx=$((idx + 1))
+                    done
+                    continue
+                    ;;
+                env)
+                    idx=$((idx + 1))
+                    expect_value=0
+                    while (( idx < ${#tokens[@]} )); do
+                        token="${tokens[$idx]}"
+                        if (( expect_value )); then
+                            expect_value=0
+                            idx=$((idx + 1))
+                            continue
+                        fi
+                        [[ "$token" == "--" ]] && { idx=$((idx + 1)); break; }
+                        case "$token" in
+                            *=*|--debug|-v|--ignore-environment|-i|--null|-0)
+                                idx=$((idx + 1))
+                                continue
+                                ;;
+                            --argv0=*|--chdir=*|--default-signal=*|--ignore-signal=*|--block-signal=*|--signal=*|--unset=*|--split-string=*)
+                                idx=$((idx + 1))
+                                continue
+                                ;;
+                            --argv0|--chdir|--default-signal|--ignore-signal|--block-signal|--signal|--unset|--split-string|-C|-S|-u)
+                                expect_value=1
+                                idx=$((idx + 1))
+                                continue
+                                ;;
+                        esac
+                        break
+                    done
+                    continue
+                    ;;
+                sudo)
+                    idx=$((idx + 1))
+                    expect_value=0
+                    while (( idx < ${#tokens[@]} )); do
+                        token="${tokens[$idx]}"
+                        if (( expect_value )); then
+                            expect_value=0
+                            idx=$((idx + 1))
+                            continue
+                        fi
+                        [[ "$token" == "--" ]] && { idx=$((idx + 1)); break; }
+                        case "$token" in
+                            --close-from=*|--group=*|--host=*|--other-user=*|--preserve-env=*|--prompt=*|--role=*|--user=*|--chdir=*)
+                                idx=$((idx + 1))
+                                continue
+                                ;;
+                            --askpass|--background|--non-interactive|--preserve-env|--remove-timestamp|--reset-timestamp|--set-home|--shell|--stdin|--validate|--login|-A|-b|-E|-e|-H|-i|-k|-K|-l|-n|-P|-s|-v)
+                                idx=$((idx + 1))
+                                continue
+                                ;;
+                            --close-from|--group|--host|--other-user|--preserve-env|--prompt|--role|--user|--chdir|-C|-g|-h|-p|-R|-r|-T|-u)
+                                expect_value=1
+                                idx=$((idx + 1))
+                                continue
+                                ;;
+                        esac
+                        break
+                    done
+                    continue
+                    ;;
+                time)
+                    idx=$((idx + 1))
+                    while (( idx < ${#tokens[@]} )) && [[ "${tokens[$idx]}" == -p ]]; do
+                        idx=$((idx + 1))
+                    done
+                    continue
+                    ;;
+            esac
+
+            results+=("$token")
+            break
+        done
+
+        while (( idx < ${#tokens[@]} )) && ! _typo_is_command_separator "${tokens[$idx]}"; do
+            idx=$((idx + 1))
+        done
+    done
+
+    printf '%s\n' "${results[@]}"
+}
+
+_typo_alias_expansion() {
+    local name="$1"
+    local alias_line expansion
+
+    if declare -p BASH_ALIASES >/dev/null 2>&1; then
+        expansion="${BASH_ALIASES[$name]:-}"
+        [[ -n "$expansion" ]] || return 1
+        printf '%s\n' "$expansion"
+        return 0
     fi
 
-    while read -r _ _ name; do
-        [[ -n "$name" && "$name" != _typo_* ]] || continue
-        definition="$(declare -f "$name" 2>/dev/null)" || continue
-        expansion="$(_typo_simple_function_expansion "$definition")" || continue
-        [[ -n "$expansion" ]] || continue
-        printf 'bash\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
-    done < <(declare -F)
+    alias_line="$(alias "$name" 2>/dev/null)" || return 1
+    expansion="${alias_line#*=}"
+    if [[ "$expansion" == \'*\' ]]; then
+        expansion="${expansion:1:${#expansion}-2}"
+    fi
+    [[ -n "$expansion" ]] || return 1
+    printf '%s\n' "$expansion"
+}
 
+_typo_append_alias_context_entry() {
+    local name="$1"
+    local expansion="" definition="" first_token=""
+
+    [[ -n "$name" ]] || return
+    case " ${_TYPO_ALIAS_CONTEXT_SEEN:-} " in
+        *" $name "*)
+            return
+            ;;
+    esac
+    _TYPO_ALIAS_CONTEXT_SEEN="${_TYPO_ALIAS_CONTEXT_SEEN:-} $name"
+
+    if expansion="$(_typo_alias_expansion "$name")"; then
+        printf 'bash\talias\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+    elif declare -F "$name" >/dev/null 2>&1; then
+        [[ "$name" != _typo_* ]] || return
+        definition="$(declare -f "$name" 2>/dev/null)" || return
+        expansion="$(_typo_simple_function_expansion "$definition")" || return
+        [[ -n "$expansion" ]] || return
+        printf 'bash\tfunction\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
+    else
+        return
+    fi
+
+    read -r first_token _ <<< "$expansion"
+    [[ -n "$first_token" ]] || return
+    _typo_append_alias_context_entry "$first_token"
+}
+
+_typo_append_env_context() {
+    local name
     while IFS= read -r name; do
         [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
         printf 'bash\tenv\t%s\t%s\n' "$name" "$name" >> "$TYPO_ALIAS_CONTEXT"
     done < <(compgen -e 2>/dev/null)
+}
+
+_typo_write_alias_context() {
+    local raw="${1:-}"
+    local name
+    _TYPO_ALIAS_CONTEXT_SEEN=""
+
+    _typo_init_alias_context || return
+    : > "$TYPO_ALIAS_CONTEXT" 2>/dev/null || return
+
+    while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        _typo_append_alias_context_entry "$name"
+    done < <(_typo_collect_command_words "$raw")
+
+    _typo_append_env_context
 }
 
 # Save the original stderr once to avoid chaining shell descriptors.

@@ -93,7 +93,7 @@ func Run() int {
 		cmdVersion()
 		return 0
 	case "doctor":
-		return cmdDoctor()
+		return cmdDoctor(os.Args[2:])
 	case "uninstall":
 		return cmdUninstall()
 	case "update", "upgrade":
@@ -119,7 +119,7 @@ Common:
   typo fix <command>                         Print the best correction
   typo fix --select <command>                Choose from configured candidates
   typo explain <command>                     Explain why Typo chose a correction
-  typo doctor                                Check install, shell, and config status
+  typo doctor [--json]                       Check install, shell, and config status
   typo version                               Print version metadata
 
 Fix options:
@@ -189,7 +189,7 @@ Shell setup:
   zsh:        eval "$(typo init zsh)"
   bash:       eval "$(typo init bash)"
   fish:       typo init fish | source
-  PowerShell: Invoke-Expression (& typo init powershell)
+  PowerShell: Invoke-Expression (& typo init powershell | Out-String)
 
   Restart the shell, then press <Esc><Esc> to fix the current command.`)
 }

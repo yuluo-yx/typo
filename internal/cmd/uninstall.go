@@ -40,7 +40,7 @@ func cmdUninstall() int {
 			foundShellConfig = true
 			fmt.Println("manual cleanup required in $PROFILE.CurrentUserCurrentHost:")
 			fmt.Println()
-			fmt.Println("    Invoke-Expression (& typo init powershell)")
+			fmt.Println("    " + shellInitCommand(shellNamePowerShell))
 			fmt.Println()
 		}
 		for _, target := range []struct {

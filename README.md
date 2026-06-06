@@ -29,7 +29,7 @@ For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is
 ## Highlights
 
 - Correct commands in place from zsh, bash, fish, and PowerShell.
-- Fix top-level commands, subcommands, compound commands, pipes, and runtime errors.
+- Fix top-level commands, subcommands, compound commands, pipes, and runtime errors when stderr context is available.
 - Use active shell aliases and simple wrappers as correction context, such as `k=kubectl`.
 - Correct mistyped environment variable names from the current shell context, such as `$HOEM` to `$HOME`.
 - Teach personal corrections with `typo learn`; Typo stores user rules and history under `~/.typo`.

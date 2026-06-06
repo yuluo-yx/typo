@@ -17,6 +17,8 @@ import (
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
+const fishConfigDisplayPath = "~/.config/fish/config.fish"
+
 var (
 	sharedRepoRoot string
 	sharedBinary   string
@@ -908,7 +910,7 @@ func TestE2EDoctorDetectsPowerShellHints(t *testing.T) {
 	if !strings.Contains(doctor.stdout, "$PROFILE.CurrentUserCurrentHost") {
 		t.Fatalf("expected PowerShell profile hint, got: %q", doctor.stdout)
 	}
-	if !strings.Contains(doctor.stdout, "Invoke-Expression (& typo init powershell)") {
+	if !strings.Contains(doctor.stdout, "Invoke-Expression (& typo init powershell | Out-String)") {
 		t.Fatalf("expected PowerShell init hint, got: %q", doctor.stdout)
 	}
 }
@@ -931,7 +933,7 @@ func TestE2EDoctorDetectsFishHints(t *testing.T) {
 	if !strings.Contains(doctor.stdout, "shell: fish") {
 		t.Fatalf("expected fish shell in doctor output, got: %q", doctor.stdout)
 	}
-	if !strings.Contains(doctor.stdout, "~/.config/fish/config.fish") {
+	if !strings.Contains(doctor.stdout, fishConfigDisplayPath) {
 		t.Fatalf("expected fish config hint, got: %q", doctor.stdout)
 	}
 	if !strings.Contains(doctor.stdout, "typo init fish | source") {
@@ -953,7 +955,7 @@ func TestE2EUninstallShowsPowerShellHint(t *testing.T) {
 	if !strings.Contains(uninstall.stdout, "$PROFILE.CurrentUserCurrentHost") {
 		t.Fatalf("expected PowerShell cleanup hint, got: %q", uninstall.stdout)
 	}
-	if !strings.Contains(uninstall.stdout, "Invoke-Expression (& typo init powershell)") {
+	if !strings.Contains(uninstall.stdout, "Invoke-Expression (& typo init powershell | Out-String)") {
 		t.Fatalf("expected PowerShell init cleanup command, got: %q", uninstall.stdout)
 	}
 }

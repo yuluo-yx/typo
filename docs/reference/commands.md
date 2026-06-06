@@ -211,6 +211,7 @@ Check the current environment, effective config, and shell integration hints.
 
 ```bash
 typo doctor
+typo doctor --json
 ```
 
 The output includes:
@@ -223,6 +224,12 @@ The output includes:
 - whether `typo update` supports the detected install method
 - common shell setup misconfiguration warnings, such as fish using the wrong init command style
 - Go bin `PATH` guidance when installed through `go install`
+
+Use `--json` when you need machine-readable diagnostics for issue reports or
+local tooling. The JSON output preserves the same exit-code behavior as the
+human-readable command. The `shell.stderr_cache_supported` field indicates
+whether the current shell integration can pass real stderr cache files to
+`typo fix -s`; fish currently reports `false`.
 
 ## `typo version`
 

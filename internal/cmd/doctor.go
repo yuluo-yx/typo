@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +11,21 @@ import (
 	"github.com/yuluo-yx/typo/internal/config"
 )
 
-func cmdDoctor() int {
+func cmdDoctor(args []string) int {
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	jsonOutput := fs.Bool("json", false, "print machine-readable JSON")
+	if err := fs.Parse(args); err != nil {
+		return 1
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "Error: doctor does not accept positional arguments")
+		return 1
+	}
+	if *jsonOutput {
+		return cmdDoctorJSON()
+	}
+
 	fmt.Println("Checking typo configuration...")
 	fmt.Println()
 
@@ -104,13 +120,263 @@ func checkDoctorShellIntegration(shellName, shellRC string) bool {
 	fmt.Println("  eval \"$(typo init zsh)\"")
 	fmt.Println("  # Bash (~/.bashrc)")
 	fmt.Println("  eval \"$(typo init bash)\"")
-	fmt.Println("  # Fish (~/.config/fish/config.fish)")
+	fmt.Printf("  # Fish (%s)\n", shellConfigFishDisplay)
 	fmt.Println("  typo init fish | source")
 	fmt.Println("  # PowerShell ($PROFILE.CurrentUserCurrentHost)")
-	fmt.Println("  Invoke-Expression (& typo init powershell)")
+	fmt.Printf("  %s\n", shellInitCommand(shellNamePowerShell))
 	fmt.Println()
 	fmt.Println("Then restart your shell or source the matching profile file.")
 	return true
+}
+
+type doctorJSONReport struct {
+	SchemaVersion int                 `json:"schema_version"`
+	OK            bool                `json:"ok"`
+	Checks        []doctorJSONCheck   `json:"checks"`
+	Shell         doctorJSONShell     `json:"shell"`
+	Config        doctorJSONConfig    `json:"config"`
+	Install       doctorJSONInstall   `json:"install"`
+	GoBinPath     doctorJSONGoBinPath `json:"go_bin_path"`
+	Actions       []doctorJSONAction  `json:"actions,omitempty"`
+}
+
+type doctorJSONCheck struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+	Path    string `json:"path,omitempty"`
+}
+
+type doctorJSONShell struct {
+	Name                        string `json:"name"`
+	ConfigFile                  string `json:"config_file"`
+	InitCommand                 string `json:"init_command,omitempty"`
+	ReloadCommand               string `json:"reload_command,omitempty"`
+	IntegrationLoaded           bool   `json:"integration_loaded"`
+	Misconfiguration            string `json:"misconfiguration,omitempty"`
+	StderrCacheSupported        bool   `json:"stderr_cache_supported"`
+	AliasContextSupported       bool   `json:"alias_context_supported"`
+	EnvironmentContextSupported bool   `json:"environment_context_supported"`
+}
+
+type doctorJSONConfig struct {
+	Dir        string                    `json:"dir"`
+	DirExists  bool                      `json:"dir_exists"`
+	File       string                    `json:"file"`
+	FileExists bool                      `json:"file_exists"`
+	Settings   []doctorJSONConfigSetting `json:"settings"`
+}
+
+type doctorJSONConfigSetting struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type doctorJSONInstall struct {
+	Method          string `json:"method"`
+	Detail          string `json:"detail,omitempty"`
+	Path            string `json:"path,omitempty"`
+	Action          string `json:"action,omitempty"`
+	UpdateSupported bool   `json:"update_supported"`
+}
+
+type doctorJSONGoBinPath struct {
+	Dir         string `json:"dir,omitempty"`
+	TypoInGoBin bool   `json:"typo_in_go_bin"`
+	Configured  bool   `json:"configured"`
+}
+
+type doctorJSONAction struct {
+	ID      string `json:"id"`
+	Command string `json:"command"`
+}
+
+func cmdDoctorJSON() int {
+	report := buildDoctorJSONReport()
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: marshal doctor JSON: %v\n", err)
+		return 1
+	}
+	fmt.Println(string(data))
+	if report.OK {
+		return 0
+	}
+	return 1
+}
+
+func buildDoctorJSONReport() doctorJSONReport {
+	cfg := config.Load()
+	shellName, shellRC := detectShellIntegrationTarget()
+	typoPath, typoErr := lookPath("typo")
+	configFile := cfg.ConfigFilePath()
+
+	report := doctorJSONReport{
+		SchemaVersion: 1,
+		OK:            true,
+		Shell: doctorJSONShell{
+			Name:                        shellName,
+			ConfigFile:                  shellRC,
+			InitCommand:                 shellInitCommand(shellName),
+			ReloadCommand:               shellReloadCommand(shellName, shellRC),
+			IntegrationLoaded:           os.Getenv("TYPO_SHELL_INTEGRATION") == "1",
+			Misconfiguration:            doctorShellMisconfiguration(shellName),
+			StderrCacheSupported:        shellSupportsStderrCache(shellName),
+			AliasContextSupported:       shellSupportsAliasContext(shellName),
+			EnvironmentContextSupported: shellSupportsAliasContext(shellName),
+		},
+		Config: doctorJSONConfig{
+			Dir:      cfg.ConfigDir,
+			File:     configFile,
+			Settings: doctorJSONConfigSettings(cfg),
+		},
+	}
+
+	report.addDoctorJSONConfigChecks(cfg, configFile)
+	report.addDoctorJSONTypoCheck(typoPath, typoErr)
+	report.addDoctorJSONShellIntegrationCheck()
+	report.addDoctorJSONInstallCheck(typoPath)
+	report.addDoctorJSONGoBinPathCheck(shellName, typoPath)
+
+	return report
+}
+
+func doctorJSONConfigSettings(cfg *config.Config) []doctorJSONConfigSetting {
+	settings := cfg.ListSettings()
+	configSettings := make([]doctorJSONConfigSetting, 0, len(settings))
+	for _, setting := range settings {
+		configSettings = append(configSettings, doctorJSONConfigSetting{
+			Key:   setting.Key,
+			Value: setting.Value,
+		})
+	}
+	return configSettings
+}
+
+func (r *doctorJSONReport) addDoctorJSONConfigChecks(cfg *config.Config, configFile string) {
+	if info, err := statPath(cfg.ConfigDir); err == nil && info.IsDir() {
+		r.Config.DirExists = true
+		r.addDoctorCheck("config_directory", "config directory", "pass", cfg.ConfigDir, cfg.ConfigDir)
+	} else {
+		r.addDoctorCheck("config_directory", "config directory", "info", "will be created on first use", cfg.ConfigDir)
+	}
+
+	if configFile != "" {
+		if info, err := statPath(configFile); err == nil && !info.IsDir() {
+			r.Config.FileExists = true
+			r.addDoctorCheck("config_file", "config file", "pass", configFile, configFile)
+		} else {
+			r.addDoctorCheck("config_file", "config file", "info", "using defaults; run 'typo config gen' to create it", configFile)
+		}
+	} else {
+		r.addDoctorCheck("config_file", "config file", "info", "unavailable", "")
+	}
+}
+
+func (r *doctorJSONReport) addDoctorJSONTypoCheck(typoPath string, typoErr error) {
+	if typoErr == nil {
+		r.addDoctorCheck("typo_command", "typo command", "pass", "available in PATH", typoPath)
+		return
+	}
+
+	r.OK = false
+	r.addDoctorCheck("typo_command", "typo command", "fail", "not found in PATH", "")
+	if goBinPath := checkGoBinTypo(); goBinPath != "" {
+		r.Actions = append(r.Actions, doctorJSONAction{
+			ID:      "add_go_bin_to_path",
+			Command: fmt.Sprintf("export PATH=\"$PATH:%s\"", goBinPath),
+		})
+	}
+}
+
+func (r *doctorJSONReport) addDoctorJSONShellIntegrationCheck() {
+	if !r.Shell.IntegrationLoaded {
+		r.OK = false
+		r.addDoctorCheck("shell_integration", "shell integration", "fail", "not loaded", "")
+		if r.Shell.InitCommand != "" {
+			r.Actions = append(r.Actions, doctorJSONAction{
+				ID:      "enable_shell_integration",
+				Command: r.Shell.InitCommand,
+			})
+		}
+		return
+	}
+
+	if r.Shell.Misconfiguration != "" {
+		r.OK = false
+		r.addDoctorCheck("shell_integration", "shell integration", "fail", r.Shell.Misconfiguration, "")
+		return
+	}
+
+	r.addDoctorCheck("shell_integration", "shell integration", "pass", "loaded", "")
+}
+
+func (r *doctorJSONReport) addDoctorJSONInstallCheck(typoPath string) {
+	installMethod := detectDoctorInstallMethod(doctorInstallPath(typoPath))
+	r.Install = doctorJSONInstall{
+		Method:          installMethod.name,
+		Detail:          installMethod.detail,
+		Path:            installMethod.path,
+		Action:          installMethod.action,
+		UpdateSupported: installMethod.updateSupported,
+	}
+	if installMethod.name == UnknownValue {
+		r.addDoctorCheck("install_method", "install method", "info", "unable to determine", "")
+	} else {
+		r.addDoctorCheck("install_method", "install method", "pass", installMethod.name, installMethod.path)
+	}
+}
+
+func (r *doctorJSONReport) addDoctorJSONGoBinPathCheck(shellName, typoPath string) {
+	goBinDir := getGoBinDir()
+	r.GoBinPath.Dir = goBinDir
+	if typoPath != "" {
+		r.GoBinPath.TypoInGoBin = sameDir(filepath.Dir(typoPath), goBinDir)
+	}
+	if !r.GoBinPath.TypoInGoBin {
+		r.addDoctorCheck("go_bin_path", "Go bin PATH", "skip", "not a go install binary", "")
+	} else if goBinDir == "" {
+		r.addDoctorCheck("go_bin_path", "Go bin PATH", "skip", "Go not installed or GOPATH not set", "")
+	} else if pathContainsDir(os.Getenv("PATH"), goBinDir) {
+		r.GoBinPath.Configured = true
+		r.addDoctorCheck("go_bin_path", "Go bin PATH", "pass", "configured", goBinDir)
+	} else {
+		r.OK = false
+		r.addDoctorCheck("go_bin_path", "Go bin PATH", "fail", "not in PATH", goBinDir)
+		r.Actions = append(r.Actions, doctorJSONAction{
+			ID:      "add_go_bin_to_path",
+			Command: shellPathExportCommand(shellName, goBinDir),
+		})
+	}
+}
+
+func (r *doctorJSONReport) addDoctorCheck(id, name, status, message, path string) {
+	r.Checks = append(r.Checks, doctorJSONCheck{
+		ID:      id,
+		Name:    name,
+		Status:  status,
+		Message: message,
+		Path:    path,
+	})
+}
+
+func shellSupportsStderrCache(shellName string) bool {
+	switch shellName {
+	case "zsh", "bash", shellNamePowerShell:
+		return true
+	default:
+		return false
+	}
+}
+
+func shellSupportsAliasContext(shellName string) bool {
+	switch shellName {
+	case "zsh", "bash", "fish", shellNamePowerShell:
+		return true
+	default:
+		return false
+	}
 }
 
 func checkDoctorInstallMethod(shellName, shellRC, typoPath string) {
