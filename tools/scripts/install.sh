@@ -318,9 +318,9 @@ main() {
   if [[ -z "$shell" ]]; then
     echo "Warning: Unrecognised shell '${SHELL:-}'. Add 'eval \"\$(typo init <shell>)\"' to your shell config manually." >&2
   elif [[ "$shell" == "fish" ]]; then
-    echo "Please add 'typo init fish | source' to your shell configuration file (e.g., ~/.config/fish/config.fish) to enable shell integration. Not forgotten to source it!"
+    echo "Please add 'typo init fish | source' to your shell configuration file (e.g., ~/.config/fish/config.fish). Restart your shell or source the config file to enable shell integration."
   else
-    echo "Please add 'eval \"\$(typo init ${shell})\"' to your shell configuration file (e.g., ~/.${shell}rc) to enable shell integration. Not forgotten to source it!"
+    echo "Please add 'eval \"\$(typo init ${shell})\"' to your shell configuration file (e.g., ~/.${shell}rc). Restart your shell or source the config file to enable shell integration."
   fi
 }
 

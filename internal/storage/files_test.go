@@ -139,6 +139,41 @@ func TestWriteFileAtomic_OperationFailuresCleanTempFile(t *testing.T) {
 	}
 }
 
+func TestWriteFileAtomic_SyncsParentDirectoryAfterRename(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "nested", "data.json")
+	ops := &fakeAtomicFileOps{file: &fakeAtomicFile{name: "temp-file"}}
+
+	if err := writeFileAtomicWithOps(target, []byte("x"), 0600, ops); err != nil {
+		t.Fatalf("WriteFileAtomic failed: %v", err)
+	}
+
+	if len(ops.syncedDirs) != 1 || ops.syncedDirs[0] != filepath.Dir(target) {
+		t.Fatalf("expected parent directory sync for %q, got %v", filepath.Dir(target), ops.syncedDirs)
+	}
+	if len(ops.removed) != 0 {
+		t.Fatalf("expected no temp cleanup after successful rename, got %v", ops.removed)
+	}
+}
+
+func TestWriteFileAtomic_ParentDirectorySyncFailure(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "data.json")
+	ops := &fakeAtomicFileOps{
+		file:       &fakeAtomicFile{name: "temp-file"},
+		syncDirErr: errors.New("sync dir failed"),
+	}
+
+	err := writeFileAtomicWithOps(target, []byte("x"), 0600, ops)
+	if err == nil {
+		t.Fatal("expected WriteFileAtomic to fail when parent directory sync fails")
+	}
+	if !strings.Contains(err.Error(), "sync dir") {
+		t.Fatalf("expected parent directory sync error, got %v", err)
+	}
+	if len(ops.removed) != 0 {
+		t.Fatalf("expected no temp cleanup after successful rename, got %v", ops.removed)
+	}
+}
+
 func TestQuarantineInvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	target := filepath.Join(tmpDir, "broken.json")
@@ -199,9 +234,11 @@ func captureStderr(t *testing.T, fn func()) string {
 }
 
 type fakeAtomicFileOps struct {
-	file      *fakeAtomicFile
-	renameErr error
-	removed   []string
+	file       *fakeAtomicFile
+	renameErr  error
+	syncDirErr error
+	removed    []string
+	syncedDirs []string
 }
 
 func (ops *fakeAtomicFileOps) createTemp(string, string) (atomicFile, error) {
@@ -215,6 +252,11 @@ func (ops *fakeAtomicFileOps) rename(string, string) error {
 func (ops *fakeAtomicFileOps) remove(name string) error {
 	ops.removed = append(ops.removed, name)
 	return nil
+}
+
+func (ops *fakeAtomicFileOps) syncDir(dir string) error {
+	ops.syncedDirs = append(ops.syncedDirs, dir)
+	return ops.syncDirErr
 }
 
 type fakeAtomicFile struct {
