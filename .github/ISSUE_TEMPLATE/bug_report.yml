@@ -68,6 +68,20 @@ body:
       placeholder: e.g. typo 0.2.0, main@abcdef1
     validations:
       required: true
+  - type: textarea
+    id: doctor-json
+    attributes:
+      label: typo doctor --json
+      description: |
+        Run `typo doctor --json` and paste the output. If the command fails, paste the error instead.
+        Redact local paths, usernames, or environment details you do not want to share.
+      placeholder: |
+        {
+          "schema_version": 1,
+          "ok": false,
+          "checks": []
+        }
+      render: json
   - type: input
     id: go-version
     attributes:

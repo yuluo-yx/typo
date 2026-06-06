@@ -231,6 +231,108 @@ human-readable command. The `shell.stderr_cache_supported` field indicates
 whether the current shell integration can pass real stderr cache files to
 `typo fix -s`; fish currently reports `false`.
 
+Example output:
+
+```json
+{
+  "schema_version": 1,
+  "ok": false,
+  "checks": [
+    {
+      "id": "config_directory",
+      "name": "config directory",
+      "status": "pass",
+      "message": "/Users/alice/.typo",
+      "path": "/Users/alice/.typo"
+    },
+    {
+      "id": "config_file",
+      "name": "config file",
+      "status": "pass",
+      "message": "/Users/alice/.typo/config.json",
+      "path": "/Users/alice/.typo/config.json"
+    },
+    {
+      "id": "typo_command",
+      "name": "typo command",
+      "status": "pass",
+      "message": "available in PATH",
+      "path": "/opt/homebrew/bin/typo"
+    },
+    {
+      "id": "shell_integration",
+      "name": "shell integration",
+      "status": "fail",
+      "message": "not loaded"
+    },
+    {
+      "id": "install_method",
+      "name": "install method",
+      "status": "pass",
+      "message": "Homebrew",
+      "path": "/opt/homebrew/bin/typo"
+    },
+    {
+      "id": "go_bin_path",
+      "name": "Go bin PATH",
+      "status": "skip",
+      "message": "not a go install binary"
+    }
+  ],
+  "shell": {
+    "name": "fish",
+    "config_file": "~/.config/fish/config.fish",
+    "init_command": "typo init fish | source",
+    "reload_command": "source ~/.config/fish/config.fish",
+    "integration_loaded": false,
+    "stderr_cache_supported": false,
+    "alias_context_supported": true,
+    "environment_context_supported": true
+  },
+  "config": {
+    "dir": "/Users/alice/.typo",
+    "dir_exists": true,
+    "file": "/Users/alice/.typo/config.json",
+    "file_exists": true,
+    "settings": [
+      {
+        "key": "similarity-threshold",
+        "value": "0.72"
+      },
+      {
+        "key": "max-edit-distance",
+        "value": "2"
+      },
+      {
+        "key": "history.enabled",
+        "value": "true"
+      }
+    ]
+  },
+  "install": {
+    "method": "Homebrew",
+    "detail": "/opt/homebrew/bin",
+    "path": "/opt/homebrew/bin/typo",
+    "action": "brew update && brew upgrade typo",
+    "update_supported": true
+  },
+  "go_bin_path": {
+    "dir": "/Users/alice/go/bin",
+    "typo_in_go_bin": false,
+    "configured": false
+  },
+  "actions": [
+    {
+      "id": "enable_shell_integration",
+      "command": "typo init fish | source"
+    }
+  ]
+}
+```
+
+The JSON may include local paths from your machine. Redact user names or paths
+before posting it publicly if they are sensitive.
+
 ## `typo version`
 
 Print the current version, commit, and build date when available.
