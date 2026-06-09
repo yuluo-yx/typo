@@ -8,6 +8,12 @@ on:
   schedule:
     - cron: '0 12 * * *'
   workflow_dispatch:
+    inputs:
+      force_compare:
+        description: Force a same-run comparison against HEAD^ even if this commit was already benchmarked.
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   benchmark:
@@ -16,35 +22,85 @@ jobs:
     if: github.repository == 'yuluo-yx/typo'
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
       - uses: ./tools/github-setup-deps
       - run: make download
 
       - name: Install benchstat
         run: go install golang.org/x/perf/cmd/benchstat@latest
 
-      - name: Restore baseline
+      - name: Restore benchmark state
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
-          path: baseline.txt
-          key: benchmark-baseline-${{ github.run_id }}
-          restore-keys: benchmark-baseline-
+          path: benchmark-state.env
+          key: benchmark-state-${{ github.run_id }}
+          restore-keys: benchmark-state-
 
-      - name: Check baseline exists
-        id: check
+      - name: Select baseline commit
+        id: state
+        env:
+          FORCE_COMPARE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_compare == true }}
         run: |
-          if [ -f baseline.txt ] && [ -s baseline.txt ]; then
-            echo "has_baseline=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_baseline=false" >> "$GITHUB_OUTPUT"
+          current_sha="$(git rev-parse HEAD)"
+          previous_sha=""
+          if [ -f benchmark-state.env ]; then
+            previous_sha="$(sed -n 's/^sha=//p' benchmark-state.env | head -n 1)"
           fi
+
+          baseline_ref=""
+          if [ "$FORCE_COMPARE" = "true" ] || [ "$previous_sha" = "$current_sha" ] || [ -z "$previous_sha" ]; then
+            if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+              baseline_ref="$(git rev-parse HEAD^)"
+            fi
+          elif git cat-file -e "$previous_sha^{commit}" 2>/dev/null; then
+            baseline_ref="$previous_sha"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            baseline_ref="$(git rev-parse HEAD^)"
+          fi
+
+          should_compare=false
+          skip_reason="no baseline commit is available"
+          if [ -n "$baseline_ref" ] && [ "$baseline_ref" != "$current_sha" ]; then
+            if [ "$FORCE_COMPARE" = "true" ] || [ "$previous_sha" != "$current_sha" ]; then
+              should_compare=true
+              skip_reason=""
+            else
+              skip_reason="current commit was already benchmarked"
+            fi
+          fi
+
+          echo "current_sha=$current_sha" >> "$GITHUB_OUTPUT"
+          echo "previous_sha=$previous_sha" >> "$GITHUB_OUTPUT"
+          echo "baseline_ref=$baseline_ref" >> "$GITHUB_OUTPUT"
+          echo "should_compare=$should_compare" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=$skip_reason" >> "$GITHUB_OUTPUT"
+
+      - name: Run baseline benchmarks
+        if: steps.state.outputs.should_compare == 'true'
+        run: |
+          baseline_parent="$(mktemp -d "${RUNNER_TEMP}/typo-benchmark-baseline.XXXXXX")"
+          baseline_dir="${baseline_parent}/repo"
+          trap 'git worktree remove --force "$baseline_dir" >/dev/null 2>&1 || true; rmdir "$baseline_parent" >/dev/null 2>&1 || true' EXIT
+          git worktree add --detach "$baseline_dir" "${{ steps.state.outputs.baseline_ref }}"
+          (
+            cd "$baseline_dir"
+            go mod download
+            go test -bench=. -benchmem -count=10 -run='^$' -timeout=30m ./benchmarks/
+          ) | tee baseline.txt
 
       - name: Run benchmarks
         run: |
           go test -bench=. -benchmem -count=10 -run='^$' -timeout=30m ./benchmarks/ \
             | tee current.txt
 
+      - name: Report skipped comparison
+        if: steps.state.outputs.should_compare != 'true'
+        run: |
+          echo "Skipping regression comparison: ${{ steps.state.outputs.skip_reason }}."
+
       - name: Compare with baseline
-        if: steps.check.outputs.has_baseline == 'true'
+        if: steps.state.outputs.should_compare == 'true'
         id: compare
         env:
           REGRESSION_THRESHOLD: 10
@@ -66,18 +122,25 @@ jobs:
             echo "regression=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Update baseline
-        run: cp current.txt baseline.txt
+      - name: Update benchmark state
+        run: |
+          {
+            echo "sha=${{ steps.state.outputs.current_sha }}"
+            echo "updated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > benchmark-state.env
 
-      - name: Save baseline
+      - name: Save benchmark state
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
-          path: baseline.txt
-          key: benchmark-baseline-${{ github.run_id }}
+          path: benchmark-state.env
+          key: benchmark-state-${{ github.run_id }}
 
       - name: Open regression issue
         if: steps.compare.outputs.regression == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          BASELINE_SHA: ${{ steps.state.outputs.baseline_ref }}
+          CURRENT_SHA: ${{ steps.state.outputs.current_sha }}
         with:
           script: |
             const fs = require('fs');
@@ -111,6 +174,8 @@ jobs:
 
             let body = `The nightly benchmark run detected a performance regression (≥${THRESHOLD}% with p<0.05).\n\n`;
             body += `**Workflow run:** ${runURL}\n\n`;
+            body += `**Baseline commit:** ${process.env.BASELINE_SHA}\n`;
+            body += `**Current commit:** ${process.env.CURRENT_SHA}\n\n`;
             body += `### Regressed benchmarks\n\n`;
             body += '```\n' + regressions.join('\n') + '\n```\n\n';
             body += `### Full comparison\n\n`;
@@ -120,7 +185,7 @@ jobs:
             if (recentPRs.length > 0) {
               body += `PRs merged in the last 24 hours:\n\n${recentPRs.join('\n')}\n`;
             } else {
-              body += `No PRs were merged in the last 24 hours. The regression may stem from an earlier change or environmental variance.\n`;
+              body += `No PRs were merged in the last 24 hours. This comparison was generated by benchmarking the baseline and current commits in the same workflow run.\n`;
             }
 
             const { data: openIssues } = await github.rest.issues.listForRepo({
@@ -167,6 +232,6 @@ jobs:
       - name: Fail on regression
         if: steps.compare.outputs.regression == 'true'
         run: |
-          echo "::error::Benchmark regression detected (>=10% with p<0.05) against the stored baseline."
+          echo "::error::Benchmark regression detected (>=10% with p<0.05) against the same-run baseline."
           cat comparison.txt
           exit 1
