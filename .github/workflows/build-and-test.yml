@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'yuluo-yx/typo'
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./tools/github-setup-deps
       - run: make download
       - run: make ci
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'yuluo-yx/typo'
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./tools/github-setup-deps
       - run: make build
       - run: make verify-version-metadata VERSION=9.9.9
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'yuluo-yx/typo'
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./tools/github-setup-deps
       - run: make build-e2e-image
       - run: make test-e2e-docker
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'yuluo-yx/typo'
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./tools/github-setup-deps
       - name: Install fish
         run: |
@@ -89,7 +89,7 @@ jobs:
           - macos-latest
           - windows-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./tools/github-setup-deps
       - name: Run e2e tests
         shell: bash
