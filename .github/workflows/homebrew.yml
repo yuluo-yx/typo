@@ -4,26 +4,26 @@ permissions:
   contents: read
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'Formula/**'
       - 'tools/release/update-homebrew-formula.sh'
-      - '.github/workflows/homebrew.yml'
-      - '.github/workflows/release-please.yml'
   pull_request:
     branches: [main]
     paths:
       - 'Formula/**'
       - 'tools/release/update-homebrew-formula.sh'
-      - '.github/workflows/homebrew.yml'
-      - '.github/workflows/release-please.yml'
 
 jobs:
   test:
     name: Homebrew ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    if: github.repository == 'yuluo-yx/typo'
+    # Dependabot 不维护 Homebrew formula；即使未来路径过滤扩大，也不在依赖 PR 中执行 brew。
+    if: >-
+      github.repository == 'yuluo-yx/typo' &&
+      (github.event_name != 'pull_request' || github.actor != 'dependabot[bot]')
     strategy:
       fail-fast: false
       matrix:
