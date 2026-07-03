@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/yuluo-yx/typo/compare/v1.5.0...v1.6.0) (2026-06-29)
+
+
+### Features
+
+* fix ci error, update dependency, not run homebrew ci ([6a8d307](https://github.com/yuluo-yx/typo/commit/6a8d3075d9a5b6fdebe1b270ef1f8c5e0624aed8))
+
+
+### Bug Fixes
+
+* **ci:** compare benchmarks on same runner ([#182](https://github.com/yuluo-yx/typo/issues/182)) ([a8ee967](https://github.com/yuluo-yx/typo/commit/a8ee967f51ffb54dc0f5407dd0ea54d524ab6a70))
+
 ## [1.5.0](https://github.com/yuluo-yx/typo/compare/v1.4.0...v1.5.0) (2026-06-06)
 
 
