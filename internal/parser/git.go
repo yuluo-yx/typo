@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strings"
 
+	"mvdan.cc/sh/v3/syntax"
+
 	itypes "github.com/yuluo-yx/typo/internal/types"
 	"github.com/yuluo-yx/typo/internal/utils"
 )
@@ -12,8 +14,11 @@ import (
 type GitParser struct {
 	didYouMeanRegex          *regexp.Regexp
 	noUpstreamRegex          *regexp.Regexp
+	legacyUpstreamRegex      *regexp.Regexp
 	divergentBranchesRegex   *regexp.Regexp
 	reconcileDivergenceRegex *regexp.Regexp
+	pushRejectedRegex        *regexp.Regexp
+	pushNeedsPullRegex       *regexp.Regexp
 	placeholderRegex         *regexp.Regexp
 	notGitRepoRegex          *regexp.Regexp
 }
@@ -22,9 +27,12 @@ type GitParser struct {
 func NewGitParser() *GitParser {
 	return &GitParser{
 		didYouMeanRegex:          regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
-		noUpstreamRegex:          regexp.MustCompile(`git branch --set-upstream-to=([^/\s]+)/([^\s]+)(?:\s+([^\s]+))?`),
+		noUpstreamRegex:          regexp.MustCompile(`git branch --set-upstream-to(?:=|\s+)([^\s]+)(?:\s+([^\s]+))?`),
+		legacyUpstreamRegex:      regexp.MustCompile(`git branch --set-upstream\s+([^\s]+)\s+([^\s]+)`),
 		divergentBranchesRegex:   regexp.MustCompile(`(?i)You have divergent branches and need to specify how to reconcile them\.`),
 		reconcileDivergenceRegex: regexp.MustCompile(`(?i)fatal: Need to specify how to reconcile divergent branches\.`),
+		pushRejectedRegex:        regexp.MustCompile(`(?i)(?:fetch first|non-fast-forward)`),
+		pushNeedsPullRegex:       regexp.MustCompile(`(?is)(?:git pull|integrate the remote changes|before pushing again)`),
 		placeholderRegex:         regexp.MustCompile(`^<[^>\s]+>$`),
 		notGitRepoRegex:          regexp.MustCompile(`fatal: not a git repository`),
 	}
@@ -56,6 +64,10 @@ func (p *GitParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	}
 
 	if result := p.parseDivergentPullRebase(cmd, stderr); result.Fixed {
+		return result
+	}
+
+	if result := p.parsePushRejectedNeedsPull(cmd, stderr); result.Fixed {
 		return result
 	}
 
@@ -99,16 +111,43 @@ func (p *GitParser) parseNoUpstream(cmd, stderr string) itypes.ParserResult {
 		return itypes.ParserResult{Fixed: false}
 	}
 
-	matches := p.noUpstreamRegex.FindStringSubmatch(stderr)
-	if len(matches) < 3 {
+	remote, branch, ok := p.parseUpstreamHint(stderr)
+	if !ok {
 		return itypes.ParserResult{Fixed: false}
 	}
 
-	remote := matches[1]
-	upstreamBranch := matches[2]
-	localBranch := ""
-	if len(matches) >= 4 {
-		localBranch = matches[3]
+	// Add --set-upstream flag to the command
+	return itypes.ParserResult{
+		Fixed:   true,
+		Command: cmd + " --set-upstream " + remote + " " + branch,
+		Message: "adding upstream tracking: " + remote + "/" + branch,
+	}
+}
+
+func (p *GitParser) parseUpstreamHint(stderr string) (string, string, bool) {
+	matches := p.noUpstreamRegex.FindStringSubmatch(stderr)
+	if len(matches) >= 2 {
+		localBranch := ""
+		if len(matches) >= 3 {
+			localBranch = matches[2]
+		}
+		return p.parseUpstreamTarget(matches[1], localBranch)
+	}
+
+	matches = p.legacyUpstreamRegex.FindStringSubmatch(stderr)
+	if len(matches) >= 3 {
+		localBranch := matches[1]
+		upstreamTarget := matches[2]
+		return p.parseUpstreamTarget(upstreamTarget, localBranch)
+	}
+
+	return "", "", false
+}
+
+func (p *GitParser) parseUpstreamTarget(target, localBranch string) (string, string, bool) {
+	remote, upstreamBranch, ok := strings.Cut(target, "/")
+	if !ok {
+		return "", "", false
 	}
 
 	if p.placeholderRegex.MatchString(remote) {
@@ -120,15 +159,10 @@ func (p *GitParser) parseNoUpstream(cmd, stderr string) itypes.ParserResult {
 		branch = localBranch
 	}
 	if p.placeholderRegex.MatchString(branch) {
-		return itypes.ParserResult{Fixed: false}
+		return "", "", false
 	}
 
-	// Add --set-upstream flag to the command
-	return itypes.ParserResult{
-		Fixed:   true,
-		Command: cmd + " --set-upstream " + remote + " " + branch,
-		Message: "adding upstream tracking: " + remote + "/" + branch,
-	}
+	return remote, branch, true
 }
 
 func (p *GitParser) parseDivergentPullRebase(cmd, stderr string) itypes.ParserResult {
@@ -148,6 +182,26 @@ func (p *GitParser) parseDivergentPullRebase(cmd, stderr string) itypes.ParserRe
 		Fixed:   true,
 		Command: fixed,
 		Message: "adding git pull rebase strategy",
+	}
+}
+
+func (p *GitParser) parsePushRejectedNeedsPull(cmd, stderr string) itypes.ParserResult {
+	if gitSubcommand(cmd) != "push" {
+		return itypes.ParserResult{Fixed: false}
+	}
+	if !p.pushRejectedRegex.MatchString(stderr) || !p.pushNeedsPullRegex.MatchString(stderr) {
+		return itypes.ParserResult{Fixed: false}
+	}
+
+	fixed, ok := replaceGitPushWithPull(cmd)
+	if !ok {
+		return itypes.ParserResult{Fixed: false}
+	}
+
+	return itypes.ParserResult{
+		Fixed:   true,
+		Command: fixed,
+		Message: "retry after integrating remote changes with git pull",
 	}
 }
 
@@ -266,6 +320,138 @@ func gitCommandHasPullReconcileFlag(cmd string) bool {
 	}
 
 	return false
+}
+
+func replaceGitPushWithPull(cmd string) (string, bool) {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return "", false
+	}
+
+	if gitPrefixedSubcommand(parts[0]) == "push" {
+		return replaceGitPrefixedPushWithPull(cmd)
+	}
+
+	call, err := parseShellCall(cmd)
+	if err == nil {
+		index := findShellSubcommandIndex(call.args, parserNameGit, gitParserOptionsWithValues)
+		if index != -1 && call.args[index].Lit() == "push" {
+			if gitPushArgsBlockPull(gitShellArgsLits(call.args[index+1:])) {
+				return "", false
+			}
+			fixed := call.replaceWord(index, "pull")
+			return normalizeGitPullFromPush(fixed)
+		}
+	}
+
+	for i, part := range parts {
+		if part != "push" {
+			continue
+		}
+		if gitPushArgsBlockPull(parts[i+1:]) {
+			return "", false
+		}
+		parts[i] = "pull"
+		return normalizeGitPullFields(parts), true
+	}
+
+	return "", false
+}
+
+func replaceGitPrefixedPushWithPull(cmd string) (string, bool) {
+	call, err := parseShellCall(cmd)
+	if err == nil && len(call.args) > 0 && gitPrefixedSubcommand(call.args[0].Lit()) == "push" {
+		if gitPushArgsBlockPull(gitShellArgsLits(call.args[1:])) {
+			return "", false
+		}
+		fixed := call.replaceWord(0, gitCommandPrefix+"pull")
+		return normalizeGitPullFromPush(fixed)
+	}
+
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 || gitPrefixedSubcommand(parts[0]) != "push" {
+		return "", false
+	}
+	if gitPushArgsBlockPull(parts[1:]) {
+		return "", false
+	}
+	parts[0] = gitCommandPrefix + "pull"
+	return normalizeGitPullFields(parts), true
+}
+
+func gitShellArgsLits(args []*syntax.Word) []string {
+	lits := make([]string, 0, len(args))
+	for _, arg := range args {
+		lits = append(lits, arg.Lit())
+	}
+	return lits
+}
+
+func gitPushArgsBlockPull(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return true
+		}
+		if strings.Contains(arg, ":") {
+			return true
+		}
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			continue
+		}
+		if gitPushOptionAllowedForPull(arg) {
+			continue
+		}
+		return true
+	}
+
+	return false
+}
+
+func gitPushOptionAllowedForPull(arg string) bool {
+	switch {
+	case arg == "-u":
+		return true
+	case arg == "-v", arg == "-q":
+		return true
+	case arg == "--set-upstream", arg == "--no-set-upstream":
+		return true
+	case strings.HasPrefix(arg, "--set-upstream="):
+		return true
+	case arg == "--verbose", arg == "--no-verbose":
+		return true
+	case arg == "--quiet", arg == "--no-quiet":
+		return true
+	case arg == "--progress", arg == "--no-progress":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeGitPullFromPush(cmd string) (string, bool) {
+	call, err := parseShellCall(cmd)
+	if err == nil {
+		fixed := cmd
+		for i := len(call.args) - 1; i >= 0; i-- {
+			if call.args[i].Lit() != "-u" {
+				continue
+			}
+			start, end := utils.ShellNodeRange(call.args[i], len(cmd))
+			fixed = fixed[:start] + "--set-upstream" + fixed[end:]
+		}
+		return fixed, true
+	}
+
+	return normalizeGitPullFields(strings.Fields(cmd)), true
+}
+
+func normalizeGitPullFields(parts []string) string {
+	for i, part := range parts {
+		if part == "-u" {
+			parts[i] = "--set-upstream"
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func addGitPullRebaseFlag(cmd string) (string, bool) {

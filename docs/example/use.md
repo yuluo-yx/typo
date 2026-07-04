@@ -104,6 +104,25 @@ Press `Esc` `Esc`, and Typo can retry the same pull with a command-level rebase 
 git pull --rebase
 ```
 
+## `git push` rejected, pull first
+
+When the remote has commits that are missing locally, Git rejects the push:
+
+```shell
+$ git push origin main
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'github.com:yuluo-yx/typo.git'
+hint: Updates were rejected because the remote contains work that you do
+hint: not have locally. You may want to first integrate the remote changes
+hint: (e.g., 'git pull ...') before pushing again.
+```
+
+Press `Esc` `Esc`, and Typo can retry the matching pull command first.
+
+```shell
+git pull origin main
+```
+
 ## No permission? Use `sudo`
 
 > You finish typing a command and then realize you do not have permission.

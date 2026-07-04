@@ -104,6 +104,25 @@ fatal: Need to specify how to reconcile divergent branches.
 git pull --rebase
 ```
 
+## `git push` 被拒绝，先执行 pull
+
+当远端存在本地没有的提交时，Git 会拒绝继续 push：
+
+```shell
+$ git push origin main
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'github.com:yuluo-yx/typo.git'
+hint: Updates were rejected because the remote contains work that you do
+hint: not have locally. You may want to first integrate the remote changes
+hint: (e.g., 'git pull ...') before pushing again.
+```
+
+这时按两次 `Esc`，Typo 会先重试对应的 pull 命令。
+
+```shell
+git pull origin main
+```
+
 ## 没有权限？自动补 `sudo`
 
 > 命令本身没问题，只是执行时缺少权限。

@@ -75,6 +75,20 @@ func TestGitParser_Parse(t *testing.T) {
 			wantCmd: "git pull --set-upstream origin 0426-yuluo/fix",
 		},
 		{
+			name:    "no upstream branch accepts spaced set upstream hint",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to origin/main main\n",
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin main",
+		},
+		{
+			name:    "no upstream branch accepts legacy set upstream hint",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream main origin/main\n",
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin main",
+		},
+		{
 			name:    "no upstream branch is idempotent once fixed",
 			cmd:     "git pull --set-upstream origin main",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
@@ -824,6 +838,103 @@ func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
 			result := p.Parse(itypes.ParserContext{Command: "git pull", Stderr: tt.stderr})
 			if result.Fixed {
 				t.Fatalf("Expected incomplete divergent pull stderr to stay unchanged, got %+v", result)
+			}
+		})
+	}
+}
+
+func TestGitParser_ParsePushRejectedNeedsPull(t *testing.T) {
+	p := NewGitParser()
+	fetchFirstStderr := "To github.com:yuluo-yx/typo.git\n" +
+		" ! [rejected]        main -> main (fetch first)\n" +
+		"error: failed to push some refs to 'github.com:yuluo-yx/typo.git'\n" +
+		"hint: Updates were rejected because the remote contains work that you do\n" +
+		"hint: not have locally. This is usually caused by another repository pushing\n" +
+		"hint: to the same ref. You may want to first integrate the remote changes\n" +
+		"hint: (e.g., 'git pull ...') before pushing again.\n"
+	nonFastForwardStderr := "To github.com:yuluo-yx/typo.git\n" +
+		" ! [rejected]        main -> main (non-fast-forward)\n" +
+		"error: failed to push some refs to 'github.com:yuluo-yx/typo.git'\n" +
+		"hint: Updates were rejected because the tip of your current branch is behind\n" +
+		"hint: its remote counterpart. If you want to integrate the remote changes,\n" +
+		"hint: use 'git pull' before pushing again.\n"
+
+	tests := []struct {
+		name    string
+		cmd     string
+		stderr  string
+		wantFix bool
+		wantCmd string
+	}{
+		{
+			name:    "fetch first with remote and branch",
+			cmd:     "git push origin main",
+			stderr:  fetchFirstStderr,
+			wantFix: true,
+			wantCmd: "git pull origin main",
+		},
+		{
+			name:    "non fast forward with global option",
+			cmd:     "git -C repo push origin main",
+			stderr:  nonFastForwardStderr,
+			wantFix: true,
+			wantCmd: "git -C repo pull origin main",
+		},
+		{
+			name:    "git-push form",
+			cmd:     "git-push origin main",
+			stderr:  fetchFirstStderr,
+			wantFix: true,
+			wantCmd: "git-pull origin main",
+		},
+		{
+			name:    "push set upstream short option becomes pull long option",
+			cmd:     "git push -u origin feature",
+			stderr:  fetchFirstStderr,
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin feature",
+		},
+		{
+			name:    "push set upstream long option is preserved",
+			cmd:     "git push --set-upstream origin feature",
+			stderr:  fetchFirstStderr,
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin feature",
+		},
+		{
+			name:    "force push intent stays unchanged",
+			cmd:     "git push --force origin main",
+			stderr:  fetchFirstStderr,
+			wantFix: false,
+		},
+		{
+			name:    "push refspec stays unchanged",
+			cmd:     "git push origin HEAD:main",
+			stderr:  fetchFirstStderr,
+			wantFix: false,
+		},
+		{
+			name:    "remote policy rejection stays unchanged",
+			cmd:     "git push origin main",
+			stderr:  "To github.com:yuluo-yx/typo.git\n ! [remote rejected] main -> main (protected branch hook declined)\nerror: failed to push some refs to 'github.com:yuluo-yx/typo.git'\n",
+			wantFix: false,
+		},
+		{
+			name:    "non-push command stays unchanged",
+			cmd:     "git status",
+			stderr:  fetchFirstStderr,
+			wantFix: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
 			}
 		})
 	}
