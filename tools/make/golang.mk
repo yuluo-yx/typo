@@ -122,11 +122,13 @@ security-check: govulncheck gitleaks-check
 
 .PHONY: govulncheck
 govulncheck: ## Run govulncheck against all Go packages
+govulncheck: install-govulncheck
 	@$(LOG_TARGET)
 	govulncheck ./...
 
 .PHONY: gitleaks-check
 gitleaks-check: ## Scan the working tree for committed secrets
+gitleaks-check: install-gitleaks
 	@$(LOG_TARGET)
 	gitleaks detect --source . --no-banner --redact
 

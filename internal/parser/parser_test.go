@@ -1172,6 +1172,13 @@ func TestGenericParser_Parse(t *testing.T) {
 			wantCmd: "poetry add requests",
 		},
 		{
+			name:    "generic replaces reported command after option value",
+			cmd:     "poetry --directory project addd requests",
+			stderr:  "The command \"addd\" is not defined.\nDid you mean one of these?\n    add\n    addr\n",
+			wantFix: true,
+			wantCmd: "poetry --directory project add requests",
+		},
+		{
 			// pip: "maybe you meant" double-quoted inline hint
 			name:    "pip maybe you meant",
 			cmd:     "pip insatll requests",

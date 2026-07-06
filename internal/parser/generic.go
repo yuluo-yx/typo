@@ -17,6 +17,7 @@ var (
 	genericParserRegexOnce sync.Once
 	genericInlineRegex     *regexp.Regexp
 	genericNextLineRegex   *regexp.Regexp
+	genericWrongRegexes    []*regexp.Regexp
 )
 
 // NewGenericParser creates a new GenericParser.
@@ -33,6 +34,10 @@ func genericParserRegexes() (*regexp.Regexp, *regexp.Regexp) {
 		genericNextLineRegex = regexp.MustCompile(
 			`(?i)did you mean (?:this|one of these)\?[^\n]*\n[ \t]+([\w][\w-]*)`,
 		)
+		genericWrongRegexes = []*regexp.Regexp{
+			regexp.MustCompile("(?i)(?:unknown command|no such subcommand)[: ]+['`\"]?([\\w][\\w-]*)"),
+			regexp.MustCompile("(?i)command ['`\"]?([\\w][\\w-]*)['`\"]? (?:is not defined|not found)"),
+		}
 	})
 	return genericInlineRegex, genericNextLineRegex
 }
@@ -59,6 +64,7 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	if strings.HasPrefix(suggested, "-") {
 		return itypes.ParserResult{Fixed: false}
 	}
+	wrong := p.extractWrongCommand(stderr)
 
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
@@ -68,6 +74,17 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 
 	call, err := parseShellCall(cmd)
 	if err != nil {
+		if wrong != "" {
+			fixed := strings.Replace(cmd, wrong, suggested, 1)
+			if fixed != cmd {
+				return itypes.ParserResult{
+					Fixed:   true,
+					Command: fixed,
+					Message: "generic suggested: " + suggested,
+				}
+			}
+		}
+
 		// Fallback: reconstruct as "binary suggestion [rest...]".
 		fixed := binary + " " + suggested
 		if len(parts) > 2 {
@@ -80,9 +97,15 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 		}
 	}
 
-	// expected is empty so replaceSubcommand replaces whatever positional
-	// argument is at the subcommand position, regardless of its current value.
-	fixed, ok := call.replaceSubcommand(binary, "", suggested, genericParserOptionsWithValues)
+	fixed := ""
+	ok := false
+	if wrong != "" {
+		fixed, ok = replaceReportedShellWord(call, wrong, suggested)
+	} else {
+		// expected is empty so replaceSubcommand replaces whatever positional
+		// argument is at the subcommand position, regardless of its current value.
+		fixed, ok = call.replaceSubcommand(binary, "", suggested, genericParserOptionsWithValues)
+	}
 	if !ok {
 		return itypes.ParserResult{Fixed: false}
 	}
@@ -105,4 +128,23 @@ func (p *GenericParser) extractSuggestion(stderr string) string {
 		return m[1]
 	}
 	return ""
+}
+
+func (p *GenericParser) extractWrongCommand(stderr string) string {
+	genericParserRegexes()
+	for _, re := range genericWrongRegexes {
+		if m := re.FindStringSubmatch(stderr); len(m) >= 2 {
+			return m[1]
+		}
+	}
+	return ""
+}
+
+func replaceReportedShellWord(call *shellCall, wrong, replacement string) (string, bool) {
+	for i := 1; i < len(call.args); i++ {
+		if call.args[i].Lit() == wrong {
+			return call.replaceWord(i, replacement), true
+		}
+	}
+	return "", false
 }
