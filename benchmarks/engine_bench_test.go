@@ -13,6 +13,22 @@ import (
 	"github.com/yuluo-yx/typo/internal/parser"
 )
 
+var benchmarkEngine *engine.Engine
+
+func BenchmarkEngine_New(b *testing.B) {
+	b.Run("lazy-parser", func(b *testing.B) {
+		for b.Loop() {
+			benchmarkEngine = engine.NewEngine()
+		}
+	})
+
+	b.Run("eager-parser", func(b *testing.B) {
+		for b.Loop() {
+			benchmarkEngine = engine.NewEngine(engine.WithParser(parser.NewRegistry()))
+		}
+	})
+}
+
 func BenchmarkDistance(b *testing.B) {
 	keyboard := engine.DefaultKeyboard
 
@@ -291,7 +307,7 @@ func marshalBenchmarkToolTreeCache(tools map[string][]string, updatedAt time.Tim
 		SchemaVersion int                       `json:"schema_version"`
 		Tools         []*commands.ToolTreeCache `json:"tools"`
 	}{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		Tools:         make([]*commands.ToolTreeCache, 0, len(tools)),
 	}
 
@@ -308,4 +324,22 @@ func marshalBenchmarkToolTreeCache(tools map[string][]string, updatedAt time.Tim
 	}
 
 	return json.MarshalIndent(wrapper, "", "  ")
+}
+
+func TestBenchmarkToolTreeCacheMatchesProductionSchema(t *testing.T) {
+	cacheDir := t.TempDir()
+	data, err := marshalBenchmarkToolTreeCache(map[string][]string{
+		"benchmark-tool": {"build"},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("marshalBenchmarkToolTreeCache failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "subcommands.json"), data, 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	children := commands.NewToolTreeRegistry(cacheDir).Get("benchmark-tool")
+	if len(children) != 1 || children[0] != "build" {
+		t.Fatalf("benchmark cache was not loaded: got %v, want [build]", children)
+	}
 }

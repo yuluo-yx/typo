@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -353,6 +354,9 @@ func TestHistory_SaveMkdirError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when saving to invalid path")
 	}
+	if _, ok := h.Lookup("test"); ok {
+		t.Fatal("Record kept the history entry in memory after save failed")
+	}
 }
 
 func TestHistory_ClearError(t *testing.T) {
@@ -374,6 +378,51 @@ func TestHistory_ClearError(t *testing.T) {
 	err = h.Clear()
 	if err == nil {
 		t.Error("Expected error when clearing with invalid path")
+	}
+}
+
+func TestHistoryMutationsRollBackWhenSaveFails(t *testing.T) {
+	newHistory := func(t *testing.T) *History {
+		t.Helper()
+		blocker := filepath.Join(t.TempDir(), "not-a-directory")
+		if err := os.WriteFile(blocker, []byte("block"), 0600); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+		h := NewHistory(blocker)
+		h.entries["gut"] = itypes.HistoryEntry{From: "gut", To: "git", Count: 2}
+		h.entries["gut status"] = itypes.HistoryEntry{From: "gut status", To: "git status", Count: 1}
+		h.rebuildTargets()
+		return h
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*History) error
+	}{
+		{
+			name: "mark rule applied",
+			mutate: func(h *History) error {
+				_, err := h.MarkRuleApplied("gut", "git")
+				return err
+			},
+		},
+		{name: "remove", mutate: func(h *History) error { return h.Remove("gut") }},
+		{name: "remove command entries", mutate: func(h *History) error { return h.RemoveEntriesForCommandWord("gut") }},
+		{name: "remove conflicts", mutate: func(h *History) error { return h.RemoveConflictsForRule("gut") }},
+		{name: "clear", mutate: func(h *History) error { return h.Clear() }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHistory(t)
+			before := h.List()
+			if err := tt.mutate(h); err == nil {
+				t.Fatal("mutation succeeded with invalid config directory")
+			}
+			if got := h.List(); !reflect.DeepEqual(got, before) {
+				t.Fatalf("history changed after save failed: got %+v, want %+v", got, before)
+			}
+		})
 	}
 }
 

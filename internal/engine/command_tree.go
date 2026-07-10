@@ -265,8 +265,8 @@ func newCommandTreeTokenCandidate(original, candidate string, node *itypes.Comma
 		token:       candidate,
 		node:        node,
 		distance:    distance,
-		similarity:  SimilarityFromDistance(len(original), len(candidate), distance),
-		lengthDelta: absInt(len([]rune(original)) - len([]rune(candidate))),
+		similarity:  SimilarityFromDistance(runeCount(original), runeCount(candidate), distance),
+		lengthDelta: absInt(runeCount(original) - runeCount(candidate)),
 	}, true
 }
 

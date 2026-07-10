@@ -318,6 +318,56 @@ func TestRules_SaveMkdirError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when saving to invalid path")
 	}
+	if _, ok := r.MatchUser("test"); ok {
+		t.Fatal("AddUserRule kept the rule in memory after save failed")
+	}
+}
+
+func TestRuleMutationsRollBackWhenSaveFails(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocker, []byte("block"), 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	t.Run("replace", func(t *testing.T) {
+		r := NewRules(blocker)
+		original := itypes.Rule{From: "test", To: "original", Enable: true}
+		r.user[original.From] = original
+		r.rebuildTargets()
+
+		if err := r.AddUserRule(itypes.Rule{From: "test", To: "replacement"}); err == nil {
+			t.Fatal("AddUserRule succeeded with invalid config directory")
+		}
+		if got, ok := r.MatchUser("test"); !ok || got.To != original.To {
+			t.Fatalf("rule changed after save failed: got %+v, ok=%v", got, ok)
+		}
+	})
+
+	t.Run("remove", func(t *testing.T) {
+		r := NewRules(blocker)
+		original := itypes.Rule{From: "test", To: "original", Enable: true}
+		r.user[original.From] = original
+		r.rebuildTargets()
+
+		if err := r.RemoveUserRule("test"); err == nil {
+			t.Fatal("RemoveUserRule succeeded with invalid config directory")
+		}
+		if got, ok := r.MatchUser("test"); !ok || got.To != original.To {
+			t.Fatalf("rule disappeared after save failed: got %+v, ok=%v", got, ok)
+		}
+	})
+}
+
+func TestNewRulesWithEmptyConfigDirDoesNotLoadWorkingDirectory(t *testing.T) {
+	t.Chdir(t.TempDir())
+	data := []byte(`[{"from":"local","to":"unexpected","enable":true}]`)
+	if err := os.WriteFile("rules.json", data, 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if _, ok := NewRules("").MatchUser("local"); ok {
+		t.Fatal("NewRules with empty config directory loaded rules.json from the working directory")
+	}
 }
 
 func TestRules_ListRules_WithUserRules(t *testing.T) {

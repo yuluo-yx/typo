@@ -1010,6 +1010,37 @@ func TestNewEngine(t *testing.T) {
 	}
 }
 
+func TestNewEngineWithParserSkipsUnusedDefaultRegistry(t *testing.T) {
+	provided := parser.NewRegistry()
+	eng := NewEngine(WithParser(provided))
+	if eng.parser != provided {
+		t.Fatal("NewEngine did not keep the provided parser")
+	}
+}
+
+func TestNewEngineSkipsDefaultParserUntilStderr(t *testing.T) {
+	eng := NewEngine()
+	if eng.parser != nil {
+		t.Fatal("NewEngine eagerly initialized the default parser")
+	}
+
+	result := eng.Fix("git remove -v", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
+	if !result.Fixed || result.Command != "git remote -v" {
+		t.Fatalf("Fix() = %+v, want parser fix to git remote -v", result)
+	}
+	if eng.parser == nil {
+		t.Fatal("Fix() did not initialize the parser for stderr handling")
+	}
+}
+
+func TestEngineRejectsUnrelatedUnicodeCommand(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"测试"}))
+
+	if got := eng.Fix("编译", ""); got.Fixed {
+		t.Fatalf("Fix() = %+v, want unrelated Unicode command to stay unchanged", got)
+	}
+}
+
 func TestEngine_FixSubcommand_SimilarityBoundary(t *testing.T) {
 	// Test case: "gti cloen" should be fixed to "git clone" or "git clean"
 	// Both have distance=2 and similarity=0.6, so either is acceptable

@@ -15,7 +15,6 @@ import (
 	"github.com/yuluo-yx/typo/internal/commands"
 	"github.com/yuluo-yx/typo/internal/config"
 	"github.com/yuluo-yx/typo/internal/engine"
-	"github.com/yuluo-yx/typo/internal/parser"
 )
 
 // Version information injected at build time.
@@ -290,7 +289,6 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithDisabledCommands(disabledCommands),
 		engine.WithRules(rules),
 		engine.WithHistory(engine.NewHistory(cfg.ConfigDir)),
-		engine.WithParser(parser.NewRegistry()),
 		engine.WithCommands(seedCommands),
 		engine.WithCommandLoader(func() []string {
 			return discoverCommandsWithinTimeout(commands.DiscoverContext, CommandDiscoveryTimeout)

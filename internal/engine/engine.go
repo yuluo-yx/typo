@@ -140,7 +140,6 @@ func NewEngine(opts ...Option) *Engine {
 		disabledCommands:    make(map[string]bool),
 		rules:               NewRules(""),
 		history:             NewHistory(""),
-		parser:              parser.NewRegistry(),
 		commands:            []string{},
 	}
 
@@ -153,6 +152,10 @@ func NewEngine(opts ...Option) *Engine {
 	return e
 }
 func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
+	if e.parser == nil {
+		e.parser = parser.NewRegistry()
+	}
+
 	lines, err := parseShellCommandLines(input.Command)
 	if err == nil {
 		hasMultipleCommands := len(lines) > 1
@@ -373,7 +376,7 @@ func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 
 	// Find best match from known commands
 	bestMatch, bestDistance := e.closestKnownCommand(cmdWord)
-	bestSimilarity := SimilarityFromDistance(len(cmdWord), len(bestMatch), bestDistance)
+	bestSimilarity := SimilarityFromDistance(runeCount(cmdWord), runeCount(bestMatch), bestDistance)
 
 	// Check if match is good enough
 	// Threshold: distance <= 2 and similarity > 60%
@@ -417,7 +420,7 @@ func (e *Engine) tryDistanceWithShell(cmd string) (itypes.FixResult, bool) {
 		}
 
 		bestMatch, bestDistance := e.closestKnownCommand(line.commandWord())
-		bestSimilarity := SimilarityFromDistance(len(line.commandWord()), len(bestMatch), bestDistance)
+		bestSimilarity := SimilarityFromDistance(runeCount(line.commandWord()), runeCount(bestMatch), bestDistance)
 		if !isGoodCommandDistanceMatch(line.commandWord(), bestMatch, bestDistance, matchCfg) {
 			if bestMatch != "" && bestMatch != line.commandWord() {
 				e.recordRejectedCandidate(fixSourceDistance, line.commandWord(), bestMatch, bestDistance, bestSimilarity, "did not pass command distance threshold")
@@ -875,7 +878,7 @@ func (e *Engine) collectSubcommandReplacements(mainCmd string, tokens []string, 
 		match, distance := closestSubcommand(token, subcommands, cfg)
 		if !isGoodSubcommandMatch(token, match, distance, cfg) {
 			if match != "" && match != token {
-				similarity := SimilarityFromDistance(len(token), len(match), distance)
+				similarity := SimilarityFromDistance(runeCount(token), runeCount(match), distance)
 				e.recordRejectedCandidate("subcommand", token, match, distance, similarity, "did not pass subcommand distance threshold")
 			}
 			break
@@ -1024,8 +1027,8 @@ func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMat
 		if !isGoodSubcommandMatch(subcmd, known, d, cfg) {
 			continue
 		}
-		lengthDelta := absInt(len(subcmd) - len(known))
-		similarity := SimilarityFromDistance(len(subcmd), len(known), d)
+		lengthDelta := absInt(runeCount(subcmd) - runeCount(known))
+		similarity := SimilarityFromDistance(runeCount(subcmd), runeCount(known), d)
 		transposed := isSingleAdjacentTransposition(subcmd, known)
 		if d < bestDistance ||
 			(d == bestDistance && transposed && !bestTransposition) ||
@@ -1047,7 +1050,7 @@ func isGoodDistanceMatch(original, candidate string, distance int, cfg distanceM
 		return false
 	}
 
-	return SimilarityFromDistance(len(original), len(candidate), distance) >= cfg.similarityThreshold
+	return SimilarityFromDistance(runeCount(original), runeCount(candidate), distance) >= cfg.similarityThreshold
 }
 
 func isGoodSubcommandMatch(original, candidate string, distance int, cfg distanceMatchConfig) bool {

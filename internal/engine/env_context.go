@@ -205,8 +205,8 @@ func closestEnvVar(name string, envNames []string, cfg distanceMatchConfig) (str
 		candidates = append(candidates, envVarCandidate{
 			name:        envName,
 			distance:    distance,
-			similarity:  SimilarityFromDistance(len(name), len(envName), distance),
-			lengthDelta: absInt(len(name) - len(envName)),
+			similarity:  SimilarityFromDistance(runeCount(name), runeCount(envName), distance),
+			lengthDelta: absInt(runeCount(name) - runeCount(envName)),
 			transposed:  isSingleAdjacentTransposition(name, envName),
 		})
 	}

@@ -98,10 +98,20 @@ func (r *Rules) AddUserRule(rule itypes.Rule) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	previous, existed := r.user[rule.From]
 	rule.Enable = true
 	r.user[rule.From] = rule
 	r.rebuildTargets()
-	return r.saveUserRules()
+	if err := r.saveUserRules(); err != nil {
+		if existed {
+			r.user[rule.From] = previous
+		} else {
+			delete(r.user, rule.From)
+		}
+		r.rebuildTargets()
+		return err
+	}
+	return nil
 }
 
 // RemoveUserRule removes a user rule.
@@ -109,12 +119,18 @@ func (r *Rules) RemoveUserRule(from string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.user[from]; !exists {
+	previous, exists := r.user[from]
+	if !exists {
 		return ErrRuleNotFound
 	}
 	delete(r.user, from)
 	r.rebuildTargets()
-	return r.saveUserRules()
+	if err := r.saveUserRules(); err != nil {
+		r.user[from] = previous
+		r.rebuildTargets()
+		return err
+	}
+	return nil
 }
 
 // ListRules returns all rules (builtin + user).
@@ -427,6 +443,10 @@ func (r *Rules) initBuiltinRules() {
 }
 
 func (r *Rules) loadUserRules() {
+	if r.configDir == "" {
+		return
+	}
+
 	rulesFile := filepath.Join(r.configDir, "rules.json")
 	data, err := os.ReadFile(rulesFile)
 	if err != nil {

@@ -78,7 +78,7 @@ func (e *Engine) rankedKnownCommandCandidatesFrom(cmd string, knownCommands []co
 		candidates = append(candidates, commandCandidate{
 			name:       known.name,
 			distance:   d,
-			similarity: SimilarityFromDistance(len(cmd), len(known.name), d),
+			similarity: SimilarityFromDistance(len(cmdRunes), len(known.runes), d),
 			priority:   e.commandPriority(known.name),
 			transposed: isSingleAdjacentTransposition(cmd, known.name),
 		})
@@ -103,7 +103,7 @@ func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []c
 		candidates = append(candidates, commandCandidate{
 			name:       known.name,
 			distance:   d,
-			similarity: SimilarityFromDistance(len(cmd), len(known.name), d),
+			similarity: SimilarityFromDistance(len(cmdRunes), len(known.runes), d),
 			priority:   e.commandPriority(known.name),
 			transposed: isSingleAdjacentTransposition(cmd, known.name),
 		})

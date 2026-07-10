@@ -66,6 +66,8 @@ func TestSimilarity(t *testing.T) {
 		{"empty strings", "", "", 1.0, 1.0},
 		{"one empty string", "git", "", 0.0, 0.1},
 		{"longer strings", "docker", "dcoker", 0.6, 0.9},
+		{"unrelated unicode strings", "编译", "测试", 0.0, 0.0},
+		{"similar unicode strings", "编绎器", "编译器", 0.6, 0.7},
 	}
 
 	for _, tt := range tests {

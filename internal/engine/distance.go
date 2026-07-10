@@ -3,6 +3,7 @@ package engine
 import (
 	"math"
 	"sync"
+	"unicode/utf8"
 )
 
 const maxPooledDistanceBufferLen = 4096
@@ -87,7 +88,11 @@ func Similarity(a, b string, weights KeyboardWeights) float64 {
 	if len(a) == 0 && len(b) == 0 {
 		return 1.0
 	}
-	return SimilarityFromDistance(len(a), len(b), Distance(a, b, weights))
+	return SimilarityFromDistance(runeCount(a), runeCount(b), Distance(a, b, weights))
+}
+
+func runeCount(value string) int {
+	return utf8.RuneCountInString(value)
 }
 
 // SimilarityFromDistance derives a 0-1 similarity ratio from a precomputed

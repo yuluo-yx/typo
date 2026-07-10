@@ -42,6 +42,7 @@ func (h *History) Record(from, to string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	previous, existed := h.entries[from]
 	now := time.Now().Unix()
 	if entry, exists := h.entries[from]; exists {
 		if entry.To != to {
@@ -71,7 +72,16 @@ func (h *History) Record(from, to string) error {
 	}
 
 	h.rebuildTargets()
-	return h.save()
+	if err := h.save(); err != nil {
+		if existed {
+			h.entries[from] = previous
+		} else {
+			delete(h.entries, from)
+		}
+		h.rebuildTargets()
+		return err
+	}
+	return nil
 }
 
 // MarkRuleApplied freezes a history pair after it has been promoted to a rule.
@@ -87,11 +97,17 @@ func (h *History) MarkRuleApplied(from, to string) (bool, error) {
 		return true, nil
 	}
 
+	previous := entry
 	entry.RuleApplied = true
 	entry.Timestamp = time.Now().Unix()
 	h.entries[from] = entry
 	h.rebuildTargets()
-	return true, h.save()
+	if err := h.save(); err != nil {
+		h.entries[from] = previous
+		h.rebuildTargets()
+		return false, err
+	}
+	return true, nil
 }
 
 // Lookup finds a historical correction for the given command.
@@ -108,9 +124,17 @@ func (h *History) Remove(from string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	previous, existed := h.entries[from]
 	delete(h.entries, from)
 	h.rebuildTargets()
-	return h.save()
+	if err := h.save(); err != nil {
+		if existed {
+			h.entries[from] = previous
+		}
+		h.rebuildTargets()
+		return err
+	}
+	return nil
 }
 
 // RemoveEntriesForCommandWord removes history entries whose executable command word matches the target.
@@ -122,20 +146,27 @@ func (h *History) RemoveEntriesForCommandWord(commandWord string) error {
 		return nil
 	}
 
-	removed := false
-	for from := range h.entries {
+	removed := make(map[string]itypes.HistoryEntry)
+	for from, entry := range h.entries {
 		if historyEntryMatchesCommandWord(from, commandWord) {
+			removed[from] = entry
 			delete(h.entries, from)
-			removed = true
 		}
 	}
 
-	if !removed {
+	if len(removed) == 0 {
 		return nil
 	}
 
 	h.rebuildTargets()
-	return h.save()
+	if err := h.save(); err != nil {
+		for from, entry := range removed {
+			h.entries[from] = entry
+		}
+		h.rebuildTargets()
+		return err
+	}
+	return nil
 }
 
 // RemoveConflictsForRule removes history entries that would conflict with a taught rule.
@@ -148,27 +179,34 @@ func (h *History) RemoveConflictsForRule(from string) error {
 		return nil
 	}
 
-	removed := false
-	if _, exists := h.entries[from]; exists {
+	removed := make(map[string]itypes.HistoryEntry)
+	if entry, exists := h.entries[from]; exists {
+		removed[from] = entry
 		delete(h.entries, from)
-		removed = true
 	}
 
 	if isSingleCommandWord(from) {
-		for entryFrom := range h.entries {
+		for entryFrom, entry := range h.entries {
 			if historyEntryMatchesCommandWord(entryFrom, from) {
+				removed[entryFrom] = entry
 				delete(h.entries, entryFrom)
-				removed = true
 			}
 		}
 	}
 
-	if !removed {
+	if len(removed) == 0 {
 		return nil
 	}
 
 	h.rebuildTargets()
-	return h.save()
+	if err := h.save(); err != nil {
+		for entryFrom, entry := range removed {
+			h.entries[entryFrom] = entry
+		}
+		h.rebuildTargets()
+		return err
+	}
+	return nil
 }
 
 // Clear clears all history.
@@ -176,9 +214,15 @@ func (h *History) Clear() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	previous := h.entries
 	h.entries = make(map[string]itypes.HistoryEntry)
 	h.rebuildTargets()
-	return h.save()
+	if err := h.save(); err != nil {
+		h.entries = previous
+		h.rebuildTargets()
+		return err
+	}
+	return nil
 }
 
 // List returns all history entries.
