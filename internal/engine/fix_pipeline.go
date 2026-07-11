@@ -127,7 +127,7 @@ func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixRe
 func (e *Engine) fixOnePass(input itypes.ParserContext) itypes.FixResult {
 	cmd := input.Command
 
-	// 1. 仅在 stderr 非空且命令未成功时尝试错误解析器，-1 表示退出码未知。
+	// 1. Try error parsers only when stderr is present and the command did not succeed; -1 means the exit code is unknown.
 	if input.Stderr != "" && input.ExitCode != 0 {
 		if result := e.tryParser(input); isMeaningfulFix(cmd, result) {
 			return result

@@ -1069,7 +1069,7 @@ func TestEngine_TrySubcommandFix_ThreeLevelCloudSubcommands(t *testing.T) {
 		},
 		{
 			name:    "az four-level network create with transpositions",
-			cmd:     "az netwrok vnet subent craete", //nolint:misspell // 故意保留拼错的命令输入。
+			cmd:     "az netwrok vnet subent craete", //nolint:misspell // Intentionally keep the misspelled command input.
 			wantCmd: "az network vnet subnet create",
 		},
 	}

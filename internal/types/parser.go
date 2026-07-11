@@ -4,7 +4,7 @@ package types
 type ParserContext struct {
 	Command             string
 	Stderr              string
-	ExitCode            int // 上一条命令的退出码；-1 表示未知，0 表示成功。
+	ExitCode            int // Exit code of the previous command; -1 means unknown and 0 means success.
 	HasMultipleCommands bool
 	HasRedirection      bool
 	HasPrivilegeWrapper bool

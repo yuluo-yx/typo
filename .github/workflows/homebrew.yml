@@ -20,7 +20,7 @@ jobs:
   test:
     name: Homebrew ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # Dependabot 不维护 Homebrew formula；即使未来路径过滤扩大，也不在依赖 PR 中执行 brew。
+    # Dependabot does not maintain the Homebrew formula, so dependency PRs must not run brew even if path filters expand later.
     if: >-
       github.repository == 'yuluo-yx/typo' &&
       (github.event_name != 'pull_request' || github.actor != 'dependabot[bot]')

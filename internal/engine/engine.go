@@ -1577,7 +1577,7 @@ func (e *Engine) storeUserRule(from, to string) error {
 	return nil
 }
 
-// RemoveRule 删除用户规则，并以同一操作清理相关纠错历史。
+// RemoveRule removes a user rule and clears its related correction history in the same operation.
 func (e *Engine) RemoveRule(from string) error {
 	from = strings.TrimSpace(from)
 	previous, existed := e.rules.MatchUser(from)

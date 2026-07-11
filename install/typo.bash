@@ -410,7 +410,7 @@ _typo_write_alias_context() {
     _typo_append_env_context
 }
 
-# 为 Bash 3.2 查找空闲的单数字文件描述符，避免覆盖用户已打开的描述符。
+# Find an available single-digit file descriptor for Bash 3.2 without overwriting descriptors opened by the user.
 _typo_find_available_fd() {
     local fd=3
 

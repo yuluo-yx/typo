@@ -159,7 +159,7 @@ func (c *Config) ConfigFilePath() string {
 	return filepath.Join(c.ConfigDir, configFileName)
 }
 
-// LoadError 返回最近一次加载配置文件时遇到的错误。
+// LoadError returns the error encountered while most recently loading the config file.
 func (c *Config) LoadError() error {
 	if c == nil {
 		return nil

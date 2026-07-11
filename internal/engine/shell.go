@@ -23,7 +23,7 @@ type shellWordReplacement struct {
 }
 
 func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
-	// 交互输入可能尚未闭合，恢复一个语法错误以保留原始词范围。
+	// Interactive input may be incomplete; recover one syntax error to preserve original word ranges.
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.RecoverErrors(1))
 	file, err := parser.Parse(strings.NewReader(raw+"\n"), "")
 	if err != nil {
@@ -192,7 +192,7 @@ func findExecutableArgIndex(args []*syntax.Word) int {
 		switch word {
 		case "builtin", "nocorrect", "noglob":
 			idx++
-		// Fish 作业装饰器后的词才是实际命令。
+		// The word after a Fish job decorator is the actual command.
 		case "and", "or", "not":
 			idx++
 		case "command":
