@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.0](https://github.com/yuluo-yx/typo/compare/v1.6.0...v1.7.0) (2026-07-11)
+
+
+### Features
+
+* update git support ([8a76b18](https://github.com/yuluo-yx/typo/commit/8a76b18e71a93339a6281805b0df706d6e549ba9))
+
+
+### Bug Fixes
+
+* **engine:** harden correction and persistence behavior ([#196](https://github.com/yuluo-yx/typo/issues/196)) ([ce84d30](https://github.com/yuluo-yx/typo/commit/ce84d30e28d3dfe07271e59cd71c46f8a6774618))
+* improve correction performance and consistency ([01f23a4](https://github.com/yuluo-yx/typo/commit/01f23a4162aabc497bffe6ee8d31d8061054d80c))
+* improve generic parser command replacement ([06a8345](https://github.com/yuluo-yx/typo/commit/06a834524db0a40dfa24122efceb88368367f91f))
+
 ## [1.6.0](https://github.com/yuluo-yx/typo/compare/v1.5.0...v1.6.0) (2026-06-29)
 
 
