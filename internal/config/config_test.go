@@ -674,6 +674,20 @@ func TestLoad_InvalidJSONAndInvalidConfigFallBackToDefaults(t *testing.T) {
 	})
 }
 
+func TestLoadErrorReportsInvalidJSON(t *testing.T) {
+	configDir := t.TempDir()
+	configFile := filepath.Join(configDir, configFileName)
+	if err := os.WriteFile(configFile, []byte("{"), 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := &Config{ConfigDir: configDir, User: DefaultUserConfig()}
+	cfg.loadUserConfig()
+	if cfg.LoadError() == nil {
+		t.Fatal("LoadError() should report invalid JSON")
+	}
+}
+
 func TestLoad_AllowsUnknownRuleScopesWithWarning(t *testing.T) {
 	tmpHome := t.TempDir()
 	oldHome := os.Getenv("HOME")

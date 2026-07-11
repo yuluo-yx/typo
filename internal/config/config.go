@@ -60,6 +60,7 @@ type Config struct {
 	ConfigDir string
 	Debug     bool
 	User      itypes.UserConfig
+	loadErr   error
 }
 
 // Setting represents one config item displayed by the CLI.
@@ -156,6 +157,14 @@ func (c *Config) ConfigFilePath() string {
 		return ""
 	}
 	return filepath.Join(c.ConfigDir, configFileName)
+}
+
+// LoadError returns the error encountered while most recently loading the config file.
+func (c *Config) LoadError() error {
+	if c == nil {
+		return nil
+	}
+	return c.loadErr
 }
 
 // Save validates and writes the current user config to disk.
@@ -440,6 +449,7 @@ func ValidateUserConfig(u itypes.UserConfig) error {
 }
 
 func (c *Config) loadUserConfig() {
+	c.loadErr = nil
 	configFile := c.ConfigFilePath()
 	if configFile == "" {
 		return
@@ -447,11 +457,15 @@ func (c *Config) loadUserConfig() {
 
 	data, err := os.ReadFile(configFile)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			c.loadErr = fmt.Errorf("read config file %s: %w", configFile, err)
+		}
 		return
 	}
 
 	var fileCfg fileUserConfig
 	if err := json.Unmarshal(data, &fileCfg); err != nil {
+		c.loadErr = fmt.Errorf("parse config file %s: %w", configFile, err)
 		storage.QuarantineInvalidJSON(configFile, err)
 		return
 	}
@@ -459,7 +473,8 @@ func (c *Config) loadUserConfig() {
 	userCfg := DefaultUserConfig()
 	applyFileConfig(&userCfg, fileCfg)
 	if err := ValidateUserConfig(userCfg); err != nil {
-		fmt.Fprintf(os.Stderr, "typo: invalid config file %s: %v\n", configFile, err)
+		c.loadErr = fmt.Errorf("invalid config file %s: %w", configFile, err)
+		fmt.Fprintf(os.Stderr, "typo: %v\n", c.loadErr)
 		return
 	}
 	if unknownScopes := unknownRuleScopes(userCfg.Rules); len(unknownScopes) > 0 {
@@ -543,7 +558,11 @@ func (c *Config) saveUserConfig(user itypes.UserConfig) error {
 	if configFile == "" {
 		return nil
 	}
-	return storage.WriteFileAtomic(configFile, data, 0600)
+	if err := storage.WriteFileAtomic(configFile, data, 0600); err != nil {
+		return err
+	}
+	c.loadErr = nil
+	return nil
 }
 
 func cloneUserConfig(src itypes.UserConfig) itypes.UserConfig {

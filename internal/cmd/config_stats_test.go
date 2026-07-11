@@ -305,14 +305,18 @@ func TestConfigCommandErrors(t *testing.T) {
 		wantIn string
 	}{
 		{name: "missing subcommand", args: []string{"typo", "config"}, wantIn: "subcommand required"},
+		{name: "list extra argument", args: []string{"typo", "config", "list", "extra"}, wantIn: "config list does not accept arguments"},
 		{name: "missing get key", args: []string{"typo", "config", "get"}, wantIn: "<key> required"},
+		{name: "get extra argument", args: []string{"typo", "config", "get", "keyboard", "extra"}, wantIn: "config get requires exactly <key>"},
 		{name: "unknown get key", args: []string{"typo", "config", "get", "unknown"}, wantIn: "unknown config key"},
 		{name: "missing set value", args: []string{"typo", "config", "set", "keyboard"}, wantIn: "<key> and <value> required"},
+		{name: "set extra argument", args: []string{"typo", "config", "set", "keyboard", "dvorak", "extra"}, wantIn: "config set requires exactly <key> and <value>"},
 		{name: "invalid set value", args: []string{"typo", "config", "set", "history.enabled", "maybe"}, wantIn: "invalid bool value"},
 		{name: "invalid experimental set value", args: []string{"typo", "config", "set", "experimental.long-option-correction.enabled", "maybe"}, wantIn: "invalid bool value"},
 		{name: "invalid auto learn threshold", args: []string{"typo", "config", "set", "auto-learn-threshold", "wat"}, wantIn: "invalid int value"},
 		{name: "gen positional args", args: []string{"typo", "config", "gen", "extra"}, wantIn: "does not accept positional arguments"},
 		{name: "gen invalid flag", args: []string{"typo", "config", "gen", "--wat"}, wantIn: "flag provided but not defined"},
+		{name: "reset extra argument", args: []string{"typo", "config", "reset", "extra"}, wantIn: "config reset does not accept arguments"},
 		{name: "unknown subcommand", args: []string{"typo", "config", "wat"}, wantIn: "Unknown subcommand"},
 	}
 
@@ -370,5 +374,70 @@ func TestConfigCommandWriteFailures(t *testing.T) {
 				t.Fatalf("expected write failure stderr, got stdout=%q stderr=%q", stdout, stderr)
 			}
 		})
+	}
+}
+
+func TestConfigCommandsRejectUnavailableDirectory(t *testing.T) {
+	cfg := &config.Config{User: config.DefaultUserConfig()}
+	tests := []struct {
+		name string
+		run  func() int
+	}{
+		{name: "set", run: func() int { return cmdConfigSet(cfg, []string{"set", "keyboard", "dvorak"}) }},
+		{name: "reset", run: func() int { return cmdConfigReset(cfg) }},
+		{name: "generate", run: func() int { return cmdConfigGen(cfg, []string{"gen"}) }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if code := tt.run(); code != 1 {
+				t.Fatalf("command should reject an unavailable config directory: code=%d", code)
+			}
+		})
+	}
+	if err := requireConfigDirectory(nil); err == nil {
+		t.Fatal("nil config should not be writable")
+	}
+}
+
+func TestConfigSetPreservesInvalidFileAndResetRecovers(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	configDir := filepath.Join(tmpHome, ".typo")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	configFile := filepath.Join(configDir, "config.json")
+	invalid := []byte(`{"similarity_threshold":2}`)
+	if err := os.WriteFile(configFile, invalid, 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := config.Load()
+	if code := cmdConfigList(cfg); code != 1 {
+		t.Fatalf("config list should reject an invalid loaded file: code=%d", code)
+	}
+	if code := cmdConfigGet(cfg, []string{"get", "keyboard"}); code != 1 {
+		t.Fatalf("config get should reject an invalid loaded file: code=%d", code)
+	}
+	if code := cmdRulesList(cfg); code != 1 {
+		t.Fatalf("rules list should reject an invalid loaded file: code=%d", code)
+	}
+	if code := cmdConfigSet(cfg, []string{"set", "keyboard", "dvorak"}); code != 1 {
+		t.Fatalf("config set should reject an invalid loaded file: code=%d", code)
+	}
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if !bytes.Equal(data, invalid) {
+		t.Fatalf("config set overwrote invalid input: %q", data)
+	}
+
+	if code := cmdConfigReset(cfg); code != 0 {
+		t.Fatalf("config reset should recover an invalid file: code=%d", code)
+	}
+	if cfg.LoadError() != nil {
+		t.Fatalf("successful reset should clear the load error: %v", cfg.LoadError())
 	}
 }

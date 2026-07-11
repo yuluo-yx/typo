@@ -686,7 +686,7 @@ func TestE2EReadmeExamples(t *testing.T) {
 
 	gitStderr := env.writeTempFile(t, "git.stderr", "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n")
 	gitPullRebaseStderr := env.writeTempFile(t, "git-pull-rebase.stderr", "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n")
-	gitPushRejectedStderr := env.writeTempFile(t, "git-push-rejected.stderr", "To github.com:yuluo-yx/typo.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'github.com:yuluo-yx/typo.git'\nhint: Updates were rejected because the remote contains work that you do\nhint: not have locally. You may want to first integrate the remote changes\nhint: (e.g., 'git pull ...') before pushing again.\n")
+	gitPushNoUpstreamStderr := env.writeTempFile(t, "git-push-no-upstream.stderr", "fatal: The current branch feature/topic has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin feature/topic\n")
 	dockerStderr := env.writeTempFile(t, "docker.stderr", "unknown command: imagesa\n\nDid you mean: images?")
 	npmStderr := env.writeTempFile(t, "npm.stderr", "npm ERR! Did you mean list?")
 	permissionStderr := env.writeTempFile(t, "permission.stderr", "mkdir: 1: Permission denied\n")
@@ -699,7 +699,7 @@ func TestE2EReadmeExamples(t *testing.T) {
 	}{
 		{name: "git stderr parser", command: "git remove -v", stderrFile: gitStderr, want: "git remote -v\n"},
 		{name: "git pull rebase stderr parser", command: "git pull", stderrFile: gitPullRebaseStderr, want: "git pull --rebase\n"},
-		{name: "git push rejected stderr parser", command: "git push origin main", stderrFile: gitPushRejectedStderr, want: "git pull origin main\n"},
+		{name: "git push no upstream stderr parser", command: "git push", stderrFile: gitPushNoUpstreamStderr, want: "git push --set-upstream origin feature/topic\n"},
 		{name: "docker stderr parser", command: "docker imagesa", stderrFile: dockerStderr, want: "docker images\n"},
 		{name: "npm stderr parser", command: "npm ist --depth=0", stderrFile: npmStderr, want: "npm list --depth=0\n"},
 		{name: "permission stderr parser", command: "mkdir 1", stderrFile: permissionStderr, want: "sudo mkdir 1\n"},
@@ -1389,7 +1389,7 @@ func TestE2EFishIntegrationAliasContext(t *testing.T) {
 	initScript := env.initFishScript(t)
 
 	result := env.runFish(t, initScript, `
-set -g TYPO_TEST_BUFFER "k lgo && ktf valdiate"
+set -g TYPO_TEST_BUFFER "k lgo && ktf valdiate && gr stauts"
 
 function commandline
     switch "$argv[1]"
@@ -1406,14 +1406,15 @@ end
 
 source "$argv[1]"
 abbr -a k kubectl
+abbr -a gr "git -C repo"
 function ktf
     terraform $argv
 end
 _typo_fix_command
-test "$TYPO_TEST_BUFFER" = "k logs && ktf validate"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 94; end
+test "$TYPO_TEST_BUFFER" = "k logs && ktf validate && gr status"; or begin; printf "%s\n" "$TYPO_TEST_BUFFER"; exit 94; end
 printf "%s\n" "$TYPO_TEST_BUFFER"
 `)
-	if result.code != 0 || !strings.Contains(result.stdout, "k logs && ktf validate") {
+	if result.code != 0 || !strings.Contains(result.stdout, "k logs && ktf validate && gr status") {
 		t.Fatalf("fish alias context fix failed: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 	}
 }

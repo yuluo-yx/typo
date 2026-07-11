@@ -3,8 +3,10 @@ package engine
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/yuluo-yx/typo/internal/storage"
@@ -95,6 +97,12 @@ func (r *Rules) MatchBuiltin(cmd string) (itypes.Rule, bool) {
 
 // AddUserRule adds a new user rule.
 func (r *Rules) AddUserRule(rule itypes.Rule) error {
+	normalized, err := normalizeUserRule(rule)
+	if err != nil {
+		return err
+	}
+	rule = normalized
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -114,8 +122,27 @@ func (r *Rules) AddUserRule(rule itypes.Rule) error {
 	return nil
 }
 
+func normalizeUserRule(rule itypes.Rule) (itypes.Rule, error) {
+	rule.From = strings.TrimSpace(rule.From)
+	rule.To = strings.TrimSpace(rule.To)
+
+	if rule.From == "" {
+		return itypes.Rule{}, errors.New("rule source must not be empty")
+	}
+	if rule.To == "" {
+		return itypes.Rule{}, errors.New("rule target must not be empty")
+	}
+	if rule.From == rule.To {
+		return itypes.Rule{}, errors.New("rule source and target must differ")
+	}
+
+	return rule, nil
+}
+
 // RemoveUserRule removes a user rule.
 func (r *Rules) RemoveUserRule(from string) error {
+	from = strings.TrimSpace(from)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -460,6 +487,12 @@ func (r *Rules) loadUserRules() {
 	}
 
 	for _, rule := range userRules {
+		normalized, err := normalizeUserRule(rule)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "typo: ignoring invalid user rule in %s: %v\n", rulesFile, err)
+			continue
+		}
+		rule = normalized
 		rule.Enable = true
 		r.user[rule.From] = rule
 	}

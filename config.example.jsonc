@@ -1,39 +1,39 @@
 {
-  // 匹配候选命令时要求的最低相似度，范围为 0.0 到 1.0。
+  // Minimum similarity required when matching candidate commands, in the range 0.0 to 1.0.
   "similarity_threshold": 0.6,
 
-  // 单个命令词允许的最大编辑距离，值越大匹配越宽松。
+  // Maximum edit distance allowed for one command word; larger values permit broader matches.
   "max_edit_distance": 2,
 
-  // 一次修正流程最多执行的轮数，用于防止循环修正。
+  // Maximum number of passes in one correction flow, used to prevent correction cycles.
   "max_fix_passes": 32,
 
-  // 同一修正被接受多少次后自动学习为用户规则；设为 0 可关闭自动学习。
+  // Number of accepted corrections before auto-learning a user rule; set to 0 to disable auto-learning.
   "auto_learn_threshold": 3,
 
-  // 键盘布局会影响相邻按键的编辑距离权重，可选值：qwerty、dvorak、colemak。
+  // Keyboard layout affects adjacent-key edit weights. Supported values: qwerty, dvorak, and colemak.
   "keyboard": "qwerty",
 
-  // 是否记录修正历史，用于后续排序和自动学习。
+  // Whether to record correction history for later ranking and auto-learning.
   "history": {
     "enabled": true
   },
 
-  // 是否在交互式修正中展示多个候选项，以及候选项数量上限。
+  // Whether to show multiple candidates during interactive correction and their maximum count.
   "candidates": {
     "enabled": false,
     "limit": 3
   },
 
-  // 实验性功能默认关闭，升级时应按发布说明确认行为变化。
+  // Experimental features are disabled by default; review release notes before enabling them after upgrades.
   "experimental": {
-    // 是否启用长选项修正，例如将 --verison 修正为 --version。
+    // Whether to enable long-option correction, such as correcting --verison to --version.
     "long_option_correction": {
       "enabled": false
     }
   },
 
-  // 内置规则作用域开关；关闭某个作用域后，对应工具的内置纠正规则不再生效。
+  // Built-in rule scope toggles; disabling a scope stops its tool-specific built-in correction rules.
   "rules": {
     "brew": {
       "enabled": true

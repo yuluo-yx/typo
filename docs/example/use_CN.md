@@ -68,24 +68,19 @@ zsh: command not found: grpe <Enter, Esc, Esc>
 cat ~/.zshrc | grep "zsh"
 ```
 
-## `git pull --set-upstream`
+## `git push --set-upstream`
 
-你是否遇到过这类 `git pull` 报错？
+首次推送本地分支时，Git 会给出设置 upstream 的准确命令：
 
 ```shell
-$ git pull
-There is no tracking information for the current branch.
-Please specify which branch you want to rebase against.
-See git-pull(1) for details.
+$ git push
+fatal: The current branch feature/topic has no upstream branch.
+To push the current branch and set the remote as upstream, use
 
-    git pull <remote> <branch>
-
-If you wish to set tracking information for this branch you can do so with:
-
-    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check
+    git push --set-upstream origin feature/topic
 ```
 
-这时按两次 `Esc`，Typo 会自动补全建议的 upstream 设置。
+按两次 `Esc`，当远端名和分支名可在所有支持的 Shell 中安全表示时，Typo 会采用 Git 给出的具体建议；否则保持原命令不变。
 
 ## `git pull --rebase`
 
@@ -102,25 +97,6 @@ fatal: Need to specify how to reconcile divergent branches.
 
 ```shell
 git pull --rebase
-```
-
-## `git push` 被拒绝，先执行 pull
-
-当远端存在本地没有的提交时，Git 会拒绝继续 push：
-
-```shell
-$ git push origin main
- ! [rejected]        main -> main (fetch first)
-error: failed to push some refs to 'github.com:yuluo-yx/typo.git'
-hint: Updates were rejected because the remote contains work that you do
-hint: not have locally. You may want to first integrate the remote changes
-hint: (e.g., 'git pull ...') before pushing again.
-```
-
-这时按两次 `Esc`，Typo 会先重试对应的 pull 命令。
-
-```shell
-git pull origin main
 ```
 
 ## 没有权限？自动补 `sudo`

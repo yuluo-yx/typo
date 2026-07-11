@@ -43,16 +43,13 @@ func (p *NpmParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 		suggestMatches := p.didYouMeanRegex.FindStringSubmatch(stderr)
 		if len(suggestMatches) >= 2 {
 			suggested := suggestMatches[1]
-			fixed := ""
 			call, err := parseShellCall(cmd)
 			if err != nil {
-				fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
-			} else {
-				var ok bool
-				fixed, ok = call.replaceSubcommand(parserNameNPM, wrongCmd, suggested, npmParserOptionsWithValues)
-				if !ok {
-					return itypes.ParserResult{Fixed: false}
-				}
+				return itypes.ParserResult{Fixed: false}
+			}
+			fixed, ok := call.replaceSubcommand(parserNameNPM, wrongCmd, suggested, npmParserOptionsWithValues)
+			if !ok {
+				return itypes.ParserResult{Fixed: false}
 			}
 			return itypes.ParserResult{
 				Fixed:   true,
@@ -77,21 +74,6 @@ func (p *NpmParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 				}
 			}
 			return itypes.ParserResult{Fixed: false}
-		}
-
-		// Fall back to the original permissive logic when shell parsing fails
-		// so interactive fixes still have a chance to recover.
-		parts := strings.Fields(cmd)
-		if len(parts) >= 2 {
-			fixed := parts[0] + " " + suggested
-			if len(parts) > 2 {
-				fixed += " " + strings.Join(parts[2:], " ")
-			}
-			return itypes.ParserResult{
-				Fixed:   true,
-				Command: fixed,
-				Message: "npm suggested: " + suggested,
-			}
 		}
 	}
 

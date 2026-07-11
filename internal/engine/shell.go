@@ -23,7 +23,8 @@ type shellWordReplacement struct {
 }
 
 func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
-	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
+	// Interactive input may be incomplete; recover one syntax error to preserve original word ranges.
+	parser := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.RecoverErrors(1))
 	file, err := parser.Parse(strings.NewReader(raw+"\n"), "")
 	if err != nil {
 		return nil, err
@@ -42,7 +43,7 @@ func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
 		}
 
 		commandIdx := findExecutableArgIndex(call.Args)
-		if commandIdx == -1 {
+		if commandIdx == -1 || !shellWordRangesValid(call.Args, len(raw)) {
 			return true
 		}
 
@@ -65,6 +66,19 @@ func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
 	})
 
 	return lines, nil
+}
+
+func shellWordRangesValid(args []*syntax.Word, rawLen int) bool {
+	for _, arg := range args {
+		if arg.Pos().IsRecovered() || arg.End().IsRecovered() {
+			return false
+		}
+		start, end := utils.ShellNodeRange(arg, rawLen)
+		if start > end {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *shellCommandLine) commandWord() string {
@@ -177,6 +191,9 @@ func findExecutableArgIndex(args []*syntax.Word) int {
 		word := args[idx].Lit()
 		switch word {
 		case "builtin", "nocorrect", "noglob":
+			idx++
+		// The word after a Fish job decorator is the actual command.
+		case "and", "or", "not":
 			idx++
 		case "command":
 			idx++

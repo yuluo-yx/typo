@@ -12,8 +12,9 @@ import (
 // stderr is optional and used for error parsing.
 func (e *Engine) Fix(cmd, stderr string) itypes.FixResult {
 	return e.FixWithContext(itypes.ParserContext{
-		Command: cmd,
-		Stderr:  stderr,
+		Command:  cmd,
+		Stderr:   stderr,
+		ExitCode: -1,
 	})
 }
 
@@ -126,8 +127,8 @@ func (e *Engine) fixWithoutAliasContext(input itypes.ParserContext) itypes.FixRe
 func (e *Engine) fixOnePass(input itypes.ParserContext) itypes.FixResult {
 	cmd := input.Command
 
-	// 1. Try error parser first (if stderr provided)
-	if input.Stderr != "" {
+	// 1. Try error parsers only when stderr is present and the command did not succeed; -1 means the exit code is unknown.
+	if input.Stderr != "" && input.ExitCode != 0 {
 		if result := e.tryParser(input); isMeaningfulFix(cmd, result) {
 			return result
 		}

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/yuluo-yx/typo/internal/commands"
@@ -27,6 +28,10 @@ func TestTryMatch(t *testing.T) {
 
 	if got := tryMatch("gut branch", "rule", match); !got.Fixed || got.Command != "git branch" {
 		t.Fatalf("Expected command word match, got %+v", got)
+	}
+
+	if got := tryMatch("gut commit -m 'a   b", "rule", match); !got.Fixed || got.Command != "git commit -m 'a   b" {
+		t.Fatalf("Expected fallback match to preserve the original suffix, got %+v", got)
 	}
 
 	if got := tryMatch("valid command", "rule", match); got.Fixed {
@@ -328,7 +333,7 @@ func TestEngine_TryDistance_FallbackBranches(t *testing.T) {
 		WithKeyboard(NewQWERTYKeyboard()),
 	)
 
-	if got := eng.tryDistance("myap '"); !got.Fixed || got.Command != "myapp '" || got.Source != "distance" {
+	if got := eng.tryDistance("myap 'a   b"); !got.Fixed || got.Command != "myapp 'a   b" || got.Source != "distance" {
 		t.Fatalf("Expected fallback distance fix, got %+v", got)
 	}
 
@@ -377,7 +382,7 @@ func TestEngine_TrySubcommandFix_FallbackBranches(t *testing.T) {
 	}
 }
 
-func TestEngine_TryParser_FallbackAndShell(t *testing.T) {
+func TestEngine_TryParser_ShellAndParseFailure(t *testing.T) {
 	eng := NewEngine(WithParser(parser.NewRegistry()))
 
 	stderr := "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n"
@@ -385,8 +390,8 @@ func TestEngine_TryParser_FallbackAndShell(t *testing.T) {
 		t.Fatalf("Expected shell parser fix, got %+v", got)
 	}
 
-	if got := eng.tryParser(itypes.ParserContext{Command: "git remove '", Stderr: stderr}); !got.Fixed || got.Command != "git remote '" {
-		t.Fatalf("Expected fallback parser fix, got %+v", got)
+	if got := eng.tryParser(itypes.ParserContext{Command: "git remove '", Stderr: stderr}); got.Fixed {
+		t.Fatalf("Expected malformed shell command to stay unchanged, got %+v", got)
 	}
 
 	if got := eng.tryParser(itypes.ParserContext{Command: "git status", Stderr: "unrecognized error"}); got.Fixed {
@@ -1064,7 +1069,7 @@ func TestEngine_TrySubcommandFix_ThreeLevelCloudSubcommands(t *testing.T) {
 		},
 		{
 			name:    "az four-level network create with transpositions",
-			cmd:     "az netwrok vnet subent craete", //nolint:misspell // 故意保留拼错的命令输入。
+			cmd:     "az netwrok vnet subent craete", //nolint:misspell // Intentionally keep the misspelled command input.
 			wantCmd: "az network vnet subnet create",
 		},
 	}
@@ -1228,6 +1233,69 @@ func TestEngine_LearnAndAddRule_ErrorPaths(t *testing.T) {
 	if err := eng.AddRule("broken2", "command2"); err == nil {
 		t.Fatal("Expected AddRule to fail when rules cannot be saved")
 	}
+}
+
+func TestEngine_UserRuleOperationsRollbackWhenHistoryCleanupFails(t *testing.T) {
+	setup := func(t *testing.T) (*Engine, *Rules, *History) {
+		t.Helper()
+		dir := t.TempDir()
+		rules := NewRules(dir)
+		history := NewHistory(dir)
+		if err := history.Record("typo status", "old status"); err != nil {
+			t.Fatalf("Record failed: %v", err)
+		}
+
+		historyFile := filepath.Join(dir, usageHistoryFileName)
+		if err := os.Remove(historyFile); err != nil {
+			t.Fatalf("Remove history file failed: %v", err)
+		}
+		if err := os.Mkdir(historyFile, 0700); err != nil {
+			t.Fatalf("Create blocking history directory failed: %v", err)
+		}
+
+		return NewEngine(WithRules(rules), WithHistory(history)), rules, history
+	}
+
+	t.Run("new rule", func(t *testing.T) {
+		eng, rules, history := setup(t)
+		if err := eng.Learn(" typo ", " command "); err == nil {
+			t.Fatal("Learn should fail when conflicting history cannot be saved")
+		}
+		if _, ok := rules.MatchUser("typo"); ok {
+			t.Fatal("failed Learn left the new rule active")
+		}
+		if _, ok := history.Lookup("typo status"); !ok {
+			t.Fatal("failed Learn did not restore conflicting history")
+		}
+	})
+
+	t.Run("replaced rule", func(t *testing.T) {
+		eng, rules, _ := setup(t)
+		if err := rules.AddUserRule(itypes.Rule{From: "typo", To: "old-command"}); err != nil {
+			t.Fatalf("seed rule failed: %v", err)
+		}
+		if err := eng.AddRule(" typo ", "new-command"); err == nil {
+			t.Fatal("AddRule should fail when conflicting history cannot be saved")
+		}
+		rule, ok := rules.MatchUser("typo")
+		if !ok || rule.To != "old-command" {
+			t.Fatalf("failed AddRule did not restore the previous rule: %+v, ok=%v", rule, ok)
+		}
+	})
+
+	t.Run("removed rule", func(t *testing.T) {
+		eng, rules, _ := setup(t)
+		if err := rules.AddUserRule(itypes.Rule{From: "typo", To: "command"}); err != nil {
+			t.Fatalf("seed rule failed: %v", err)
+		}
+		if err := eng.RemoveRule(" typo "); err == nil {
+			t.Fatal("RemoveRule should fail when conflicting history cannot be saved")
+		}
+		rule, ok := rules.MatchUser("typo")
+		if !ok || rule.To != "command" {
+			t.Fatalf("failed RemoveRule did not restore the rule: %+v, ok=%v", rule, ok)
+		}
+	})
 }
 
 func TestSimilarityAndCommandsEquivalent(t *testing.T) {

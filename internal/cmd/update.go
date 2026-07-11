@@ -81,6 +81,9 @@ func parseUpdateFlags(args []string) (updateFlags, error) {
 	if err := fs.Parse(args); err != nil {
 		return flags, err
 	}
+	if fs.NArg() != 0 {
+		return flags, fmt.Errorf("update does not accept positional arguments")
+	}
 	return flags, nil
 }
 

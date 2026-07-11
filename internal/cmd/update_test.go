@@ -219,6 +219,37 @@ func TestCmdUpdateFlagParsingHandlesHelpAndBadFlags(t *testing.T) {
 	}
 }
 
+func TestCmdUpdateRejectsPositionalArgumentsBeforeRunningUpdate(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "after flag", args: []string{"--dry-run", "unexpected"}},
+		{name: "before flag", args: []string{"unexpected", "--dry-run"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			typoPath := filepath.Join(t.TempDir(), ".local", "bin", "typo")
+			calls := withUpdateTestHooks(t, typoPath)
+
+			code, stdout, stderr := captureUpdateOutput(t, func() int {
+				return cmdUpdate(tt.args)
+			})
+
+			if code != 1 {
+				t.Fatalf("positional arguments should fail: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "update does not accept positional arguments") {
+				t.Fatalf("missing positional argument error: %q", stderr)
+			}
+			if len(*calls) != 0 {
+				t.Fatalf("rejected update ran command hooks: %#v", *calls)
+			}
+		})
+	}
+}
+
 func TestResolveRunningTypoInstallReportsExecutableError(t *testing.T) {
 	origExecutable := executable
 	defer func() { executable = origExecutable }()

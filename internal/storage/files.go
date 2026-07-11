@@ -37,6 +37,7 @@ func (osAtomicFileOps) remove(name string) error {
 }
 
 // WriteFileAtomic writes the target file atomically by renaming a temp file in the same directory.
+// Parent directory sync is best-effort after rename commits, so a visible write is never reported as uncommitted.
 func WriteFileAtomic(filename string, data []byte, perm os.FileMode) error {
 	return writeFileAtomicWithOps(filename, data, perm, osAtomicFileOps{})
 }
@@ -77,9 +78,8 @@ func writeFileAtomicWithOps(filename string, data []byte, perm os.FileMode, ops 
 	}
 
 	keepTemp = true
-	if err := ops.syncDir(dir); err != nil {
-		return err
-	}
+	// rename has already committed the target; directory sync only improves crash durability and cannot be safely rolled back.
+	_ = ops.syncDir(dir)
 	return nil
 }
 

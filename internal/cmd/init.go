@@ -11,6 +11,10 @@ func cmdInit(args []string) int {
 		fmt.Fprintln(os.Stderr, "Error: shell required (zsh, bash, fish, powershell)")
 		return 1
 	}
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "Error: init requires exactly one shell")
+		return 1
+	}
 
 	switch normalizeShellName(args[0]) {
 	case "zsh":

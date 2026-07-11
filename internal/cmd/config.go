@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -24,12 +25,20 @@ func cmdConfig(args []string) int {
 func runConfigSubcommand(cfg *config.Config, args []string) int {
 	switch args[0] {
 	case "list":
+		if len(args) != 1 {
+			fmt.Fprintln(os.Stderr, "Error: config list does not accept arguments")
+			return 1
+		}
 		return cmdConfigList(cfg)
 	case "get":
 		return cmdConfigGet(cfg, args)
 	case "set":
 		return cmdConfigSet(cfg, args)
 	case "reset":
+		if len(args) != 1 {
+			fmt.Fprintln(os.Stderr, "Error: config reset does not accept arguments")
+			return 1
+		}
 		return cmdConfigReset(cfg)
 	case "gen":
 		return cmdConfigGen(cfg, args)
@@ -40,6 +49,10 @@ func runConfigSubcommand(cfg *config.Config, args []string) int {
 }
 
 func cmdConfigList(cfg *config.Config) int {
+	if err := requireLoadedConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
 	for _, setting := range cfg.ListSettings() {
 		fmt.Printf("%s=%s\n", setting.Key, setting.Value)
 	}
@@ -49,6 +62,14 @@ func cmdConfigList(cfg *config.Config) int {
 func cmdConfigGet(cfg *config.Config, args []string) int {
 	if len(args) < 2 {
 		fmt.Fprintln(os.Stderr, "Error: <key> required")
+		return 1
+	}
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "Error: config get requires exactly <key>")
+		return 1
+	}
+	if err := requireLoadedConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
 
@@ -67,6 +88,14 @@ func cmdConfigSet(cfg *config.Config, args []string) int {
 		fmt.Fprintln(os.Stderr, "Error: <key> and <value> required")
 		return 1
 	}
+	if len(args) != 3 {
+		fmt.Fprintln(os.Stderr, "Error: config set requires exactly <key> and <value>")
+		return 1
+	}
+	if err := requireLoadedConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
 
 	if err := cfg.Set(args[1], args[2]); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -78,6 +107,10 @@ func cmdConfigSet(cfg *config.Config, args []string) int {
 }
 
 func cmdConfigReset(cfg *config.Config) int {
+	if err := requireConfigDirectory(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
 	if err := cfg.Reset(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
@@ -98,6 +131,10 @@ func cmdConfigGen(cfg *config.Config, args []string) int {
 		fmt.Fprintln(os.Stderr, "Error: config gen does not accept positional arguments")
 		return 1
 	}
+	if err := requireConfigDirectory(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
 	if err := cfg.Generate(*force); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
@@ -108,8 +145,8 @@ func cmdConfigGen(cfg *config.Config, args []string) int {
 }
 
 func cmdRules(args []string) int {
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: subcommand required (list, add, remove, enable, disable)")
+	if message := rulesArgsError(args); message != "" {
+		fmt.Fprintln(os.Stderr, message)
 		return 1
 	}
 
@@ -119,8 +156,8 @@ func cmdRules(args []string) int {
 	case "list":
 		return cmdRulesList(cfg)
 	case "add":
-		if len(args) < 3 {
-			fmt.Fprintln(os.Stderr, "Error: <from> and <to> required")
+		if err := requireConfigDirectory(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
 		eng := createEngine(cfg)
@@ -131,18 +168,16 @@ func cmdRules(args []string) int {
 		fmt.Printf("Added rule: %s -> %s\n", args[1], args[2])
 		return 0
 	case "remove":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Error: <from> required")
-			return 1
-		}
-		r := engine.NewRules(cfg.ConfigDir)
-		if err := r.RemoveUserRule(args[1]); err != nil {
+		if err := requireConfigDirectory(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
-		h := engine.NewHistory(cfg.ConfigDir)
-		if err := h.RemoveEntriesForCommandWord(args[1]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: removed rule but failed to clear related history: %v\n", err)
+		eng := engine.NewEngine(
+			engine.WithRules(engine.NewRules(cfg.ConfigDir)),
+			engine.WithHistory(engine.NewHistory(cfg.ConfigDir)),
+		)
+		if err := eng.RemoveRule(args[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
 		fmt.Printf("Removed rule: %s\n", args[1])
@@ -157,7 +192,40 @@ func cmdRules(args []string) int {
 	}
 }
 
+func rulesArgsError(args []string) string {
+	if len(args) == 0 {
+		return "Error: subcommand required (list, add, remove, enable, disable)"
+	}
+
+	switch args[0] {
+	case "list":
+		if len(args) != 1 {
+			return "Error: rules list does not accept arguments"
+		}
+	case "add":
+		if len(args) != 3 {
+			return "Error: exactly two arguments required: <from> and <to>"
+		}
+	case "remove":
+		if len(args) != 2 {
+			return "Error: remove requires exactly <from>"
+		}
+	case "enable", "disable":
+		if len(args) != 2 || strings.TrimSpace(args[1]) == "" {
+			return fmt.Sprintf("Error: %s requires exactly one <scope>", args[0])
+		}
+	default:
+		return fmt.Sprintf("Unknown subcommand: %s", args[0])
+	}
+
+	return ""
+}
+
 func cmdRulesList(cfg *config.Config) int {
+	if err := requireLoadedConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
 	rulesStore := engine.NewRules(cfg.ConfigDir)
 	for scope, ruleCfg := range cfg.User.Rules {
 		if !ruleCfg.Enabled {
@@ -199,6 +267,10 @@ func cmdRulesSetScopeEnabled(cfg *config.Config, args []string, enabled bool) in
 	}
 
 	key := fmt.Sprintf("rules.%s.enabled", scope)
+	if err := requireLoadedConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
 	if err := cfg.Set(key, strconv.FormatBool(enabled)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
@@ -211,4 +283,18 @@ func cmdRulesSetScopeEnabled(cfg *config.Config, args []string, enabled bool) in
 
 	fmt.Printf("Disabled rule scope: %s\n", scope)
 	return 0
+}
+
+func requireConfigDirectory(cfg *config.Config) error {
+	if cfg == nil || cfg.ConfigDir == "" {
+		return errors.New("config directory unavailable; cannot persist changes")
+	}
+	return nil
+}
+
+func requireLoadedConfig(cfg *config.Config) error {
+	if err := requireConfigDirectory(cfg); err != nil {
+		return err
+	}
+	return cfg.LoadError()
 }

@@ -64,8 +64,6 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	if strings.HasPrefix(suggested, "-") {
 		return itypes.ParserResult{Fixed: false}
 	}
-	wrong := p.extractWrongCommand(stderr)
-
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 {
 		return itypes.ParserResult{Fixed: false}
@@ -74,29 +72,10 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 
 	call, err := parseShellCall(cmd)
 	if err != nil {
-		if wrong != "" {
-			fixed := strings.Replace(cmd, wrong, suggested, 1)
-			if fixed != cmd {
-				return itypes.ParserResult{
-					Fixed:   true,
-					Command: fixed,
-					Message: "generic suggested: " + suggested,
-				}
-			}
-		}
-
-		// Fallback: reconstruct as "binary suggestion [rest...]".
-		fixed := binary + " " + suggested
-		if len(parts) > 2 {
-			fixed += " " + strings.Join(parts[2:], " ")
-		}
-		return itypes.ParserResult{
-			Fixed:   true,
-			Command: fixed,
-			Message: "generic suggested: " + suggested,
-		}
+		return itypes.ParserResult{Fixed: false}
 	}
 
+	wrong := p.extractWrongCommand(stderr)
 	fixed := ""
 	ok := false
 	if wrong != "" {

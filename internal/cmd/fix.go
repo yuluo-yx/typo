@@ -57,15 +57,18 @@ func cmdFix(args []string) int {
 		AliasContext: loadAliasContext(opts.aliasContextFile),
 	}
 
-	result := eng.FixWithContext(input)
+	var result itypes.FixResult
 	if opts.selectMode && cfg.User.Candidates.Enabled {
 		selected, ok := selectFixResult(eng, input, cfg.User.Candidates.Limit)
 		if !ok {
 			return 1
 		}
 		result = selected
-	} else if opts.selectMode {
-		fmt.Fprintln(os.Stderr, "typo: --select ignored because candidates.enabled=false; run `typo config set candidates.enabled true` to enable the candidate menu")
+	} else {
+		result = eng.FixWithContext(input)
+		if opts.selectMode {
+			fmt.Fprintln(os.Stderr, "typo: --select ignored because candidates.enabled=false; run `typo config set candidates.enabled true` to enable the candidate menu")
+		}
 	}
 
 	if result.Fixed {

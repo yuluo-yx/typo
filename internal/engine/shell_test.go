@@ -58,6 +58,21 @@ func TestParseShellCommandLines_UnsupportedShape(t *testing.T) {
 	}
 }
 
+func TestParseShellCommandLines_SkipsInvalidRecoveredCalls(t *testing.T) {
+	for _, raw := range []string{
+		"gti status && 'dcoker ps",
+		`gti status && "dcoker ps`,
+	} {
+		lines, err := parseShellCommandLines(raw)
+		if err != nil {
+			t.Fatalf("parseShellCommandLines(%q) failed: %v", raw, err)
+		}
+		if len(lines) != 1 || lines[0].commandWord() != "gti" {
+			t.Fatalf("parseShellCommandLines(%q) = %+v, want only the valid first call", raw, lines)
+		}
+	}
+}
+
 func TestFindExecutableArgIndex_Wrappers(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -68,6 +83,9 @@ func TestFindExecutableArgIndex_Wrappers(t *testing.T) {
 		{name: "builtin wrapper", raw: "builtin echo ok", wantIdx: 1, wantWord: "echo"},
 		{name: "nocorrect wrapper", raw: "nocorrect gut status", wantIdx: 1, wantWord: "gut"},
 		{name: "noglob wrapper", raw: "noglob gerp main file", wantIdx: 1, wantWord: "gerp"},
+		{name: "fish and decorator", raw: "and dcoker ps", wantIdx: 1, wantWord: "dcoker"},
+		{name: "fish or decorator", raw: "or dcoker ps", wantIdx: 1, wantWord: "dcoker"},
+		{name: "fish not decorator", raw: "not gti status", wantIdx: 1, wantWord: "gti"},
 		{name: "command wrapper option", raw: "command -p gti status", wantIdx: 2, wantWord: "gti"},
 		{name: "command wrapper multiple options", raw: "command -p -v git", wantIdx: 3, wantWord: "git"},
 		{name: "env wrapper with assignments", raw: "env --unset HOME FOO=1 gti status", wantIdx: 4, wantWord: "gti"},

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -124,10 +125,29 @@ func (e *Engine) promoteAutoLearnHistory(ctx context.Context, from, to string) a
 	}
 
 	if err := autoLearnContextErr(ctx); err != nil {
-		return autoLearnResultWithErr(result, err)
+		return e.rollbackPromotedAutoLearnRule(result, from, err)
 	}
 
-	return e.markAutoLearnRuleApplied(result, from, to)
+	result = e.markAutoLearnRuleApplied(result, from, to)
+	if result.Err != nil {
+		return e.rollbackPromotedAutoLearnRule(result, from, result.Err)
+	}
+	if !result.Persisted {
+		return e.rollbackPromotedAutoLearnRule(
+			result,
+			from,
+			errors.New("history pair changed before auto-learn could be finalized"),
+		)
+	}
+	return result
+}
+
+func (e *Engine) rollbackPromotedAutoLearnRule(result autoLearnResult, from string, cause error) autoLearnResult {
+	if rollbackErr := e.rules.RemoveUserRule(from); rollbackErr != nil {
+		cause = errors.Join(cause, fmt.Errorf("roll back auto-learned rule: %w", rollbackErr))
+	}
+	result.Persisted = false
+	return autoLearnResultWithErr(result, cause)
 }
 
 func (e *Engine) markAutoLearnRuleApplied(result autoLearnResult, from, to string) autoLearnResult {

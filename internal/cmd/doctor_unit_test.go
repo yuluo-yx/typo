@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yuluo-yx/typo/internal/config"
 )
 
 func TestCheckDoctorShellIntegrationWithoutShellName(t *testing.T) {
@@ -174,4 +176,37 @@ func TestDoctorJSONShellSupportHelpers(t *testing.T) {
 	if shellSupportsAliasContext("") {
 		t.Fatal("unknown shell should not report alias context support")
 	}
+}
+
+func TestDoctorJSONConfigChecksRejectInvalidConfig(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	configDir := filepath.Join(tmpHome, ".typo")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	configFile := filepath.Join(configDir, "config.json")
+	if err := os.WriteFile(configFile, []byte(`{"similarity_threshold":2}`), 0600); err != nil {
+		t.Fatalf("write invalid config: %v", err)
+	}
+
+	cfg := config.Load()
+	if cfg.LoadError() == nil {
+		t.Fatal("invalid config should retain its load error")
+	}
+	report := doctorJSONReport{OK: true}
+	report.addDoctorJSONConfigChecks(cfg, configFile)
+	if report.OK {
+		t.Fatal("invalid config should fail the doctor report")
+	}
+
+	for _, check := range report.Checks {
+		if check.ID == "config_file" {
+			if check.Status != "fail" || !strings.Contains(check.Message, "similarity_threshold") {
+				t.Fatalf("unexpected config check: %+v", check)
+			}
+			return
+		}
+	}
+	t.Fatal("doctor report omitted the config_file check")
 }

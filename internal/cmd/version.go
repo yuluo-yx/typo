@@ -2,12 +2,19 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
-func cmdVersion() {
+func cmdVersion(args []string) int {
+	if len(args) != 0 {
+		fmt.Fprintln(os.Stderr, "Error: version does not accept arguments")
+		return 1
+	}
+
 	resolvedVersion, resolvedCommit, resolvedDate := resolveVersionInfo()
 	fmt.Printf("typo %s (commit: %s, built: %s)\n", resolvedVersion, resolvedCommit, resolvedDate)
+	return 0
 }
 
 // Prefer release metadata injected by the build pipeline; fall back to VCS metadata embedded in the Go binary when needed.

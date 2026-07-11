@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -159,10 +160,18 @@ func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
 	lines, err := parseShellCommandLines(input.Command)
 	if err == nil {
 		hasMultipleCommands := len(lines) > 1
+		usableLine := false
+		var matchedLine *shellCommandLine
+		var matchedResult itypes.ParserResult
 
 		for _, line := range lines {
+			command := line.commandSuffixRaw()
+			if command == "" {
+				continue
+			}
+			usableLine = true
 			result := e.parser.Parse(itypes.ParserContext{
-				Command:             line.commandSuffixRaw(),
+				Command:             command,
 				Stderr:              input.Stderr,
 				ExitCode:            input.ExitCode,
 				HasMultipleCommands: hasMultipleCommands,
@@ -170,17 +179,26 @@ func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
 				HasPrivilegeWrapper: line.hasWrapper("sudo"),
 			})
 			if result.Fixed {
-				return itypes.FixResult{
-					Fixed:   true,
-					Command: line.replaceCommandSuffix(result.Command),
-					Source:  fixSourceParser,
-					Message: result.Message,
-					Kind:    result.Kind,
+				if matchedLine != nil {
+					return itypes.FixResult{Fixed: false}
 				}
+				matchedLine = line
+				matchedResult = result
 			}
 		}
 
-		return itypes.FixResult{Fixed: false}
+		if matchedLine != nil {
+			return itypes.FixResult{
+				Fixed:   true,
+				Command: matchedLine.replaceCommandSuffix(matchedResult.Command),
+				Source:  fixSourceParser,
+				Message: matchedResult.Message,
+				Kind:    matchedResult.Kind,
+			}
+		}
+		if usableLine {
+			return itypes.FixResult{Fixed: false}
+		}
 	}
 
 	result := e.parser.Parse(itypes.ParserContext{
@@ -323,7 +341,7 @@ func tryMatch(cmd, source string, match matchFunc) itypes.FixResult {
 		if replacement, ok := match(parts[0]); ok {
 			return itypes.FixResult{
 				Fixed:   true,
-				Command: replacement + " " + strings.Join(parts[1:], " "),
+				Command: replaceFirstField(cmd, parts[0], replacement),
 				Source:  source,
 			}
 		}
@@ -383,13 +401,8 @@ func (e *Engine) tryDistance(cmd string) itypes.FixResult {
 	if bestMatch != "" && bestMatch != cmdWord && isGoodCommandDistanceMatch(cmdWord, bestMatch, bestDistance, e.distanceMatchConfig()) {
 		result := itypes.FixResult{
 			Fixed:   true,
-			Command: bestMatch,
+			Command: replaceFirstField(cmd, cmdWord, bestMatch),
 			Source:  fixSourceDistance,
-		}
-
-		// Add original args
-		if len(parts) > 1 {
-			result.Command = bestMatch + " " + strings.Join(parts[1:], " ")
 		}
 
 		// Also try to fix subcommand
@@ -465,13 +478,9 @@ func (e *Engine) distanceFixCandidates(cmd string, limit int) []itypes.FixResult
 		if candidate.name == parts[0] {
 			continue
 		}
-		command := candidate.name
-		if len(parts) > 1 {
-			command += " " + strings.Join(parts[1:], " ")
-		}
 		result := itypes.FixResult{
 			Fixed:   true,
-			Command: command,
+			Command: replaceFirstField(cmd, parts[0], candidate.name),
 			Source:  fixSourceDistance,
 		}
 		if e.toolTrees != nil {
@@ -486,6 +495,14 @@ func (e *Engine) distanceFixCandidates(cmd string, limit int) []itypes.FixResult
 	}
 
 	return results
+}
+
+func replaceFirstField(raw, field, replacement string) string {
+	start := strings.Index(raw, field)
+	if start == -1 {
+		return raw
+	}
+	return raw[:start] + replacement + raw[start+len(field):]
 }
 
 func (e *Engine) distanceFixCandidatesWithShell(cmd string, limit int) ([]itypes.FixResult, bool) {
@@ -1527,20 +1544,56 @@ var builtinToolOptionsWithValues = map[string]map[string]bool{
 
 // Learn stores a user-taught correction as a rule instead of history.
 func (e *Engine) Learn(from, to string) error {
-	if err := e.rules.AddUserRule(itypes.Rule{From: from, To: to}); err != nil {
-		return err
-	}
-
-	return e.clearConflictingHistory(from)
+	return e.storeUserRule(from, to)
 }
 
 // AddRule adds a user rule.
 func (e *Engine) AddRule(from, to string) error {
-	if err := e.rules.AddUserRule(itypes.Rule{From: from, To: to}); err != nil {
+	return e.storeUserRule(from, to)
+}
+
+func (e *Engine) storeUserRule(from, to string) error {
+	rule, err := normalizeUserRule(itypes.Rule{From: from, To: to})
+	if err != nil {
 		return err
 	}
 
-	return e.clearConflictingHistory(from)
+	previous, existed := e.rules.MatchUser(rule.From)
+	if err := e.rules.AddUserRule(rule); err != nil {
+		return err
+	}
+	if err := e.clearConflictingHistory(rule.From); err != nil {
+		var rollbackErr error
+		if existed {
+			rollbackErr = e.rules.AddUserRule(previous)
+		} else {
+			rollbackErr = e.rules.RemoveUserRule(rule.From)
+		}
+		if rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("roll back user rule: %w", rollbackErr))
+		}
+		return err
+	}
+	return nil
+}
+
+// RemoveRule removes a user rule and clears its related correction history in the same operation.
+func (e *Engine) RemoveRule(from string) error {
+	from = strings.TrimSpace(from)
+	previous, existed := e.rules.MatchUser(from)
+	if !existed {
+		return ErrRuleNotFound
+	}
+	if err := e.rules.RemoveUserRule(from); err != nil {
+		return err
+	}
+	if err := e.clearConflictingHistory(from); err != nil {
+		if rollbackErr := e.rules.AddUserRule(previous); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("roll back removed user rule: %w", rollbackErr))
+		}
+		return err
+	}
+	return nil
 }
 
 // ListRules returns all rules.

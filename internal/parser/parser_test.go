@@ -54,39 +54,64 @@ func TestGitParser_Parse(t *testing.T) {
 			wantCmd: "git -c alias.remvoe=whatever remote -v",
 		},
 		{
-			name:    "no upstream branch",
+			name:    "pull upstream hint is not inferred",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
-			wantFix: true,
-			wantCmd: "git pull --set-upstream origin main",
+			wantFix: false,
 		},
 		{
-			name:    "no upstream branch with placeholder in upstream hint",
+			name:    "pull upstream hint with options is not inferred",
+			cmd:     "git pull --rebase --quiet",
+			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=origin/main main\n",
+			wantFix: false,
+		},
+		{
+			name:    "no upstream branch rejects placeholder branch",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to rebase against.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check\n",
-			wantFix: true,
-			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
+			wantFix: false,
 		},
 		{
-			name:    "no upstream branch defaults placeholder remote to origin",
+			name:    "no upstream branch rejects placeholder remote and branch",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
-			wantFix: true,
-			wantCmd: "git pull --set-upstream origin 0426-yuluo/fix",
+			wantFix: false,
 		},
 		{
-			name:    "no upstream branch accepts spaced set upstream hint",
+			name:    "pull spaced set upstream hint is not inferred",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to origin/main main\n",
-			wantFix: true,
-			wantCmd: "git pull --set-upstream origin main",
+			wantFix: false,
 		},
 		{
-			name:    "no upstream branch accepts legacy set upstream hint",
+			name:    "pull legacy set upstream hint is not inferred",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream main origin/main\n",
-			wantFix: true,
-			wantCmd: "git pull --set-upstream origin main",
+			wantFix: false,
+		},
+		{
+			name:    "no upstream branch rejects cross shell metacharacters",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=origin/feature;touch${IFS}TYPO_PWNED feature;touch${IFS}TYPO_PWNED\n",
+			wantFix: false,
+		},
+		{
+			name:    "no upstream branch rejects unsafe remote characters",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=ori;gin/main main\n",
+			wantFix: false,
+		},
+		{
+			name:    "no upstream branch rejects ambiguous slash target with local branch",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=team/upstream/feature/topic feature/topic\n",
+			wantFix: false,
+		},
+		{
+			name:    "no upstream branch rejects ambiguous slash target",
+			cmd:     "git pull",
+			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=team/upstream/main\n",
+			wantFix: false,
 		},
 		{
 			name:    "no upstream branch is idempotent once fixed",
@@ -690,45 +715,53 @@ func TestParserShellHelpers_ParseFailures(t *testing.T) {
 	}
 }
 
-func TestGitDockerNpmParser_FallbackShellFailures(t *testing.T) {
+func TestCommandParsersRejectShellParseFailures(t *testing.T) {
 	gitResult := NewGitParser().Parse(itypes.ParserContext{
 		Command: "git remove '",
 		Stderr:  "git: 'remove' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
 	})
-	if !gitResult.Fixed || gitResult.Command != "git remote '" {
-		t.Fatalf("Expected git fallback replacement, got %+v", gitResult)
+	if gitResult.Fixed {
+		t.Fatalf("Expected invalid git command to stay unchanged, got %+v", gitResult)
 	}
 
 	dockerResult := NewDockerParser().Parse(itypes.ParserContext{
 		Command: "docker psa '",
 		Stderr:  "docker: 'psa' is not a docker command.\nSimilar command: ps\n\nRun 'docker --help' for more information",
 	})
-	if !dockerResult.Fixed || dockerResult.Command != "docker ps '" {
-		t.Fatalf("Expected docker fallback replacement, got %+v", dockerResult)
+	if dockerResult.Fixed {
+		t.Fatalf("Expected invalid docker command to stay unchanged, got %+v", dockerResult)
 	}
 
 	npmResult := NewNpmParser().Parse(itypes.ParserContext{
 		Command: "npm ist '",
 		Stderr:  "npm ERR! Did you mean list?",
 	})
-	if !npmResult.Fixed || npmResult.Command != "npm list '" {
-		t.Fatalf("Expected npm fallback replacement, got %+v", npmResult)
+	if npmResult.Fixed {
+		t.Fatalf("Expected invalid npm command to stay unchanged, got %+v", npmResult)
 	}
 
 	npmNotFound := NewNpmParser().Parse(itypes.ParserContext{
 		Command: "npm isntall '",
 		Stderr:  "npm ERR! code E404\nnpm ERR! 404 command isntall not found\nnpm ERR! Did you mean install?",
 	})
-	if !npmNotFound.Fixed || npmNotFound.Command != "npm install '" {
-		t.Fatalf("Expected npm not-found fallback replacement, got %+v", npmNotFound)
+	if npmNotFound.Fixed {
+		t.Fatalf("Expected invalid npm command to stay unchanged, got %+v", npmNotFound)
 	}
 
 	dockerUnknown := NewDockerParser().Parse(itypes.ParserContext{
 		Command: "docker imagesa '",
 		Stderr:  "unknown command: imagesa\n\nDid you mean: images?",
 	})
-	if !dockerUnknown.Fixed || dockerUnknown.Command != "docker images '" {
-		t.Fatalf("Expected docker unknown-command fallback replacement, got %+v", dockerUnknown)
+	if dockerUnknown.Fixed {
+		t.Fatalf("Expected invalid docker command to stay unchanged, got %+v", dockerUnknown)
+	}
+
+	genericResult := NewGenericParser().Parse(itypes.ParserContext{
+		Command: "cargo bild 'foo   bar",
+		Stderr:  "error: no such subcommand: `bild`\n\nDid you mean `build`?",
+	})
+	if genericResult.Fixed {
+		t.Fatalf("Expected invalid generic command to stay unchanged, got %+v", genericResult)
 	}
 }
 
@@ -739,6 +772,115 @@ func TestGitParser_ParseNoUpstreamPlaceholderWithoutLocalBranch(t *testing.T) {
 	})
 	if result.Fixed {
 		t.Fatalf("Expected placeholder upstream without local branch to stay unchanged, got %+v", result)
+	}
+}
+
+func TestGitParser_ParsePushNoUpstream(t *testing.T) {
+	p := NewGitParser()
+	stderr := "fatal: The current branch feature/topic has no upstream branch.\n" +
+		"To push the current branch and set the remote as upstream, use\n\n" +
+		"    git push --set-upstream origin feature/topic\n"
+	unsafeStderr := "fatal: The current branch feature;touch${IFS}TYPO_PWNED has no upstream branch.\n" +
+		"To push the current branch and set the remote as upstream, use\n\n" +
+		"    git push --set-upstream origin feature;touch${IFS}TYPO_PWNED\n"
+
+	tests := []struct {
+		name    string
+		cmd     string
+		stderr  string
+		wantFix bool
+		wantCmd string
+	}{
+		{
+			name:    "plain push uses git hint",
+			cmd:     "git push",
+			stderr:  stderr,
+			wantFix: true,
+			wantCmd: "git push --set-upstream origin feature/topic",
+		},
+		{
+			name:    "safe push option is preserved",
+			cmd:     "git push --quiet",
+			stderr:  stderr,
+			wantFix: true,
+			wantCmd: "git push --quiet --set-upstream origin feature/topic",
+		},
+		{
+			name:    "windows CRLF hint is accepted",
+			cmd:     "git push",
+			stderr:  "fatal: The current branch feature/topic has no upstream branch.\r\nTo push the current branch and set the remote as upstream, use\r\n\r\n    git push --set-upstream origin feature/topic\r\n",
+			wantFix: true,
+			wantCmd: "git push --set-upstream origin feature/topic",
+		},
+		{
+			name:    "quoted global option is preserved",
+			cmd:     "git -C 'path with spaces' push",
+			stderr:  stderr,
+			wantFix: true,
+			wantCmd: "git -C 'path with spaces' push --set-upstream origin feature/topic",
+		},
+		{
+			name:    "git-push form is preserved",
+			cmd:     "git-push",
+			stderr:  stderr,
+			wantFix: true,
+			wantCmd: "git-push --set-upstream origin feature/topic",
+		},
+		{
+			name:    "shell metacharacters are rejected across shells",
+			cmd:     "git push",
+			stderr:  unsafeStderr,
+			wantFix: false,
+		},
+		{
+			name:    "interactive history expansion is rejected",
+			cmd:     "git push",
+			stderr:  "git push --set-upstream origin feature's!urgent\n",
+			wantFix: false,
+		},
+		{
+			name:    "hint without no upstream fatal is rejected",
+			cmd:     "git push",
+			stderr:  "git push --set-upstream origin feature/topic\n",
+			wantFix: false,
+		},
+		{
+			name: "fatal and hint branches must match",
+			cmd:  "git push",
+			stderr: "fatal: The current branch feature/topic has no upstream branch.\n" +
+				"git push --set-upstream origin other/topic\n",
+			wantFix: false,
+		},
+		{
+			name:    "existing positional argument is not duplicated",
+			cmd:     "git push origin",
+			stderr:  stderr,
+			wantFix: false,
+		},
+		{
+			name:    "existing upstream option is idempotent",
+			cmd:     "git push --set-upstream origin feature/topic",
+			stderr:  stderr,
+			wantFix: false,
+		},
+		{
+			name:    "placeholder hint is not guessed",
+			cmd:     "git push",
+			stderr:  "git push --set-upstream <remote> <branch>\n",
+			wantFix: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+		})
 	}
 }
 
@@ -775,6 +917,11 @@ func TestGitParser_ParseDivergentPullRebase(t *testing.T) {
 			cmd:     "git-pull origin main",
 			wantFix: true,
 			wantCmd: "git-pull --rebase origin main",
+		},
+		{
+			name:    "unclosed quoted argument stays unchanged",
+			cmd:     "git pull 'foo   bar",
+			wantFix: false,
 		},
 		{
 			name:    "already has rebase",
@@ -843,7 +990,7 @@ func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
 	}
 }
 
-func TestGitParser_ParsePushRejectedNeedsPull(t *testing.T) {
+func TestGitParser_PushRejectedDoesNotGuessPullTarget(t *testing.T) {
 	p := NewGitParser()
 	fetchFirstStderr := "To github.com:yuluo-yx/typo.git\n" +
 		" ! [rejected]        main -> main (fetch first)\n" +
@@ -852,106 +999,35 @@ func TestGitParser_ParsePushRejectedNeedsPull(t *testing.T) {
 		"hint: not have locally. This is usually caused by another repository pushing\n" +
 		"hint: to the same ref. You may want to first integrate the remote changes\n" +
 		"hint: (e.g., 'git pull ...') before pushing again.\n"
-	nonFastForwardStderr := "To github.com:yuluo-yx/typo.git\n" +
-		" ! [rejected]        main -> main (non-fast-forward)\n" +
-		"error: failed to push some refs to 'github.com:yuluo-yx/typo.git'\n" +
-		"hint: Updates were rejected because the tip of your current branch is behind\n" +
-		"hint: its remote counterpart. If you want to integrate the remote changes,\n" +
-		"hint: use 'git pull' before pushing again.\n"
 
-	tests := []struct {
-		name    string
-		cmd     string
-		stderr  string
-		wantFix bool
-		wantCmd string
-	}{
-		{
-			name:    "fetch first with remote and branch",
-			cmd:     "git push origin main",
-			stderr:  fetchFirstStderr,
-			wantFix: true,
-			wantCmd: "git pull origin main",
-		},
-		{
-			name:    "non fast forward with global option",
-			cmd:     "git -C repo push origin main",
-			stderr:  nonFastForwardStderr,
-			wantFix: true,
-			wantCmd: "git -C repo pull origin main",
-		},
-		{
-			name:    "git-push form",
-			cmd:     "git-push origin main",
-			stderr:  fetchFirstStderr,
-			wantFix: true,
-			wantCmd: "git-pull origin main",
-		},
-		{
-			name:    "push set upstream short option becomes pull long option",
-			cmd:     "git push -u origin feature",
-			stderr:  fetchFirstStderr,
-			wantFix: true,
-			wantCmd: "git pull --set-upstream origin feature",
-		},
-		{
-			name:    "push set upstream long option is preserved",
-			cmd:     "git push --set-upstream origin feature",
-			stderr:  fetchFirstStderr,
-			wantFix: true,
-			wantCmd: "git pull --set-upstream origin feature",
-		},
-		{
-			name:    "force push intent stays unchanged",
-			cmd:     "git push --force origin main",
-			stderr:  fetchFirstStderr,
-			wantFix: false,
-		},
-		{
-			name:    "push refspec stays unchanged",
-			cmd:     "git push origin HEAD:main",
-			stderr:  fetchFirstStderr,
-			wantFix: false,
-		},
-		{
-			name:    "remote policy rejection stays unchanged",
-			cmd:     "git push origin main",
-			stderr:  "To github.com:yuluo-yx/typo.git\n ! [remote rejected] main -> main (protected branch hook declined)\nerror: failed to push some refs to 'github.com:yuluo-yx/typo.git'\n",
-			wantFix: false,
-		},
-		{
-			name:    "non-push command stays unchanged",
-			cmd:     "git status",
-			stderr:  fetchFirstStderr,
-			wantFix: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
-			if result.Fixed != tt.wantFix {
-				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
-			}
-			if tt.wantFix && result.Command != tt.wantCmd {
-				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+	for _, cmd := range []string{
+		"git push",
+		"git -C 'path with spaces' push",
+		"git push origin main",
+		"git push -u origin HEAD",
+		"git push origin main other",
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			result := p.Parse(itypes.ParserContext{Command: cmd, Stderr: fetchFirstStderr})
+			if result.Fixed {
+				t.Fatalf("rejected push target is ambiguous and must stay unchanged: %+v", result)
 			}
 		})
 	}
 }
 
-func TestGitParser_ParseDidYouMeanShellParseFallback(t *testing.T) {
+func TestGitParser_ParseDidYouMeanRejectsShellParseFailure(t *testing.T) {
 	stderr := "git: 'statsu' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tstatus\n"
 	result := NewGitParser().Parse(itypes.ParserContext{
 		Command: "git statsu '",
 		Stderr:  stderr,
 	})
-	if !result.Fixed || result.Command != "git status '" || result.Message != "git suggested: status" {
-		t.Fatalf("Parse fallback = %+v", result)
+	if result.Fixed {
+		t.Fatalf("Expected invalid shell command to stay unchanged, got %+v", result)
 	}
 }
 
-func TestGitPullRebaseFallbackHelpers(t *testing.T) {
+func TestGitPullRebaseHelpers(t *testing.T) {
 	tests := []struct {
 		name    string
 		run     func() (string, bool)
@@ -959,20 +1035,18 @@ func TestGitPullRebaseFallbackHelpers(t *testing.T) {
 		wantOK  bool
 	}{
 		{
-			name: "plain pull parse fallback",
+			name: "plain pull malformed command",
 			run: func() (string, bool) {
 				return addGitPullRebaseFlag("git pull origin main '")
 			},
-			wantCmd: "git pull --rebase origin main '",
-			wantOK:  true,
+			wantOK: false,
 		},
 		{
-			name: "git-prefixed parse fallback",
+			name: "git-prefixed malformed command",
 			run: func() (string, bool) {
-				return addGitPrefixedPullRebaseFlag("git-pull origin main '")
+				return addGitPullRebaseFlag("git-pull origin main '")
 			},
-			wantCmd: "git-pull --rebase origin main '",
-			wantOK:  true,
+			wantOK: false,
 		},
 		{
 			name: "no pull token",
@@ -984,7 +1058,7 @@ func TestGitPullRebaseFallbackHelpers(t *testing.T) {
 		{
 			name: "empty prefixed command",
 			run: func() (string, bool) {
-				return addGitPrefixedPullRebaseFlag("")
+				return addGitPullRebaseFlag("")
 			},
 			wantOK: false,
 		},

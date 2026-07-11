@@ -155,7 +155,7 @@ func TestWriteFileAtomic_SyncsParentDirectoryAfterRename(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomic_ParentDirectorySyncFailure(t *testing.T) {
+func TestWriteFileAtomic_ParentDirectorySyncFailureIsPostCommit(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "data.json")
 	ops := &fakeAtomicFileOps{
 		file:       &fakeAtomicFile{name: "temp-file"},
@@ -163,11 +163,11 @@ func TestWriteFileAtomic_ParentDirectorySyncFailure(t *testing.T) {
 	}
 
 	err := writeFileAtomicWithOps(target, []byte("x"), 0600, ops)
-	if err == nil {
-		t.Fatal("expected WriteFileAtomic to fail when parent directory sync fails")
+	if err != nil {
+		t.Fatalf("post-rename directory sync must not report an uncommitted write: %v", err)
 	}
-	if !strings.Contains(err.Error(), "sync dir") {
-		t.Fatalf("expected parent directory sync error, got %v", err)
+	if len(ops.syncedDirs) != 1 || ops.syncedDirs[0] != filepath.Dir(target) {
+		t.Fatalf("expected parent directory sync attempt, got %v", ops.syncedDirs)
 	}
 	if len(ops.removed) != 0 {
 		t.Fatalf("expected no temp cleanup after successful rename, got %v", ops.removed)

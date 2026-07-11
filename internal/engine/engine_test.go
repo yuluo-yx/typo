@@ -179,6 +179,62 @@ func TestEngine_FixWithParser(t *testing.T) {
 	}
 }
 
+func TestEngine_FixWithParser_RespectsExitCode(t *testing.T) {
+	eng := NewEngine(WithParser(parser.NewRegistry()))
+	stderr := "Error: unknown command \"upgraed\" for \"mytool\"\n\nDid you mean this?\n\tupgrade\n"
+
+	tests := []struct {
+		name     string
+		exitCode int
+		wantFix  bool
+	}{
+		{name: "successful command", exitCode: 0, wantFix: false},
+		{name: "failed command", exitCode: 1, wantFix: true},
+		{name: "unknown exit code", exitCode: -1, wantFix: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.FixWithContext(itypes.ParserContext{
+				Command:  "mytool upgraed",
+				Stderr:   stderr,
+				ExitCode: tt.exitCode,
+			})
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("FixWithContext().Fixed = %v, want %v; result = %+v", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != "mytool upgrade" {
+				t.Fatalf("FixWithContext().Command = %q, want %q", result.Command, "mytool upgrade")
+			}
+		})
+	}
+}
+
+func TestEngine_Fix_FishDecorators(t *testing.T) {
+	eng := NewEngine(WithCommands([]string{"git", "docker"}))
+
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "fish and", command: "gti status; and dcoker ps", want: "git status; and docker ps"},
+		{name: "fish or", command: "gti status; or dcoker ps", want: "git status; or docker ps"},
+		{name: "fish not", command: "not gti status", want: "not git status"},
+		{name: "bash and", command: "gti status && dcoker ps", want: "git status && docker ps"},
+		{name: "bash or", command: "gti status || dcoker ps", want: "git status || docker ps"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := eng.Fix(tt.command, "")
+			if !result.Fixed || result.Command != tt.want {
+				t.Fatalf("Fix(%q) = %+v, want command %q", tt.command, result, tt.want)
+			}
+		})
+	}
+}
+
 func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
 	tmpDir := t.TempDir()
 	subcommands := commands.NewToolTreeRegistry(tmpDir)
@@ -190,8 +246,9 @@ func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
 	)
 
 	result := eng.FixWithContext(itypes.ParserContext{
-		Command: "git remove -v && dcoker ps",
-		Stderr:  "git: 'remove' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
+		Command:  "git remove -v && dcoker ps",
+		Stderr:   "git: 'remove' is not a git command. See 'git --help'.\n\nThe most similar command is\n\tremote\n",
+		ExitCode: 1,
 	})
 	if !result.Fixed {
 		t.Fatal("Expected parser fix to be followed by normal typo fixes")
@@ -204,37 +261,68 @@ func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
 	}
 }
 
-func TestEngine_FixWithParser_NoUpstreamTargetsPullOnly(t *testing.T) {
+func TestEngine_FixWithParser_PullUpstreamHintStaysUnchanged(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),
 	)
 
 	result := eng.FixWithContext(itypes.ParserContext{
-		Command: "git remove -v && git pull",
-		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
+		Command:  "git remove -v && git pull",
+		Stderr:   "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
+		ExitCode: 1,
 	})
-	if !result.Fixed {
-		t.Fatal("Expected pull command to be fixed")
-	}
-	if result.Command != "git remove -v && git pull --set-upstream origin main" {
-		t.Fatalf("Expected upstream fix to apply only to git pull, got %q", result.Command)
+	if result.Fixed {
+		t.Fatalf("Expected pull upstream target to remain user-controlled, got %+v", result)
 	}
 }
 
-func TestEngine_FixWithParser_NoUpstreamDefaultsPlaceholderRemoteToOrigin(t *testing.T) {
+func TestEngine_FixWithParser_NoUpstreamDoesNotGuessPlaceholders(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),
 	)
 
 	result := eng.FixWithContext(itypes.ParserContext{
-		Command: "git remove -v && git pull",
-		Stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
+		Command:  "git remove -v && git pull",
+		Stderr:   "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> 0426-yuluo/fix\n",
+		ExitCode: 1,
+	})
+	if result.Fixed {
+		t.Fatalf("Expected placeholder upstream to stay unchanged, got %+v", result)
+	}
+}
+
+func TestEngine_FixWithParser_PushNoUpstreamTargetsPushOnly(t *testing.T) {
+	eng := NewEngine(WithParser(parser.NewRegistry()))
+	stderr := "fatal: The current branch feature/topic has no upstream branch.\n" +
+		"To push the current branch and set the remote as upstream, use\n\n" +
+		"    git push --set-upstream origin feature/topic\n"
+
+	result := eng.FixWithContext(itypes.ParserContext{
+		Command:  "git status && sudo git push",
+		Stderr:   stderr,
+		ExitCode: 128,
 	})
 	if !result.Fixed {
-		t.Fatal("Expected placeholder remote to default to origin")
+		t.Fatal("Expected push command to be fixed")
 	}
-	if result.Command != "git remove -v && git pull --set-upstream origin 0426-yuluo/fix" {
-		t.Fatalf("Expected placeholder remote to default to origin, got %q", result.Command)
+	if result.Command != "git status && sudo git push --set-upstream origin feature/topic" {
+		t.Fatalf("Expected upstream fix to preserve the compound wrapper, got %q", result.Command)
+	}
+}
+
+func TestEngine_FixWithParser_RejectsAmbiguousCompoundTargets(t *testing.T) {
+	eng := NewEngine(WithParser(parser.NewRegistry()))
+	stderr := "fatal: The current branch feature/topic has no upstream branch.\n" +
+		"To push the current branch and set the remote as upstream, use\n\n" +
+		"    git push --set-upstream origin feature/topic\n"
+
+	result := eng.FixWithContext(itypes.ParserContext{
+		Command:  "git push && git -C other push",
+		Stderr:   stderr,
+		ExitCode: 128,
+	})
+	if result.Fixed {
+		t.Fatalf("Expected ambiguous parser targets to stay unchanged, got %+v", result)
 	}
 }
 
@@ -244,8 +332,9 @@ func TestEngine_FixWithParser_DivergentPullRebaseTargetsPullOnly(t *testing.T) {
 	)
 
 	result := eng.FixWithContext(itypes.ParserContext{
-		Command: "git status && git pull origin main",
-		Stderr:  "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n",
+		Command:  "git status && git pull origin main",
+		Stderr:   "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n",
+		ExitCode: 1,
 	})
 	if !result.Fixed {
 		t.Fatal("Expected divergent pull command to be fixed")
@@ -483,6 +572,45 @@ func TestEngine_Fix_PreservesQuotedArguments(t *testing.T) {
 	}
 	if result.Command != "git commit -m 'a   b'" {
 		t.Fatalf("Expected quoted argument spacing to be preserved, got %q", result.Command)
+	}
+}
+
+func TestEngine_Fix_PreservesUnclosedQuotedArguments(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	for _, command := range []string{
+		"gut commit -m 'a   b",
+		`gut commit -m "a   b`,
+	} {
+		result := eng.Fix(command, "")
+		if !result.Fixed {
+			t.Fatalf("Expected unclosed quoted command %q to be fixed", command)
+		}
+		want := "git" + command[len("gut"):]
+		if result.Command != want {
+			t.Fatalf("Fix(%q).Command = %q, want byte-preserving %q", command, result.Command, want)
+		}
+	}
+}
+
+func TestEngine_Fix_SkipsInvalidRecoveredCompoundCall(t *testing.T) {
+	eng := NewEngine(
+		WithCommands([]string{"git", "docker"}),
+		WithKeyboard(NewQWERTYKeyboard()),
+	)
+
+	for _, command := range []string{
+		"gti status && 'dcoker ps",
+		`gti status && "dcoker ps`,
+	} {
+		result := eng.Fix(command, "")
+		want := "git" + command[len("gti"):]
+		if !result.Fixed || result.Command != want {
+			t.Fatalf("Fix(%q) = %+v, want byte-preserving %q", command, result, want)
+		}
 	}
 }
 
@@ -924,6 +1052,41 @@ func TestEngine_MaybeAutoLearnFromHistory_RespectsContextDeadline(t *testing.T) 
 	}
 	if _, ok := rules.MatchUser("mytypo"); ok {
 		t.Fatal("Expected expired context to skip user rule creation")
+	}
+}
+
+func TestEngine_MaybeAutoLearnFromHistory_RollsBackRuleWhenHistorySaveFails(t *testing.T) {
+	history := NewHistory(t.TempDir())
+	rulesDir := t.TempDir()
+	rules := NewRules(rulesDir)
+	eng := NewEngine(
+		WithHistory(history),
+		WithRules(rules),
+		WithAutoLearnThreshold(1),
+	)
+
+	if err := history.Record("mytypo", "mytool"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocker, []byte("block"), 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	history.configDir = blocker
+
+	result := eng.maybeAutoLearnFromHistory(context.Background(), "mytypo", "mytool")
+	if !result.Triggered || result.Persisted || result.Err == nil {
+		t.Fatalf("maybeAutoLearnFromHistory() = %+v", result)
+	}
+	if _, ok := rules.MatchUser("mytypo"); ok {
+		t.Fatal("failed auto-learn kept the new rule in memory")
+	}
+	if _, ok := NewRules(rulesDir).MatchUser("mytypo"); ok {
+		t.Fatal("failed auto-learn kept the new rule on disk")
+	}
+	entry, ok := history.Lookup("mytypo")
+	if !ok || entry.RuleApplied {
+		t.Fatalf("failed auto-learn changed history: %+v, ok=%v", entry, ok)
 	}
 }
 
@@ -1543,6 +1706,7 @@ func TestEngine_FixWithAliasContextParser(t *testing.T) {
 	got := eng.FixWithContext(itypes.ParserContext{
 		Command:      "g remove -v",
 		Stderr:       "git: 'remove' is not a git command.\n\nThe most similar command is\n\tremote\n",
+		ExitCode:     1,
 		AliasContext: []itypes.AliasContextEntry{{Shell: "bash", Kind: "alias", Name: "g", Expansion: "git"}},
 	})
 	if !got.Fixed || got.Command != "g remote -v" || !got.UsedParser {
