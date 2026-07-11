@@ -253,10 +253,6 @@ _typo_collect_command_words() {
                                 (( idx++ ))
                                 continue
                                 ;;
-                            --argv0=*|--chdir=*|--default-signal=*|--ignore-signal=*|--block-signal=*|--signal=*|--unset=*|--split-string=*)
-                                (( idx++ ))
-                                continue
-                                ;;
                             --argv0|--chdir|--default-signal|--ignore-signal|--block-signal|--signal|--unset|--split-string|-C|-S|-u)
                                 expect_value=1
                                 (( idx++ ))
@@ -287,7 +283,7 @@ _typo_collect_command_words() {
                                 (( idx++ ))
                                 continue
                                 ;;
-                            --close-from|--group|--host|--other-user|--preserve-env|--prompt|--role|--user|--chdir|-C|-g|-h|-p|-R|-r|-T|-u)
+                            --close-from|--group|--host|--other-user|--prompt|--role|--user|--chdir|-C|-g|-h|-p|-R|-r|-T|-u)
                                 expect_value=1
                                 (( idx++ ))
                                 continue

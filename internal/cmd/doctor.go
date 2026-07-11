@@ -29,8 +29,8 @@ func cmdDoctor(args []string) int {
 	fmt.Println("Checking typo configuration...")
 	fmt.Println()
 
-	hasError := false
 	cfg := config.Load()
+	hasError := cfg.LoadError() != nil
 	shellName, shellRC := detectShellIntegrationTarget()
 
 	// Check if typo is in PATH
@@ -62,7 +62,9 @@ func cmdDoctor(args []string) int {
 
 	// Check config file and print effective settings
 	fmt.Print("[3/6] config file: ")
-	if configFile := cfg.ConfigFilePath(); configFile != "" {
+	if loadErr := cfg.LoadError(); loadErr != nil {
+		fmt.Printf("✗ %v\n", loadErr)
+	} else if configFile := cfg.ConfigFilePath(); configFile != "" {
 		if info, err := statPath(configFile); err == nil && !info.IsDir() {
 			fmt.Printf("✓ %s\n", configFile)
 		} else {
@@ -262,7 +264,13 @@ func (r *doctorJSONReport) addDoctorJSONConfigChecks(cfg *config.Config, configF
 		r.addDoctorCheck("config_directory", "config directory", "info", "will be created on first use", cfg.ConfigDir)
 	}
 
-	if configFile != "" {
+	if loadErr := cfg.LoadError(); loadErr != nil {
+		if info, err := statPath(configFile); err == nil && !info.IsDir() {
+			r.Config.FileExists = true
+		}
+		r.OK = false
+		r.addDoctorCheck("config_file", "config file", "fail", loadErr.Error(), configFile)
+	} else if configFile != "" {
 		if info, err := statPath(configFile); err == nil && !info.IsDir() {
 			r.Config.FileExists = true
 			r.addDoctorCheck("config_file", "config file", "pass", configFile, configFile)

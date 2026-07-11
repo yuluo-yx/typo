@@ -30,45 +30,52 @@ func BenchmarkTypoCLI(b *testing.B) {
 		name         string
 		args         []string
 		expectedCode int
+		expectedOut  string
 	}{
 		{
 			name:         "fix-rule-match",
-			args:         []string{"fix", "gut status"},
+			args:         []string{"fix", "--no-history", "gut status"},
 			expectedCode: 0,
+			expectedOut:  "git status\n",
 		},
 		{
 			name:         "fix-distance-match",
-			args:         []string{"fix", "dkcer ps"},
+			args:         []string{"fix", "--no-history", "dkcer ps"},
 			expectedCode: 0,
+			expectedOut:  "docker ps\n",
 		},
 		{
 			name:         "fix-compound-multi-match",
-			args:         []string{"fix", "gti stauts && dcoker ps"},
+			args:         []string{"fix", "--no-history", "gti stauts && dcoker ps"},
 			expectedCode: 0,
+			expectedOut:  "git status && docker ps\n",
 		},
 		{
 			name:         "fix-pipeline-compound-match",
-			args:         []string{"fix", "gut status | grep main && dcoker ps"},
+			args:         []string{"fix", "--no-history", "gut status | grep main && dcoker ps"},
 			expectedCode: 0,
+			expectedOut:  "git status | grep main && docker ps\n",
 		},
 		{
 			name:         "fix-wrapper-subcommand-match",
-			args:         []string{"fix", "sudo git -C repo stauts || dcoker ps"},
+			args:         []string{"fix", "--no-history", "sudo git -C repo stauts || dcoker ps"},
 			expectedCode: 0,
+			expectedOut:  "sudo git -C repo status || docker ps\n",
 		},
 		{
 			name:         "fix-parser-compound-match",
-			args:         []string{"fix", "-s", env.gitStderr, "sudo git remove -v && dcoker ps"},
+			args:         []string{"fix", "--no-history", "-s", env.gitStderr, "sudo git remove -v && dcoker ps"},
 			expectedCode: 0,
+			expectedOut:  "sudo git remote -v && docker ps\n",
 		},
 		{
 			name:         "fix-no-match",
-			args:         []string{"fix", "xyzabc"},
+			args:         []string{"fix", "--no-history", "xyzabc"},
 			expectedCode: 1,
 		},
 		{
 			name:         "fix-noop-compound",
-			args:         []string{"fix", "git status && echo ok"},
+			args:         []string{"fix", "--no-history", "git status && echo ok"},
 			expectedCode: 1,
 		},
 		{
@@ -85,11 +92,39 @@ func BenchmarkTypoCLI(b *testing.B) {
 
 	for _, tt := range benchmarks {
 		b.Run(tt.name, func(b *testing.B) {
+			env.validate(b, tt.expectedCode, tt.expectedOut, tt.args...)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				env.run(b, tt.expectedCode, tt.args...)
 			}
 		})
+	}
+}
+
+func (e *cliBenchmarkEnv) validate(b *testing.B, expectedCode int, expectedOut string, args ...string) {
+	b.Helper()
+
+	cmd := exec.Command(e.binary, args...)
+	cmd.Dir = e.root
+	cmd.Env = e.commandEnv()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	code, err := runBenchmarkCommand(cmd)
+	if err != nil {
+		b.Fatalf("failed to validate benchmark command: %v", err)
+	}
+	if code != expectedCode || (expectedOut != "" && stdout.String() != expectedOut) {
+		b.Fatalf(
+			"invalid benchmark case %q: code=%d want=%d stdout=%q want=%q stderr=%q",
+			strings.Join(args, " "),
+			code,
+			expectedCode,
+			stdout.String(),
+			expectedOut,
+			stderr.String(),
+		)
 	}
 }
 
@@ -235,15 +270,9 @@ func (e *cliBenchmarkEnv) run(b *testing.B, expectedCode int, args ...string) {
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 
-	err := cmd.Run()
-	code := 0
+	code, err := runBenchmarkCommand(cmd)
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			code = exitErr.ExitCode()
-		} else {
-			b.Fatalf("failed to execute benchmark command: %v", err)
-		}
+		b.Fatalf("failed to execute benchmark command: %v", err)
 	}
 
 	if code == expectedCode {
@@ -267,4 +296,17 @@ func (e *cliBenchmarkEnv) run(b *testing.B, expectedCode int, args ...string) {
 		stdout.String(),
 		stderr.String(),
 	)
+}
+
+func runBenchmarkCommand(cmd *exec.Cmd) (int, error) {
+	err := cmd.Run()
+	if err == nil {
+		return 0, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), nil
+	}
+	return 0, err
 }

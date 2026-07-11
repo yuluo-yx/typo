@@ -40,16 +40,13 @@ func (p *DockerParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	if len(matches) >= 3 {
 		wrongCmd := matches[1]
 		suggested := matches[2]
-		fixed := ""
 		call, err := parseShellCall(cmd)
 		if err != nil {
-			fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
-		} else {
-			var ok bool
-			fixed, ok = call.replaceSubcommand(parserNameDocker, wrongCmd, suggested, dockerParserOptionsWithValues)
-			if !ok {
-				return itypes.ParserResult{Fixed: false}
-			}
+			return itypes.ParserResult{Fixed: false}
+		}
+		fixed, ok := call.replaceSubcommand(parserNameDocker, wrongCmd, suggested, dockerParserOptionsWithValues)
+		if !ok {
+			return itypes.ParserResult{Fixed: false}
 		}
 		return itypes.ParserResult{
 			Fixed:   true,
@@ -63,16 +60,13 @@ func (p *DockerParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	if len(matches) >= 3 {
 		wrongCmd := matches[1]
 		suggested := matches[2]
-		fixed := ""
 		call, err := parseShellCall(cmd)
 		if err != nil {
-			fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
-		} else {
-			var ok bool
-			fixed, ok = call.replaceSubcommand(parserNameDocker, wrongCmd, suggested, dockerParserOptionsWithValues)
-			if !ok {
-				return itypes.ParserResult{Fixed: false}
-			}
+			return itypes.ParserResult{Fixed: false}
+		}
+		fixed, ok := call.replaceSubcommand(parserNameDocker, wrongCmd, suggested, dockerParserOptionsWithValues)
+		if !ok {
+			return itypes.ParserResult{Fixed: false}
 		}
 		return itypes.ParserResult{
 			Fixed:   true,

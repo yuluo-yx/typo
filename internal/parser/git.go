@@ -13,26 +13,24 @@ import (
 // GitParser parses git command errors.
 type GitParser struct {
 	didYouMeanRegex          *regexp.Regexp
-	noUpstreamRegex          *regexp.Regexp
-	legacyUpstreamRegex      *regexp.Regexp
+	pushNoUpstreamFatalRegex *regexp.Regexp
+	pushNoUpstreamRegex      *regexp.Regexp
 	divergentBranchesRegex   *regexp.Regexp
 	reconcileDivergenceRegex *regexp.Regexp
-	pushRejectedRegex        *regexp.Regexp
-	pushNeedsPullRegex       *regexp.Regexp
 	placeholderRegex         *regexp.Regexp
 	notGitRepoRegex          *regexp.Regexp
 }
+
+var gitUpstreamTokenRegex = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._/@+-]*$`)
 
 // NewGitParser creates a new GitParser.
 func NewGitParser() *GitParser {
 	return &GitParser{
 		didYouMeanRegex:          regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
-		noUpstreamRegex:          regexp.MustCompile(`git branch --set-upstream-to(?:=|\s+)([^\s]+)(?:\s+([^\s]+))?`),
-		legacyUpstreamRegex:      regexp.MustCompile(`git branch --set-upstream\s+([^\s]+)\s+([^\s]+)`),
+		pushNoUpstreamFatalRegex: regexp.MustCompile(`(?m)^fatal: The current branch ([^\s]+) has no upstream branch\.[\t\r ]*$`),
+		pushNoUpstreamRegex:      regexp.MustCompile(`(?m)^[ \t]*git push (?:-u|--set-upstream)[ \t]+([^\s]+)[ \t]+([^\s]+)[ \t\r]*$`),
 		divergentBranchesRegex:   regexp.MustCompile(`(?i)You have divergent branches and need to specify how to reconcile them\.`),
 		reconcileDivergenceRegex: regexp.MustCompile(`(?i)fatal: Need to specify how to reconcile divergent branches\.`),
-		pushRejectedRegex:        regexp.MustCompile(`(?i)(?:fetch first|non-fast-forward)`),
-		pushNeedsPullRegex:       regexp.MustCompile(`(?is)(?:git pull|integrate the remote changes|before pushing again)`),
 		placeholderRegex:         regexp.MustCompile(`^<[^>\s]+>$`),
 		notGitRepoRegex:          regexp.MustCompile(`fatal: not a git repository`),
 	}
@@ -58,16 +56,11 @@ func (p *GitParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 		return result
 	}
 
-	// Try to parse "no upstream" errors
-	if result := p.parseNoUpstream(cmd, stderr); result.Fixed {
+	if result := p.parsePushNoUpstream(cmd, stderr); result.Fixed {
 		return result
 	}
 
 	if result := p.parseDivergentPullRebase(cmd, stderr); result.Fixed {
-		return result
-	}
-
-	if result := p.parsePushRejectedNeedsPull(cmd, stderr); result.Fixed {
 		return result
 	}
 
@@ -82,16 +75,10 @@ func (p *GitParser) parseDidYouMean(cmd, stderr string) itypes.ParserResult {
 
 	wrongCmd := matches[1]
 	suggested := matches[2]
-	fixed := ""
 
 	call, err := parseShellCall(cmd)
 	if err != nil {
-		fixed = strings.Replace(cmd, wrongCmd, suggested, 1)
-		return itypes.ParserResult{
-			Fixed:   true,
-			Command: fixed,
-			Message: "git suggested: " + suggested,
-		}
+		return itypes.ParserResult{Fixed: false}
 	}
 
 	fixed, ok := call.replaceSubcommand(parserNameGit, wrongCmd, suggested, gitParserOptionsWithValues)
@@ -106,63 +93,86 @@ func (p *GitParser) parseDidYouMean(cmd, stderr string) itypes.ParserResult {
 	}
 }
 
-func (p *GitParser) parseNoUpstream(cmd, stderr string) itypes.ParserResult {
-	if gitSubcommand(cmd) != "pull" || gitCommandHasUpstreamFlag(cmd) {
+func (p *GitParser) parsePushNoUpstream(cmd, stderr string) itypes.ParserResult {
+	if gitSubcommand(cmd) != "push" || gitCommandHasUpstreamFlag(cmd) {
 		return itypes.ParserResult{Fixed: false}
 	}
 
-	remote, branch, ok := p.parseUpstreamHint(stderr)
+	remote, branch, ok := p.parsePushUpstreamHint(stderr)
 	if !ok {
 		return itypes.ParserResult{Fixed: false}
 	}
 
-	// Add --set-upstream flag to the command
+	fixed, ok := addGitPushUpstream(cmd, remote, branch)
+	if !ok {
+		return itypes.ParserResult{Fixed: false}
+	}
+
 	return itypes.ParserResult{
 		Fixed:   true,
-		Command: cmd + " --set-upstream " + remote + " " + branch,
-		Message: "adding upstream tracking: " + remote + "/" + branch,
+		Command: fixed,
+		Message: "adding push upstream tracking: " + remote + "/" + branch,
 	}
 }
 
-func (p *GitParser) parseUpstreamHint(stderr string) (string, string, bool) {
-	matches := p.noUpstreamRegex.FindStringSubmatch(stderr)
-	if len(matches) >= 2 {
-		localBranch := ""
-		if len(matches) >= 3 {
-			localBranch = matches[2]
-		}
-		return p.parseUpstreamTarget(matches[1], localBranch)
-	}
-
-	matches = p.legacyUpstreamRegex.FindStringSubmatch(stderr)
-	if len(matches) >= 3 {
-		localBranch := matches[1]
-		upstreamTarget := matches[2]
-		return p.parseUpstreamTarget(upstreamTarget, localBranch)
-	}
-
-	return "", "", false
-}
-
-func (p *GitParser) parseUpstreamTarget(target, localBranch string) (string, string, bool) {
-	remote, upstreamBranch, ok := strings.Cut(target, "/")
-	if !ok {
+func (p *GitParser) parsePushUpstreamHint(stderr string) (string, string, bool) {
+	fatalMatches := p.pushNoUpstreamFatalRegex.FindStringSubmatch(stderr)
+	matches := p.pushNoUpstreamRegex.FindStringSubmatch(stderr)
+	if len(fatalMatches) < 2 || len(matches) < 3 || fatalMatches[1] != matches[2] {
 		return "", "", false
 	}
+	return p.validateUpstreamTarget(matches[1], matches[2])
+}
 
-	if p.placeholderRegex.MatchString(remote) {
-		remote = "origin"
+func (p *GitParser) validateUpstreamTarget(remote, branch string) (string, string, bool) {
+	if remote == "" || branch == "" || strings.HasPrefix(remote, "-") || strings.HasPrefix(branch, "-") {
+		return "", "", false
 	}
-
-	branch := upstreamBranch
-	if p.placeholderRegex.MatchString(branch) && localBranch != "" {
-		branch = localBranch
+	if p.placeholderRegex.MatchString(remote) || p.placeholderRegex.MatchString(branch) {
+		return "", "", false
 	}
-	if p.placeholderRegex.MatchString(branch) {
+	if !gitUpstreamTokenRegex.MatchString(remote) || !gitUpstreamTokenRegex.MatchString(branch) {
 		return "", "", false
 	}
 
 	return remote, branch, true
+}
+
+func addGitPushUpstream(cmd, remote, branch string) (string, bool) {
+	if !gitUpstreamTokenRegex.MatchString(remote) || !gitUpstreamTokenRegex.MatchString(branch) {
+		return "", false
+	}
+	call, err := parseShellCall(cmd)
+	if err != nil || len(call.args) == 0 {
+		return "", false
+	}
+	insertion := " --set-upstream " + remote + " " + branch
+	if gitPrefixedSubcommand(call.args[0].Lit()) == "push" {
+		if !gitPushUpstreamArgsAllowed(gitShellArgsLits(call.args[1:])) {
+			return "", false
+		}
+		return call.insertAfterWord(len(call.args)-1, insertion), true
+	}
+
+	index := findShellSubcommandIndex(call.args, parserNameGit, gitParserOptionsWithValues)
+	if index == -1 || call.args[index].Lit() != "push" ||
+		!gitPushUpstreamArgsAllowed(gitShellArgsLits(call.args[index+1:])) {
+		return "", false
+	}
+	return call.insertAfterWord(len(call.args)-1, insertion), true
+}
+
+func gitPushUpstreamArgsAllowed(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "-v", "--verbose", "--no-verbose", "-q", "--quiet", "--no-quiet", "--progress", "--no-progress":
+			continue
+		case "-n", "--dry-run", "--no-dry-run", "--porcelain", "--no-porcelain":
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (p *GitParser) parseDivergentPullRebase(cmd, stderr string) itypes.ParserResult {
@@ -185,28 +195,12 @@ func (p *GitParser) parseDivergentPullRebase(cmd, stderr string) itypes.ParserRe
 	}
 }
 
-func (p *GitParser) parsePushRejectedNeedsPull(cmd, stderr string) itypes.ParserResult {
-	if gitSubcommand(cmd) != "push" {
-		return itypes.ParserResult{Fixed: false}
-	}
-	if !p.pushRejectedRegex.MatchString(stderr) || !p.pushNeedsPullRegex.MatchString(stderr) {
-		return itypes.ParserResult{Fixed: false}
-	}
-
-	fixed, ok := replaceGitPushWithPull(cmd)
-	if !ok {
-		return itypes.ParserResult{Fixed: false}
-	}
-
-	return itypes.ParserResult{
-		Fixed:   true,
-		Command: fixed,
-		Message: "retry after integrating remote changes with git pull",
-	}
+func gitSubcommand(cmd string) string {
+	parts := shellCommandWords(cmd)
+	return gitSubcommandFromWords(parts)
 }
 
-func gitSubcommand(cmd string) string {
-	parts := strings.Fields(cmd)
+func gitSubcommandFromWords(parts []string) string {
 	if len(parts) == 0 {
 		return ""
 	}
@@ -240,6 +234,14 @@ func gitSubcommand(cmd string) string {
 	}
 
 	return ""
+}
+
+func shellCommandWords(cmd string) []string {
+	call, err := parseShellCall(cmd)
+	if err == nil {
+		return gitShellArgsLits(call.args)
+	}
+	return strings.Fields(cmd)
 }
 
 func gitPrefixedSubcommand(first string) string {
@@ -297,7 +299,7 @@ func gitShortOptionState(arg string) gitOptionParseState {
 }
 
 func gitCommandHasUpstreamFlag(cmd string) bool {
-	for _, part := range strings.Fields(cmd) {
+	for _, part := range shellCommandWords(cmd) {
 		switch {
 		case part == "--set-upstream", part == "--set-upstream-to":
 			return true
@@ -310,7 +312,7 @@ func gitCommandHasUpstreamFlag(cmd string) bool {
 }
 
 func gitCommandHasPullReconcileFlag(cmd string) bool {
-	for _, part := range strings.Fields(cmd) {
+	for _, part := range shellCommandWords(cmd) {
 		switch {
 		case part == "--rebase", part == "--no-rebase", part == "--ff-only":
 			return true
@@ -322,63 +324,6 @@ func gitCommandHasPullReconcileFlag(cmd string) bool {
 	return false
 }
 
-func replaceGitPushWithPull(cmd string) (string, bool) {
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return "", false
-	}
-
-	if gitPrefixedSubcommand(parts[0]) == "push" {
-		return replaceGitPrefixedPushWithPull(cmd)
-	}
-
-	call, err := parseShellCall(cmd)
-	if err == nil {
-		index := findShellSubcommandIndex(call.args, parserNameGit, gitParserOptionsWithValues)
-		if index != -1 && call.args[index].Lit() == "push" {
-			if gitPushArgsBlockPull(gitShellArgsLits(call.args[index+1:])) {
-				return "", false
-			}
-			fixed := call.replaceWord(index, "pull")
-			return normalizeGitPullFromPush(fixed)
-		}
-	}
-
-	for i, part := range parts {
-		if part != "push" {
-			continue
-		}
-		if gitPushArgsBlockPull(parts[i+1:]) {
-			return "", false
-		}
-		parts[i] = "pull"
-		return normalizeGitPullFields(parts), true
-	}
-
-	return "", false
-}
-
-func replaceGitPrefixedPushWithPull(cmd string) (string, bool) {
-	call, err := parseShellCall(cmd)
-	if err == nil && len(call.args) > 0 && gitPrefixedSubcommand(call.args[0].Lit()) == "push" {
-		if gitPushArgsBlockPull(gitShellArgsLits(call.args[1:])) {
-			return "", false
-		}
-		fixed := call.replaceWord(0, gitCommandPrefix+"pull")
-		return normalizeGitPullFromPush(fixed)
-	}
-
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 || gitPrefixedSubcommand(parts[0]) != "push" {
-		return "", false
-	}
-	if gitPushArgsBlockPull(parts[1:]) {
-		return "", false
-	}
-	parts[0] = gitCommandPrefix + "pull"
-	return normalizeGitPullFields(parts), true
-}
-
 func gitShellArgsLits(args []*syntax.Word) []string {
 	lits := make([]string, 0, len(args))
 	for _, arg := range args {
@@ -387,110 +332,22 @@ func gitShellArgsLits(args []*syntax.Word) []string {
 	return lits
 }
 
-func gitPushArgsBlockPull(args []string) bool {
-	for _, arg := range args {
-		if arg == "--" {
-			return true
-		}
-		if strings.Contains(arg, ":") {
-			return true
-		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			continue
-		}
-		if gitPushOptionAllowedForPull(arg) {
-			continue
-		}
-		return true
-	}
-
-	return false
-}
-
-func gitPushOptionAllowedForPull(arg string) bool {
-	switch {
-	case arg == "-u":
-		return true
-	case arg == "-v", arg == "-q":
-		return true
-	case arg == "--set-upstream", arg == "--no-set-upstream":
-		return true
-	case strings.HasPrefix(arg, "--set-upstream="):
-		return true
-	case arg == "--verbose", arg == "--no-verbose":
-		return true
-	case arg == "--quiet", arg == "--no-quiet":
-		return true
-	case arg == "--progress", arg == "--no-progress":
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeGitPullFromPush(cmd string) (string, bool) {
-	call, err := parseShellCall(cmd)
-	if err == nil {
-		fixed := cmd
-		for i := len(call.args) - 1; i >= 0; i-- {
-			if call.args[i].Lit() != "-u" {
-				continue
-			}
-			start, end := utils.ShellNodeRange(call.args[i], len(cmd))
-			fixed = fixed[:start] + "--set-upstream" + fixed[end:]
-		}
-		return fixed, true
-	}
-
-	return normalizeGitPullFields(strings.Fields(cmd)), true
-}
-
-func normalizeGitPullFields(parts []string) string {
-	for i, part := range parts {
-		if part == "-u" {
-			parts[i] = "--set-upstream"
-		}
-	}
-	return strings.Join(parts, " ")
-}
-
 func addGitPullRebaseFlag(cmd string) (string, bool) {
-	if strings.HasPrefix(strings.Fields(cmd)[0], gitCommandPrefix+"pull") {
-		return addGitPrefixedPullRebaseFlag(cmd)
-	}
-
 	call, err := parseShellCall(cmd)
-	if err == nil {
-		index := findShellSubcommandIndex(call.args, parserNameGit, gitParserOptionsWithValues)
-		if index != -1 && call.args[index].Lit() == "pull" {
-			return call.insertAfterWord(index, " --rebase"), true
-		}
-	}
-
-	parts := strings.Fields(cmd)
-	for i, part := range parts {
-		if part == "pull" {
-			parts = append(parts[:i+1], append([]string{"--rebase"}, parts[i+1:]...)...)
-			return strings.Join(parts, " "), true
-		}
-	}
-
-	return "", false
-}
-
-func addGitPrefixedPullRebaseFlag(cmd string) (string, bool) {
-	call, err := parseShellCall(cmd)
-	if err == nil && len(call.args) > 0 && gitPrefixedSubcommand(call.args[0].Lit()) == "pull" {
-		return call.insertAfterWord(0, " --rebase"), true
-	}
-
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 || gitPrefixedSubcommand(parts[0]) != "pull" {
+	if err != nil || len(call.args) == 0 {
 		return "", false
 	}
 
-	parts = append(parts[:1], append([]string{"--rebase"}, parts[1:]...)...)
-	return strings.Join(parts, " "), true
+	if gitPrefixedSubcommand(call.args[0].Lit()) == "pull" {
+		return call.insertAfterWord(0, " --rebase"), true
+	}
+
+	index := findShellSubcommandIndex(call.args, parserNameGit, gitParserOptionsWithValues)
+	if index != -1 && call.args[index].Lit() == "pull" {
+		return call.insertAfterWord(index, " --rebase"), true
+	}
+
+	return "", false
 }
 
 var gitGlobalOptions = map[string]bool{

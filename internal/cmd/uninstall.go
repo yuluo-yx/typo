@@ -2,12 +2,18 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/yuluo-yx/typo/internal/config"
 )
 
-func cmdUninstall() int {
+func cmdUninstall(args []string) int {
+	if len(args) != 0 {
+		fmt.Fprintln(os.Stderr, "Error: uninstall does not accept arguments")
+		return 1
+	}
+
 	fmt.Println("Cleaning up typo...")
 	fmt.Println()
 

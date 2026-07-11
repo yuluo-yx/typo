@@ -13,6 +13,7 @@ import (
 )
 
 func TestRulesList(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -44,6 +45,7 @@ func TestRulesList(t *testing.T) {
 }
 
 func TestRulesAddRemove(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -84,6 +86,7 @@ func TestRulesAddRemove(t *testing.T) {
 }
 
 func TestRulesAddMissingArgs(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -105,7 +108,60 @@ func TestRulesAddMissingArgs(t *testing.T) {
 	}
 }
 
+func TestLearnAndRulesAddRejectExtraArguments(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "learn", args: []string{"typo", "learn", "from", "to", "extra"}},
+		{name: "rules add", args: []string{"typo", "rules", "add", "from", "to", "extra"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpHome := useTempHome(t)
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code != 1 {
+				t.Fatalf("extra arguments should fail: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "exactly two arguments required") {
+				t.Fatalf("missing argument error: %q", stderr)
+			}
+			if _, ok := engine.NewRules(filepath.Join(tmpHome, ".typo")).MatchUser("from"); ok {
+				t.Fatal("rejected command persisted a user rule")
+			}
+		})
+	}
+}
+
+func TestLearnAndRulesAddRejectInvalidRules(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "learn empty source", args: []string{"typo", "learn", "", "git"}},
+		{name: "learn empty target", args: []string{"typo", "learn", "bad", ""}},
+		{name: "learn unchanged", args: []string{"typo", "learn", "same", "same"}},
+		{name: "rules add empty target", args: []string{"typo", "rules", "add", "bad", " "}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpHome := useTempHome(t)
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code != 1 || stdout != "" {
+				t.Fatalf("invalid rule should fail without stdout: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			rulesFile := filepath.Join(tmpHome, ".typo", "rules.json")
+			if _, err := os.Stat(rulesFile); !os.IsNotExist(err) {
+				t.Fatalf("invalid rule should not be persisted: %v", err)
+			}
+		})
+	}
+}
+
 func TestRulesRemoveMissingArgs(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -127,7 +183,16 @@ func TestRulesRemoveMissingArgs(t *testing.T) {
 	}
 }
 
+func TestRulesRemoveRejectsExtraArguments(t *testing.T) {
+	useTempHome(t)
+	code, stdout, stderr := runCLI(t, []string{"typo", "rules", "remove", "from", "extra"})
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "remove requires exactly") {
+		t.Fatalf("rules remove extra argument: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
 func TestRulesUnknownSubcommand(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -299,6 +364,7 @@ func TestRulesEnableDisableSupportsUnknownPresentScope(t *testing.T) {
 }
 
 func TestHistoryList(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -327,6 +393,7 @@ func TestHistoryList(t *testing.T) {
 }
 
 func TestHistoryClear(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -348,7 +415,77 @@ func TestHistoryClear(t *testing.T) {
 	}
 }
 
+func TestRulesAndHistoryRejectExtraArguments(t *testing.T) {
+	useTempHome(t)
+	for _, tt := range []struct {
+		name   string
+		args   []string
+		wantIn string
+	}{
+		{name: "rules list", args: []string{"typo", "rules", "list", "extra"}, wantIn: "rules list does not accept arguments"},
+		{name: "history list", args: []string{"typo", "history", "list", "extra"}, wantIn: "history list does not accept arguments"},
+		{name: "history clear", args: []string{"typo", "history", "clear", "extra"}, wantIn: "history clear does not accept arguments"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code != 1 || stdout != "" || !strings.Contains(stderr, tt.wantIn) {
+				t.Fatalf("extra arguments should fail: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestHistoryClearExtraArgumentDoesNotMutateHistory(t *testing.T) {
+	useTempHome(t)
+	cfg := config.Load()
+	history := engine.NewHistory(cfg.ConfigDir)
+	if err := history.Record("gti status", "git status"); err != nil {
+		t.Fatalf("Record failed: %v", err)
+	}
+
+	code, _, _ := runCLI(t, []string{"typo", "history", "clear", "extra"})
+	if code != 1 {
+		t.Fatalf("history clear with extra argument should fail: code=%d", code)
+	}
+	if _, ok := engine.NewHistory(cfg.ConfigDir).Lookup("gti status"); !ok {
+		t.Fatal("rejected history clear removed existing history")
+	}
+}
+
+func TestRejectedHistoryCommandDoesNotLoadInvalidHistory(t *testing.T) {
+	tmpHome := useTempHome(t)
+	configDir := filepath.Join(tmpHome, ".typo")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	historyFile := filepath.Join(configDir, "usage_history.json")
+	const invalidHistory = "not-json"
+	if err := os.WriteFile(historyFile, []byte(invalidHistory), 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"typo", "history", "clear", "extra"})
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "does not accept arguments") {
+		t.Fatalf("invalid history command: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	data, err := os.ReadFile(historyFile)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if string(data) != invalidHistory {
+		t.Fatalf("rejected command changed invalid history: %q", data)
+	}
+	backups, err := filepath.Glob(historyFile + ".corrupt-*")
+	if err != nil {
+		t.Fatalf("Glob failed: %v", err)
+	}
+	if len(backups) != 0 {
+		t.Fatalf("rejected command quarantined history: %v", backups)
+	}
+}
+
 func TestRulesRemoveNonexistent(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -371,6 +508,7 @@ func TestRulesRemoveNonexistent(t *testing.T) {
 }
 
 func TestHistoryUnknownSubcommand(t *testing.T) {
+	useTempHome(t)
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 

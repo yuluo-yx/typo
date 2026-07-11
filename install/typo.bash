@@ -276,10 +276,6 @@ _typo_collect_command_words() {
                                 idx=$((idx + 1))
                                 continue
                                 ;;
-                            --argv0=*|--chdir=*|--default-signal=*|--ignore-signal=*|--block-signal=*|--signal=*|--unset=*|--split-string=*)
-                                idx=$((idx + 1))
-                                continue
-                                ;;
                             --argv0|--chdir|--default-signal|--ignore-signal|--block-signal|--signal|--unset|--split-string|-C|-S|-u)
                                 expect_value=1
                                 idx=$((idx + 1))
@@ -310,7 +306,7 @@ _typo_collect_command_words() {
                                 idx=$((idx + 1))
                                 continue
                                 ;;
-                            --close-from|--group|--host|--other-user|--preserve-env|--prompt|--role|--user|--chdir|-C|-g|-h|-p|-R|-r|-T|-u)
+                            --close-from|--group|--host|--other-user|--prompt|--role|--user|--chdir|-C|-g|-h|-p|-R|-r|-T|-u)
                                 expect_value=1
                                 idx=$((idx + 1))
                                 continue
@@ -414,9 +410,25 @@ _typo_write_alias_context() {
     _typo_append_env_context
 }
 
+# 为 Bash 3.2 查找空闲的单数字文件描述符，避免覆盖用户已打开的描述符。
+_typo_find_available_fd() {
+    local fd=3
+
+    while (( fd <= 9 )); do
+        if ! (eval ": >&$fd") 2>/dev/null; then
+            printf '%s\n' "$fd"
+            return 0
+        fi
+        fd=$((fd + 1))
+    done
+
+    return 1
+}
+
 # Save the original stderr once to avoid chaining shell descriptors.
 _typo_save_original_stderr() {
     local shell_id
+    local available_fd
 
     shell_id="$(_typo_current_shell_id)"
 
@@ -426,21 +438,22 @@ _typo_save_original_stderr() {
     fi
 
     if ! _typo_owns_original_stderr_fd; then
-        exec 3>&2
-        TYPO_ORIG_STDERR_FD=3
+        available_fd="$(_typo_find_available_fd)" || return 1
+        eval "exec ${available_fd}>&2" || return 1
+        TYPO_ORIG_STDERR_FD="$available_fd"
         TYPO_ORIG_STDERR_FD_OWNER="$shell_id"
     fi
 }
 
 _typo_restore_stderr() {
     if _typo_owns_original_stderr_fd; then
-        exec 2>&3
+        exec 2>&"$TYPO_ORIG_STDERR_FD"
     fi
 }
 
 _typo_preexec() {
     _typo_init_stderr_cache || return
-    _typo_save_original_stderr
+    _typo_save_original_stderr || return
     : > "$TYPO_STDERR_CACHE"
     # Use named pipe (FIFO) for reliable stderr capture in bash 4.x.
     # Process substitution (>(...)) in bash 4.x has a known issue where the shell
@@ -452,7 +465,7 @@ _typo_preexec() {
     # 3. In precmd, close stderr->FIFO (tee gets EOF) and wait for tee to finish
     if [[ -n "${_TYPO_STDERR_FIFO:-}" && -p "${_TYPO_STDERR_FIFO:-}" ]]; then
         # Start tee in background, reading from FIFO
-        tee "$TYPO_STDERR_CACHE" >&3 < "$_TYPO_STDERR_FIFO" &
+        tee "$TYPO_STDERR_CACHE" >&"$TYPO_ORIG_STDERR_FD" < "$_TYPO_STDERR_FIFO" &
         _TYPO_TEE_PID=$!
                # Now redirect stderr to the FIFO (this unblocks tee)
         exec 2> "$_TYPO_STDERR_FIFO"
@@ -484,7 +497,7 @@ _typo_bashexit() {
     _typo_restore_stderr
 
     if _typo_owns_original_stderr_fd; then
-        exec 3>&-
+        eval "exec ${TYPO_ORIG_STDERR_FD}>&-"
     fi
     unset TYPO_ORIG_STDERR_FD
     unset TYPO_ORIG_STDERR_FD_OWNER

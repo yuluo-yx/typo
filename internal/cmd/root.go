@@ -89,12 +89,11 @@ func Run() int {
 	case "init":
 		return cmdInit(os.Args[2:])
 	case "version":
-		cmdVersion()
-		return 0
+		return cmdVersion(os.Args[2:])
 	case "doctor":
 		return cmdDoctor(os.Args[2:])
 	case "uninstall":
-		return cmdUninstall()
+		return cmdUninstall(os.Args[2:])
 	case "update", "upgrade":
 		return cmdUpdate(os.Args[2:])
 	case "help", "-h", "--help":

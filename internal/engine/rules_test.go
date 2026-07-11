@@ -97,6 +97,44 @@ func TestRules_AddUserRule(t *testing.T) {
 	}
 }
 
+func TestRules_AddUserRuleValidatesAndNormalizes(t *testing.T) {
+	t.Run("normalizes surrounding whitespace", func(t *testing.T) {
+		r := NewRules(t.TempDir())
+		if err := r.AddUserRule(itypes.Rule{From: "  typo  ", To: "  command  "}); err != nil {
+			t.Fatalf("AddUserRule failed: %v", err)
+		}
+
+		rule, ok := r.MatchUser("typo")
+		if !ok || rule.From != "typo" || rule.To != "command" {
+			t.Fatalf("normalized rule = %+v, ok=%v", rule, ok)
+		}
+	})
+
+	tests := []struct {
+		name string
+		rule itypes.Rule
+	}{
+		{name: "empty source", rule: itypes.Rule{To: "command"}},
+		{name: "blank source", rule: itypes.Rule{From: " \t ", To: "command"}},
+		{name: "empty target", rule: itypes.Rule{From: "typo"}},
+		{name: "blank target", rule: itypes.Rule{From: "typo", To: " \n "}},
+		{name: "same pair", rule: itypes.Rule{From: "same", To: "same"}},
+		{name: "same after normalization", rule: itypes.Rule{From: " same ", To: "same"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewRules(t.TempDir())
+			if err := r.AddUserRule(tt.rule); err == nil {
+				t.Fatal("AddUserRule accepted an invalid rule")
+			}
+			if len(r.user) != 0 {
+				t.Fatalf("invalid rule mutated user rules: %+v", r.user)
+			}
+		})
+	}
+}
+
 func TestRules_RemoveUserRule(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := NewRules(tmpDir)
@@ -107,7 +145,7 @@ func TestRules_RemoveUserRule(t *testing.T) {
 		t.Fatalf("AddUserRule failed: %v", err)
 	}
 
-	if err := r.RemoveUserRule("testcmd"); err != nil {
+	if err := r.RemoveUserRule("  testcmd  "); err != nil {
 		t.Fatalf("RemoveUserRule failed: %v", err)
 	}
 
@@ -232,7 +270,7 @@ func TestRules_EmptyConfigDir(t *testing.T) {
 	}
 
 	// AddUserRule should not error with empty config dir
-	err := r.AddUserRule(itypes.Rule{From: "test", To: "test"})
+	err := r.AddUserRule(itypes.Rule{From: "test", To: "correct"})
 	if err != nil {
 		t.Errorf("AddUserRule should not error with empty config dir: %v", err)
 	}
@@ -292,6 +330,40 @@ func TestRules_LoadInvalidJSON(t *testing.T) {
 	}
 	if len(matches) != 1 {
 		t.Fatalf("Expected one quarantined rules file, got %v", matches)
+	}
+}
+
+func TestRules_LoadSkipsInvalidEntriesAndKeepsValidRules(t *testing.T) {
+	tmpDir := t.TempDir()
+	rulesFile := filepath.Join(tmpDir, "rules.json")
+	data := []byte(`[
+  {"from":" valid ","to":" target "},
+  {"from":"","to":"empty-source"},
+  {"from":"empty-target","to":"   "},
+  {"from":" same ","to":"same"}
+]`)
+	if err := os.WriteFile(rulesFile, data, 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	r := NewRules(tmpDir)
+	rule, ok := r.MatchUser("valid")
+	if !ok || rule.From != "valid" || rule.To != "target" {
+		t.Fatalf("valid rule was not normalized and loaded: %+v, ok=%v", rule, ok)
+	}
+	if len(r.user) != 1 {
+		t.Fatalf("loaded invalid rules: %+v", r.user)
+	}
+
+	matches, err := filepath.Glob(rulesFile + ".corrupt-*")
+	if err != nil {
+		t.Fatalf("Glob failed: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("semantic errors should not quarantine the complete file: %v", matches)
+	}
+	if _, err := os.Stat(rulesFile); err != nil {
+		t.Fatalf("rules file should remain in place: %v", err)
 	}
 }
 

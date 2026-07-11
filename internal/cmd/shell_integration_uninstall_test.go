@@ -156,6 +156,33 @@ _typo_bashexit
 `)
 }
 
+func TestBashIntegrationPreservesUserFileDescriptorThree(t *testing.T) {
+	runBashIntegrationScript(t, `
+fd3_log="$TMPDIR/fd3.log"
+exec 3>"$fd3_log"
+
+source "$1"
+trap - DEBUG
+
+[[ "$TYPO_ORIG_STDERR_FD" != 3 ]] || exit 55
+printf "after-source\n" >&3
+
+_typo_preexec
+printf "captured-stderr\n" >&2
+_typo_precmd
+printf "after-rotate\n" >&3
+grep -q "captured-stderr" "$TYPO_STDERR_CACHE" || exit 56
+
+_typo_bashexit
+printf "after-exit\n" >&3
+exec 3>&-
+
+expected=$(printf "after-source\nafter-rotate\nafter-exit")
+actual=$(cat "$fd3_log")
+[[ "$actual" == "$expected" ]] || { printf "%s\n" "$actual"; exit 57; }
+`)
+}
+
 func TestBashIntegrationFallsBackWhenMktempFails(t *testing.T) {
 	runBashIntegrationScript(t, `
 mktemp() { return 1; }

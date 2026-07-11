@@ -136,7 +136,8 @@ function _typo_write_alias_context
 
     if type -q abbr
         for line in (abbr --show 2>/dev/null)
-            set -l fields (string split ' ' -- "$line")
+            set -l fields
+            printf '%s\n' "$line" | read --tokenize --array fields
             set -l marker_index (contains -i -- -- $fields)
             if test -z "$marker_index"
                 continue
@@ -147,7 +148,7 @@ function _typo_write_alias_context
                 continue
             end
             set -l name "$fields[$name_index]"
-            set -l expansion (string join ' ' $fields[$expansion_index..-1])
+            set -l expansion (string join ' ' -- $fields[$expansion_index..-1])
             if test -n "$name"; and test -n "$expansion"
                 printf 'fish\tabbr\t%s\t%s\n' "$name" "$expansion" >> "$TYPO_ALIAS_CONTEXT"
             end

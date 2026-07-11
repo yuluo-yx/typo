@@ -37,6 +37,7 @@ func (osAtomicFileOps) remove(name string) error {
 }
 
 // WriteFileAtomic writes the target file atomically by renaming a temp file in the same directory.
+// 父目录同步在 rename 提交后尽力执行，不会把已可见的写入报告为未提交。
 func WriteFileAtomic(filename string, data []byte, perm os.FileMode) error {
 	return writeFileAtomicWithOps(filename, data, perm, osAtomicFileOps{})
 }
@@ -77,9 +78,8 @@ func writeFileAtomicWithOps(filename string, data []byte, perm os.FileMode, ops 
 	}
 
 	keepTemp = true
-	if err := ops.syncDir(dir); err != nil {
-		return err
-	}
+	// rename 已经提交目标文件；目录同步只用于增强崩溃持久性，失败后无法安全回滚。
+	_ = ops.syncDir(dir)
 	return nil
 }
 

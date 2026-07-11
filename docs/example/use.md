@@ -68,24 +68,19 @@ zsh: command not found: grpe <Enter, Esc, Esc>
 cat ~/.zshrc | grep "zsh"
 ```
 
-## `git pull --set-upstream`
+## `git push --set-upstream`
 
-Have you ever run into this kind of issue when using `git pull`?
+On the first push of a local branch, Git provides the exact command needed to set its upstream:
 
 ```shell
-$ git pull
-There is no tracking information for the current branch.
-Please specify which branch you want to rebase against.
-See git-pull(1) for details.
+$ git push
+fatal: The current branch feature/topic has no upstream branch.
+To push the current branch and set the remote as upstream, use
 
-    git pull <remote> <branch>
-
-If you wish to set tracking information for this branch you can do so with:
-
-    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check
+    git push --set-upstream origin feature/topic
 ```
 
-Press `Esc` `Esc`, and Typo can add the suggested upstream automatically.
+Press `Esc` `Esc`. Typo applies Git's concrete suggestion when the remote and branch names are safe across every supported shell; otherwise it leaves the command unchanged.
 
 ## `git pull --rebase`
 
@@ -102,25 +97,6 @@ Press `Esc` `Esc`, and Typo can retry the same pull with a command-level rebase 
 
 ```shell
 git pull --rebase
-```
-
-## `git push` rejected, pull first
-
-When the remote has commits that are missing locally, Git rejects the push:
-
-```shell
-$ git push origin main
- ! [rejected]        main -> main (fetch first)
-error: failed to push some refs to 'github.com:yuluo-yx/typo.git'
-hint: Updates were rejected because the remote contains work that you do
-hint: not have locally. You may want to first integrate the remote changes
-hint: (e.g., 'git pull ...') before pushing again.
-```
-
-Press `Esc` `Esc`, and Typo can retry the matching pull command first.
-
-```shell
-git pull origin main
 ```
 
 ## No permission? Use `sudo`

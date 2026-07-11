@@ -51,6 +51,12 @@ func TestRun(t *testing.T) {
 			wantOutput: "typo",
 		},
 		{
+			name:       "version extra argument",
+			args:       []string{"typo", "version", "extra"},
+			wantCode:   1,
+			wantOutput: "does not accept arguments",
+		},
+		{
 			name:       "no args",
 			args:       []string{"typo"},
 			wantCode:   1,
@@ -97,6 +103,18 @@ func TestRun(t *testing.T) {
 			args:       []string{"typo", "init", "pwsh"},
 			wantCode:   0,
 			wantOutput: "Set-PSReadLineKeyHandler",
+		},
+		{
+			name:       "init extra argument",
+			args:       []string{"typo", "init", "zsh", "extra"},
+			wantCode:   1,
+			wantOutput: "requires exactly one shell",
+		},
+		{
+			name:       "uninstall extra argument",
+			args:       []string{"typo", "uninstall", "extra"},
+			wantCode:   1,
+			wantOutput: "does not accept arguments",
 		},
 		{
 			name:       "learn without args",
@@ -359,7 +377,9 @@ func TestCmdVersion(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	cmdVersion()
+	if code := cmdVersion(nil); code != 0 {
+		t.Fatalf("cmdVersion() = %d, want 0", code)
+	}
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close pipe failed: %v", err)

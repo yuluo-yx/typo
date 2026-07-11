@@ -63,7 +63,7 @@ Typo can extract suggestions from real `stderr` output when available.
 
 Currently documented parser coverage:
 
-- `git`: `did you mean...`, missing upstream, divergent pull rebase, and related suggestions
+- `git`: `did you mean...`, explicit push upstream hints, divergent pull rebase, and related suggestions
 - `docker`: unknown command suggestions
 - `npm`: command-not-found suggestions
 
@@ -75,7 +75,7 @@ Examples:
 
 ```bash
 typo fix -s git.stderr "git remove -v"
-typo fix -s git.stderr "git pull"
+typo fix -s git.stderr "git push"
 typo fix -s docker.stderr "docker psa"
 typo fix -s npm.stderr "npm isntall react"
 ```
