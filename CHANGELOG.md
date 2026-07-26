@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/yuluo-yx/typo/compare/v1.7.0...v1.7.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **git:** resolve incomplete upstream branch safely ([dc372ec](https://github.com/yuluo-yx/typo/commit/dc372ecae6fb3fb7a8e729025156d2962bb93527))
+
 ## [1.7.0](https://github.com/yuluo-yx/typo/compare/v1.6.0...v1.7.0) (2026-07-11)
 
 
