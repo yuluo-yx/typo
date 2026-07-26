@@ -1,6 +1,9 @@
 package parser
 
 import (
+	"context"
+	"errors"
+	"slices"
 	"testing"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -403,6 +406,62 @@ func TestRegistry_ParseFastPathDoesNotRepeatDedicatedParser(t *testing.T) {
 	}
 }
 
+func TestRegistry_CanParseCommand(t *testing.T) {
+	r := NewRegistry()
+
+	tests := []struct {
+		name        string
+		parserName  string
+		commandName string
+		expected    bool
+	}{
+		{
+			name:        "dedicated parser accepts its command",
+			parserName:  "git",
+			commandName: "git",
+			expected:    true,
+		},
+		{
+			name:        "dedicated parser accepts prefixed command",
+			parserName:  "git",
+			commandName: "git-lfs",
+			expected:    true,
+		},
+		{
+			name:        "dedicated parser rejects unrelated command",
+			parserName:  "git",
+			commandName: "docker",
+			expected:    false,
+		},
+		{
+			name:        "fallback parser accepts any command",
+			parserName:  "generic",
+			commandName: "tool",
+			expected:    true,
+		},
+		{
+			name:        "custom parser accepts any command",
+			parserName:  "custom",
+			commandName: "tool",
+			expected:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := r.CanParseCommand(tt.parserName, tt.commandName); got != tt.expected {
+				t.Fatalf(
+					"CanParseCommand(%q, %q) = %v, want %v",
+					tt.parserName,
+					tt.commandName,
+					got,
+					tt.expected,
+				)
+			}
+		})
+	}
+}
+
 func TestRegistry_Register(t *testing.T) {
 	r := &Registry{}
 
@@ -772,6 +831,267 @@ func TestGitParser_ParseNoUpstreamPlaceholderWithoutLocalBranch(t *testing.T) {
 	})
 	if result.Fixed {
 		t.Fatalf("Expected placeholder upstream without local branch to stay unchanged, got %+v", result)
+	}
+}
+
+func TestGitParser_ParseBranchSetUpstreamMissing(t *testing.T) {
+	stderr := "fatal: the requested upstream branch 'origin' does not exist\n" +
+		"hint: If you are planning on basing your work on an upstream\n" +
+		"hint: branch that already exists at the remote, you may need to run\n" +
+		"hint: \"git fetch\" to retrieve it.\n"
+
+	tests := []struct {
+		name           string
+		cmd            string
+		stderr         string
+		resolvedTarget string
+		resolveOK      bool
+		wantRepository []string
+		wantRemote     string
+		wantBranch     string
+		wantFix        bool
+		wantCmd        string
+	}{
+		{
+			name:           "inline target uses current branch",
+			cmd:            "git branch --set-upstream-to=origin",
+			stderr:         stderr,
+			resolvedTarget: "origin/main",
+			resolveOK:      true,
+			wantRemote:     "origin",
+			wantFix:        true,
+			wantCmd:        "git branch --set-upstream-to=origin/main",
+		},
+		{
+			name:           "spaced target uses explicit local branch",
+			cmd:            "git branch --set-upstream-to origin feature/topic",
+			stderr:         stderr,
+			resolvedTarget: "origin/feature/topic",
+			resolveOK:      true,
+			wantRemote:     "origin",
+			wantBranch:     "feature/topic",
+			wantFix:        true,
+			wantCmd:        "git branch --set-upstream-to origin/feature/topic feature/topic",
+		},
+		{
+			name:           "short option is supported",
+			cmd:            "git branch -u origin main",
+			stderr:         stderr,
+			resolvedTarget: "origin/main",
+			resolveOK:      true,
+			wantRemote:     "origin",
+			wantBranch:     "main",
+			wantFix:        true,
+			wantCmd:        "git branch -u origin/main main",
+		},
+		{
+			name:           "repository selector is preserved for lookup",
+			cmd:            "git -C 'repo path' branch --set-upstream-to=origin",
+			stderr:         stderr,
+			resolvedTarget: "origin/main",
+			resolveOK:      true,
+			wantRepository: []string{"-C", "repo path"},
+			wantRemote:     "origin",
+			wantFix:        true,
+			wantCmd:        "git -C 'repo path' branch --set-upstream-to=origin/main",
+		},
+		{
+			name:       "missing remote branch is not guessed",
+			cmd:        "git branch --set-upstream-to=origin",
+			stderr:     stderr,
+			wantRemote: "origin",
+		},
+		{
+			name:           "stderr target must match command target",
+			cmd:            "git branch --set-upstream-to=upstream",
+			stderr:         stderr,
+			resolvedTarget: "upstream/main",
+			resolveOK:      true,
+			wantRemote:     "",
+		},
+		{
+			name:           "concrete missing upstream is not rewritten",
+			cmd:            "git branch --set-upstream-to=origin/missing",
+			stderr:         "fatal: the requested upstream branch 'origin/missing' does not exist\n",
+			resolvedTarget: "origin/main",
+			resolveOK:      true,
+		},
+		{
+			name:           "unsafe remote is rejected",
+			cmd:            "git branch --set-upstream-to='ori;gin'",
+			stderr:         "fatal: the requested upstream branch 'ori;gin' does not exist\n",
+			resolvedTarget: "ori;gin/main",
+			resolveOK:      true,
+		},
+		{
+			name:           "extra positional arguments are rejected",
+			cmd:            "git branch --set-upstream-to=origin main other",
+			stderr:         stderr,
+			resolvedTarget: "origin/main",
+			resolveOK:      true,
+		},
+		{
+			name:           "unrelated global options are rejected",
+			cmd:            "git --bare branch --set-upstream-to=origin",
+			stderr:         stderr,
+			resolvedTarget: "origin/main",
+			resolveOK:      true,
+		},
+		{
+			name:           "dynamic repository selector is rejected",
+			cmd:            "git -C \"$REPO\" branch --set-upstream-to=origin",
+			stderr:         stderr,
+			resolvedTarget: "origin/main",
+			resolveOK:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewGitParser()
+			resolveCalls := 0
+			p.resolveBranchUpstream = func(repositoryArgs []string, remote, branch string) (string, bool) {
+				resolveCalls++
+				if !slices.Equal(repositoryArgs, tt.wantRepository) {
+					t.Fatalf("repository args = %q, want %q", repositoryArgs, tt.wantRepository)
+				}
+				if remote != tt.wantRemote {
+					t.Fatalf("remote = %q, want %q", remote, tt.wantRemote)
+				}
+				if branch != tt.wantBranch {
+					t.Fatalf("branch = %q, want %q", branch, tt.wantBranch)
+				}
+				return tt.resolvedTarget, tt.resolveOK
+			}
+
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+			if tt.wantRemote == "" && resolveCalls != 0 {
+				t.Fatalf("resolver calls = %d, want 0", resolveCalls)
+			}
+		})
+	}
+}
+
+func TestResolveGitBranchUpstreamWithRunner_CurrentBranch(t *testing.T) {
+	var calls [][]string
+	run := func(_ context.Context, args []string) ([]byte, error) {
+		calls = append(calls, slices.Clone(args))
+		if slices.Contains(args, "symbolic-ref") {
+			return []byte("feature/topic\n"), nil
+		}
+		return nil, nil
+	}
+
+	target, ok := resolveGitBranchUpstreamWithRunner(
+		t.Context(),
+		[]string{"-C", "repo"},
+		"origin",
+		"",
+		run,
+	)
+	if !ok || target != "origin/feature/topic" {
+		t.Fatalf("resolveGitBranchUpstreamWithRunner() = (%q, %v)", target, ok)
+	}
+
+	expectedCalls := [][]string{
+		{"-C", "repo", "symbolic-ref", "--quiet", "--short", "HEAD"},
+		{"-C", "repo", "show-ref", "--verify", "--quiet", "refs/remotes/origin/feature/topic"},
+	}
+	if len(calls) != len(expectedCalls) {
+		t.Fatalf("Git calls = %q, want %q", calls, expectedCalls)
+	}
+	for i := range calls {
+		if !slices.Equal(calls[i], expectedCalls[i]) {
+			t.Fatalf("Git call %d = %q, want %q", i, calls[i], expectedCalls[i])
+		}
+	}
+}
+
+func TestResolveGitBranchUpstreamWithRunner_ExplicitBranch(t *testing.T) {
+	var calls [][]string
+	run := func(_ context.Context, args []string) ([]byte, error) {
+		calls = append(calls, slices.Clone(args))
+		return nil, nil
+	}
+
+	target, ok := resolveGitBranchUpstreamWithRunner(
+		t.Context(),
+		nil,
+		"origin",
+		"main",
+		run,
+	)
+	if !ok || target != "origin/main" {
+		t.Fatalf("resolveGitBranchUpstreamWithRunner() = (%q, %v)", target, ok)
+	}
+	expectedCalls := [][]string{
+		{"show-ref", "--verify", "--quiet", "refs/heads/main"},
+		{"show-ref", "--verify", "--quiet", "refs/remotes/origin/main"},
+	}
+	if len(calls) != len(expectedCalls) {
+		t.Fatalf("Git calls = %q, want %q", calls, expectedCalls)
+	}
+	for i := range calls {
+		if !slices.Equal(calls[i], expectedCalls[i]) {
+			t.Fatalf("Git call %d = %q, want %q", i, calls[i], expectedCalls[i])
+		}
+	}
+}
+
+func TestResolveGitBranchUpstreamWithRunner_CurrentBranchFailure(t *testing.T) {
+	run := func(_ context.Context, _ []string) ([]byte, error) {
+		return nil, errors.New("not a repository")
+	}
+
+	if target, ok := resolveGitBranchUpstreamWithRunner(
+		t.Context(),
+		nil,
+		"origin",
+		"",
+		run,
+	); ok || target != "" {
+		t.Fatalf("resolveGitBranchUpstreamWithRunner() = (%q, %v), want no target", target, ok)
+	}
+}
+
+func TestResolveGitBranchUpstreamWithRunner_MissingLocalBranch(t *testing.T) {
+	run := func(_ context.Context, _ []string) ([]byte, error) {
+		return nil, errors.New("unknown ref")
+	}
+
+	if target, ok := resolveGitBranchUpstreamWithRunner(
+		t.Context(),
+		nil,
+		"origin",
+		"missing",
+		run,
+	); ok || target != "" {
+		t.Fatalf("resolveGitBranchUpstreamWithRunner() = (%q, %v), want no target", target, ok)
+	}
+}
+
+func TestResolveGitBranchUpstreamWithRunner_MissingRemoteRef(t *testing.T) {
+	run := func(_ context.Context, args []string) ([]byte, error) {
+		if slices.Contains(args, "refs/remotes/origin/main") {
+			return nil, errors.New("unknown ref")
+		}
+		return nil, nil
+	}
+
+	if target, ok := resolveGitBranchUpstreamWithRunner(
+		t.Context(),
+		nil,
+		"origin",
+		"main",
+		run,
+	); ok || target != "" {
+		t.Fatalf("resolveGitBranchUpstreamWithRunner() = (%q, %v), want no target", target, ok)
 	}
 }
 

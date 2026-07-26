@@ -36,6 +36,33 @@ func parseShellCall(raw string) (*shellCall, error) {
 	return nil, fmt.Errorf("unsupported command shape")
 }
 
+func staticShellWordValue(word *syntax.Word) (string, bool) {
+	var value strings.Builder
+	if !appendStaticShellWordParts(&value, word.Parts) {
+		return "", false
+	}
+	return value.String(), true
+}
+
+func appendStaticShellWordParts(value *strings.Builder, parts []syntax.WordPart) bool {
+	for _, part := range parts {
+		switch node := part.(type) {
+		case *syntax.Lit:
+			value.WriteString(node.Value)
+		case *syntax.SglQuoted:
+			value.WriteString(node.Value)
+		case *syntax.DblQuoted:
+			if !appendStaticShellWordParts(value, node.Parts) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
 func (c *shellCall) replaceWord(index int, replacement string) string {
 	start, end := utils.ShellNodeRange(c.args[index], len(c.raw))
 	return c.raw[:start] + replacement + c.raw[end:]

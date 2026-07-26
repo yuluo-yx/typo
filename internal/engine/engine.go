@@ -170,6 +170,10 @@ func (e *Engine) tryParser(input itypes.ParserContext) itypes.FixResult {
 				continue
 			}
 			usableLine = true
+			if matchedLine != nil &&
+				!e.parser.CanParseCommand(matchedResult.Parser, line.commandWord()) {
+				continue
+			}
 			result := e.parser.Parse(itypes.ParserContext{
 				Command:             command,
 				Stderr:              input.Stderr,

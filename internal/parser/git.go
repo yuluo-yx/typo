@@ -12,13 +12,15 @@ import (
 
 // GitParser parses git command errors.
 type GitParser struct {
-	didYouMeanRegex          *regexp.Regexp
-	pushNoUpstreamFatalRegex *regexp.Regexp
-	pushNoUpstreamRegex      *regexp.Regexp
-	divergentBranchesRegex   *regexp.Regexp
-	reconcileDivergenceRegex *regexp.Regexp
-	placeholderRegex         *regexp.Regexp
-	notGitRepoRegex          *regexp.Regexp
+	didYouMeanRegex            *regexp.Regexp
+	branchUpstreamMissingRegex *regexp.Regexp
+	pushNoUpstreamFatalRegex   *regexp.Regexp
+	pushNoUpstreamRegex        *regexp.Regexp
+	divergentBranchesRegex     *regexp.Regexp
+	reconcileDivergenceRegex   *regexp.Regexp
+	placeholderRegex           *regexp.Regexp
+	notGitRepoRegex            *regexp.Regexp
+	resolveBranchUpstream      gitBranchUpstreamResolver
 }
 
 var gitUpstreamTokenRegex = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._/@+-]*$`)
@@ -26,13 +28,15 @@ var gitUpstreamTokenRegex = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._/@+-]*
 // NewGitParser creates a new GitParser.
 func NewGitParser() *GitParser {
 	return &GitParser{
-		didYouMeanRegex:          regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
-		pushNoUpstreamFatalRegex: regexp.MustCompile(`(?m)^fatal: The current branch ([^\s]+) has no upstream branch\.[\t\r ]*$`),
-		pushNoUpstreamRegex:      regexp.MustCompile(`(?m)^[ \t]*git push (?:-u|--set-upstream)[ \t]+([^\s]+)[ \t]+([^\s]+)[ \t\r]*$`),
-		divergentBranchesRegex:   regexp.MustCompile(`(?i)You have divergent branches and need to specify how to reconcile them\.`),
-		reconcileDivergenceRegex: regexp.MustCompile(`(?i)fatal: Need to specify how to reconcile divergent branches\.`),
-		placeholderRegex:         regexp.MustCompile(`^<[^>\s]+>$`),
-		notGitRepoRegex:          regexp.MustCompile(`fatal: not a git repository`),
+		didYouMeanRegex:            regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
+		branchUpstreamMissingRegex: regexp.MustCompile(`(?m)^fatal: the requested upstream branch '([^'\r\n]+)' does not exist[\t\r ]*$`),
+		pushNoUpstreamFatalRegex:   regexp.MustCompile(`(?m)^fatal: The current branch ([^\s]+) has no upstream branch\.[\t\r ]*$`),
+		pushNoUpstreamRegex:        regexp.MustCompile(`(?m)^[ \t]*git push (?:-u|--set-upstream)[ \t]+([^\s]+)[ \t]+([^\s]+)[ \t\r]*$`),
+		divergentBranchesRegex:     regexp.MustCompile(`(?i)You have divergent branches and need to specify how to reconcile them\.`),
+		reconcileDivergenceRegex:   regexp.MustCompile(`(?i)fatal: Need to specify how to reconcile divergent branches\.`),
+		placeholderRegex:           regexp.MustCompile(`^<[^>\s]+>$`),
+		notGitRepoRegex:            regexp.MustCompile(`fatal: not a git repository`),
+		resolveBranchUpstream:      resolveGitBranchUpstream,
 	}
 }
 
@@ -53,6 +57,10 @@ func (p *GitParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 
 	// Try to parse "did you mean" errors
 	if result := p.parseDidYouMean(cmd, stderr); result.Fixed {
+		return result
+	}
+
+	if result := p.parseBranchSetUpstreamMissing(cmd, stderr); result.Fixed {
 		return result
 	}
 
@@ -91,6 +99,185 @@ func (p *GitParser) parseDidYouMean(cmd, stderr string) itypes.ParserResult {
 		Command: fixed,
 		Message: "git suggested: " + suggested,
 	}
+}
+
+type gitBranchUpstreamRequest struct {
+	repositoryArgs []string
+	remote         string
+	localBranch    string
+	targetIndex    int
+	targetPrefix   string
+}
+
+func (p *GitParser) parseBranchSetUpstreamMissing(cmd, stderr string) itypes.ParserResult {
+	matches := p.branchUpstreamMissingRegex.FindStringSubmatch(stderr)
+	if len(matches) < 2 {
+		return itypes.ParserResult{Fixed: false}
+	}
+
+	call, err := parseShellCall(cmd)
+	if err != nil {
+		return itypes.ParserResult{Fixed: false}
+	}
+	request, ok := parseGitBranchUpstreamRequest(call)
+	if !ok || request.remote != matches[1] {
+		return itypes.ParserResult{Fixed: false}
+	}
+
+	target, ok := p.resolveBranchUpstream(
+		request.repositoryArgs,
+		request.remote,
+		request.localBranch,
+	)
+	if !ok || !gitUpstreamTokenRegex.MatchString(target) {
+		return itypes.ParserResult{Fixed: false}
+	}
+
+	return itypes.ParserResult{
+		Fixed:   true,
+		Command: call.replaceWord(request.targetIndex, request.targetPrefix+target),
+		Message: "setting branch upstream to " + target,
+	}
+}
+
+func parseGitBranchUpstreamRequest(call *shellCall) (gitBranchUpstreamRequest, bool) {
+	var request gitBranchUpstreamRequest
+	if len(call.args) == 0 {
+		return request, false
+	}
+
+	branchIndex, repositoryArgs, ok := gitBranchCommandContext(call.args)
+	if !ok {
+		return request, false
+	}
+	request.repositoryArgs = repositoryArgs
+
+	request, ok = parseGitBranchUpstreamArgs(call.args, branchIndex, request)
+	if !ok || !validGitBranchUpstreamRequest(request) {
+		return gitBranchUpstreamRequest{}, false
+	}
+	return request, true
+}
+
+func gitBranchCommandContext(args []*syntax.Word) (int, []string, bool) {
+	if gitPrefixedSubcommand(args[0].Lit()) == "branch" {
+		return 0, nil, true
+	}
+
+	branchIndex := findShellSubcommandIndex(args, parserNameGit, gitParserOptionsWithValues)
+	if branchIndex == -1 || args[branchIndex].Lit() != "branch" {
+		return 0, nil, false
+	}
+	repositoryArgs, ok := gitRepositorySelectorArgs(args, branchIndex)
+	if !ok {
+		return 0, nil, false
+	}
+	return branchIndex, repositoryArgs, true
+}
+
+func parseGitBranchUpstreamArgs(
+	args []*syntax.Word,
+	branchIndex int,
+	request gitBranchUpstreamRequest,
+) (gitBranchUpstreamRequest, bool) {
+	hasTarget := false
+	for i := branchIndex + 1; i < len(args); i++ {
+		arg, isStatic := staticShellWordValue(args[i])
+		if !isStatic {
+			return gitBranchUpstreamRequest{}, false
+		}
+		switch {
+		case strings.HasPrefix(arg, "--set-upstream-to="):
+			if hasTarget {
+				return gitBranchUpstreamRequest{}, false
+			}
+			request.remote = strings.TrimPrefix(arg, "--set-upstream-to=")
+			request.targetIndex = i
+			request.targetPrefix = "--set-upstream-to="
+			hasTarget = true
+		case arg == "--set-upstream-to" || arg == "-u":
+			if hasTarget || i+1 >= len(args) {
+				return gitBranchUpstreamRequest{}, false
+			}
+			i++
+			request.remote, isStatic = staticShellWordValue(args[i])
+			if !isStatic {
+				return gitBranchUpstreamRequest{}, false
+			}
+			request.targetIndex = i
+			hasTarget = true
+		case arg == "--quiet" || arg == "-q":
+			continue
+		case strings.HasPrefix(arg, "-"):
+			return gitBranchUpstreamRequest{}, false
+		default:
+			if request.localBranch != "" {
+				return gitBranchUpstreamRequest{}, false
+			}
+			request.localBranch = arg
+		}
+	}
+
+	return request, hasTarget
+}
+
+func validGitBranchUpstreamRequest(request gitBranchUpstreamRequest) bool {
+	remoteIsIncomplete := request.remote != "" && !strings.Contains(request.remote, "/")
+	if !remoteIsIncomplete || strings.HasPrefix(request.remote, "-") {
+		return false
+	}
+	if !gitUpstreamTokenRegex.MatchString(request.remote) {
+		return false
+	}
+	if request.localBranch != "" && !gitUpstreamTokenRegex.MatchString(request.localBranch) {
+		return false
+	}
+
+	return true
+}
+
+func gitRepositorySelectorArgs(args []*syntax.Word, branchIndex int) ([]string, bool) {
+	repositoryArgs := []string{}
+	for i := 1; i < branchIndex; i++ {
+		arg, isStatic := staticShellWordValue(args[i])
+		if !isStatic {
+			return nil, false
+		}
+		name, suffix, hasInlineValue := utils.SplitInlineValue(arg)
+		switch name {
+		case "--git-dir", "--work-tree":
+			if hasInlineValue {
+				if suffix == "=" {
+					return nil, false
+				}
+				repositoryArgs = append(repositoryArgs, arg)
+				continue
+			}
+			if i+1 >= branchIndex {
+				return nil, false
+			}
+			value, ok := staticShellWordValue(args[i+1])
+			if !ok {
+				return nil, false
+			}
+			repositoryArgs = append(repositoryArgs, arg, value)
+			i++
+		case "-C":
+			if hasInlineValue || i+1 >= branchIndex {
+				return nil, false
+			}
+			value, ok := staticShellWordValue(args[i+1])
+			if !ok {
+				return nil, false
+			}
+			repositoryArgs = append(repositoryArgs, arg, value)
+			i++
+		default:
+			return nil, false
+		}
+	}
+
+	return repositoryArgs, true
 }
 
 func (p *GitParser) parsePushNoUpstream(cmd, stderr string) itypes.ParserResult {

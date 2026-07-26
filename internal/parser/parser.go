@@ -60,6 +60,15 @@ func (r *Registry) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	return r.parseFallback(ctx, -1)
 }
 
+// CanParseCommand reports whether a parser can target the given executable name.
+func (r *Registry) CanParseCommand(parserName, commandName string) bool {
+	_, isDedicated := r.byCommand[parserName]
+	if !isDedicated {
+		return true
+	}
+	return dedicatedCommandKey(commandName) == parserName
+}
+
 func (r *Registry) parseFallback(ctx itypes.ParserContext, skipIndex int) itypes.ParserResult {
 	for i, p := range r.parsers {
 		if i == skipIndex {

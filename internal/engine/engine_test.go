@@ -13,6 +13,21 @@ import (
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
+type trackingParser struct {
+	name     string
+	commands []string
+	parse    func(itypes.ParserContext) itypes.ParserResult
+}
+
+func (p *trackingParser) Name() string {
+	return p.name
+}
+
+func (p *trackingParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
+	p.commands = append(p.commands, ctx.Command)
+	return p.parse(ctx)
+}
+
 func TestEngine_Fix(t *testing.T) {
 	// Create engine with mock components
 	tmpDir := t.TempDir()
@@ -307,6 +322,32 @@ func TestEngine_FixWithParser_PushNoUpstreamTargetsPushOnly(t *testing.T) {
 	}
 	if result.Command != "git status && sudo git push --set-upstream origin feature/topic" {
 		t.Fatalf("Expected upstream fix to preserve the compound wrapper, got %q", result.Command)
+	}
+}
+
+func TestEngine_FixWithParser_SkipsUnrelatedCommandsAfterDedicatedMatch(t *testing.T) {
+	gitParser := &trackingParser{
+		name: "git",
+		parse: func(ctx itypes.ParserContext) itypes.ParserResult {
+			if ctx.Command != "git remove -v" {
+				return itypes.ParserResult{Fixed: false}
+			}
+			return itypes.ParserResult{
+				Fixed:   true,
+				Command: "git remote -v",
+			}
+		},
+	}
+	registry := &parser.Registry{}
+	registry.Register(gitParser)
+	eng := NewEngine(WithParser(registry))
+
+	result := eng.Fix("git remove -v && tool status", "git error")
+	if !result.Fixed || result.Command != "git remote -v && tool status" {
+		t.Fatalf("Fix() = %+v, want the Git command fixed", result)
+	}
+	if len(gitParser.commands) != 1 {
+		t.Fatalf("Git parser commands = %q, want only the matched command", gitParser.commands)
 	}
 }
 
