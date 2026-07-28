@@ -27,6 +27,9 @@ func (p *recordingParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 
 func TestGitParser_Parse(t *testing.T) {
 	p := NewGitParser()
+	p.resolveBranchUpstream = func(_ []string, remote, branch string) (string, bool) {
+		return remote + "/" + branch, true
+	}
 
 	tests := []struct {
 		name    string
@@ -57,22 +60,25 @@ func TestGitParser_Parse(t *testing.T) {
 			wantCmd: "git -c alias.remvoe=whatever remote -v",
 		},
 		{
-			name:    "pull upstream hint is not inferred",
+			name:    "pull upstream hint is verified",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
-			wantFix: false,
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin main",
 		},
 		{
-			name:    "pull upstream hint with options is not inferred",
+			name:    "pull upstream hint preserves safe options",
 			cmd:     "git pull --rebase --quiet",
 			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=origin/main main\n",
-			wantFix: false,
+			wantFix: true,
+			wantCmd: "git pull --rebase --quiet --set-upstream origin main",
 		},
 		{
-			name:    "no upstream branch rejects placeholder branch",
+			name:    "no upstream branch resolves placeholder branch",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to rebase against.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check\n",
-			wantFix: false,
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
 		},
 		{
 			name:    "no upstream branch rejects placeholder remote and branch",
@@ -81,10 +87,11 @@ func TestGitParser_Parse(t *testing.T) {
 			wantFix: false,
 		},
 		{
-			name:    "pull spaced set upstream hint is not inferred",
+			name:    "pull spaced set upstream hint is verified",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to origin/main main\n",
-			wantFix: false,
+			wantFix: true,
+			wantCmd: "git pull --set-upstream origin main",
 		},
 		{
 			name:    "pull legacy set upstream hint is not inferred",
@@ -831,6 +838,191 @@ func TestGitParser_ParseNoUpstreamPlaceholderWithoutLocalBranch(t *testing.T) {
 	})
 	if result.Fixed {
 		t.Fatalf("Expected placeholder upstream without local branch to stay unchanged, got %+v", result)
+	}
+}
+
+func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
+	formalStderr := func(hint string) string {
+		return "There is no tracking information for the current branch.\n" +
+			"Please specify which branch you want to merge with.\n" +
+			"See git-pull(1) for details.\n\n" +
+			"    git pull <remote> <branch>\n\n" +
+			"If you wish to set tracking information for this branch you can do so with:\n\n" +
+			"    " + hint + "\n"
+	}
+
+	tests := []struct {
+		name           string
+		cmd            string
+		stderr         string
+		resolvedTarget string
+		resolveOK      bool
+		wantResolve    bool
+		wantRepository []string
+		wantRemote     string
+		wantBranch     string
+		wantFix        bool
+		wantCmd        string
+	}{
+		{
+			name:           "formal placeholder branch",
+			cmd:            "git pull",
+			stderr:         formalStderr("git branch --set-upstream-to=origin/<branch> test/dev"),
+			resolvedTarget: "origin/test/dev",
+			resolveOK:      true,
+			wantResolve:    true,
+			wantRemote:     "origin",
+			wantBranch:     "test/dev",
+			wantFix:        true,
+			wantCmd:        "git pull --set-upstream origin test/dev",
+		},
+		{
+			name:           "concrete upstream branch",
+			cmd:            "git pull",
+			stderr:         formalStderr("git branch --set-upstream-to=origin/test/dev test/dev"),
+			resolvedTarget: "origin/test/dev",
+			resolveOK:      true,
+			wantResolve:    true,
+			wantRemote:     "origin",
+			wantBranch:     "test/dev",
+			wantFix:        true,
+			wantCmd:        "git pull --set-upstream origin test/dev",
+		},
+		{
+			name:           "repository selector and safe pull options",
+			cmd:            "git -C 'repo path' pull --rebase --quiet",
+			stderr:         formalStderr("git branch --set-upstream-to origin/test/dev test/dev"),
+			resolvedTarget: "origin/test/dev",
+			resolveOK:      true,
+			wantResolve:    true,
+			wantRepository: []string{"-C", "repo path"},
+			wantRemote:     "origin",
+			wantBranch:     "test/dev",
+			wantFix:        true,
+			wantCmd:        "git -C 'repo path' pull --rebase --quiet --set-upstream origin test/dev",
+		},
+		{
+			name:           "git pull executable form",
+			cmd:            "git-pull",
+			stderr:         formalStderr("git branch --set-upstream-to=origin/<branch> test/dev"),
+			resolvedTarget: "origin/test/dev",
+			resolveOK:      true,
+			wantResolve:    true,
+			wantRemote:     "origin",
+			wantBranch:     "test/dev",
+			wantFix:        true,
+			wantCmd:        "git-pull --set-upstream origin test/dev",
+		},
+		{
+			name:       "placeholder remote is rejected",
+			cmd:        "git pull",
+			stderr:     formalStderr("git branch --set-upstream-to=<remote>/<branch> test/dev"),
+			wantRemote: "",
+		},
+		{
+			name:       "missing local branch is rejected",
+			cmd:        "git pull",
+			stderr:     formalStderr("git branch --set-upstream-to=origin/<branch>"),
+			wantRemote: "",
+		},
+		{
+			name:       "mismatched concrete branch is rejected",
+			cmd:        "git pull",
+			stderr:     formalStderr("git branch --set-upstream-to=origin/main test/dev"),
+			wantRemote: "",
+		},
+		{
+			name: "multiple upstream hints are rejected",
+			cmd:  "git pull",
+			stderr: formalStderr("git branch --set-upstream-to=origin/<branch> test/dev") +
+				"    git branch --set-upstream-to=origin/other test/dev\n",
+			wantRemote: "",
+		},
+		{
+			name:       "missing no tracking signal is rejected",
+			cmd:        "git pull",
+			stderr:     "git branch --set-upstream-to=origin/<branch> test/dev\n",
+			wantRemote: "",
+		},
+		{
+			name:       "unsafe local branch is rejected",
+			cmd:        "git pull",
+			stderr:     formalStderr("git branch --set-upstream-to=origin/<branch> feature;touch${IFS}file"),
+			wantRemote: "",
+		},
+		{
+			name:       "existing pull target is not replaced",
+			cmd:        "git pull origin",
+			stderr:     formalStderr("git branch --set-upstream-to=origin/<branch> test/dev"),
+			wantRemote: "",
+		},
+		{
+			name:       "dynamic pull target is rejected",
+			cmd:        `git pull "$REMOTE"`,
+			stderr:     formalStderr("git branch --set-upstream-to=origin/<branch> test/dev"),
+			wantRemote: "",
+		},
+		{
+			name:       "existing upstream option is idempotent",
+			cmd:        "git pull --set-upstream origin test/dev",
+			stderr:     formalStderr("git branch --set-upstream-to=origin/<branch> test/dev"),
+			wantRemote: "",
+		},
+		{
+			name:           "missing repository reference is rejected",
+			cmd:            "git pull",
+			stderr:         formalStderr("git branch --set-upstream-to=origin/<branch> test/dev"),
+			wantResolve:    true,
+			wantRemote:     "origin",
+			wantBranch:     "test/dev",
+			resolvedTarget: "",
+			resolveOK:      false,
+		},
+		{
+			name:           "resolver target must match hint",
+			cmd:            "git pull",
+			stderr:         formalStderr("git branch --set-upstream-to=origin/<branch> test/dev"),
+			wantResolve:    true,
+			wantRemote:     "origin",
+			wantBranch:     "test/dev",
+			resolvedTarget: "origin/other",
+			resolveOK:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewGitParser()
+			resolveCalls := 0
+			p.resolveBranchUpstream = func(repositoryArgs []string, remote, branch string) (string, bool) {
+				resolveCalls++
+				if !slices.Equal(repositoryArgs, tt.wantRepository) {
+					t.Fatalf("repository args = %q, want %q", repositoryArgs, tt.wantRepository)
+				}
+				if remote != tt.wantRemote {
+					t.Fatalf("remote = %q, want %q", remote, tt.wantRemote)
+				}
+				if branch != tt.wantBranch {
+					t.Fatalf("branch = %q, want %q", branch, tt.wantBranch)
+				}
+				return tt.resolvedTarget, tt.resolveOK
+			}
+
+			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: tt.stderr})
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			}
+			wantResolveCalls := 0
+			if tt.wantResolve {
+				wantResolveCalls = 1
+			}
+			if resolveCalls != wantResolveCalls {
+				t.Fatalf("resolve calls = %d, want %d", resolveCalls, wantResolveCalls)
+			}
+		})
 	}
 }
 

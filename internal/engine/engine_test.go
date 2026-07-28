@@ -276,18 +276,18 @@ func TestEngine_FixWithParser_ClearsStderrAfterFirstParserFix(t *testing.T) {
 	}
 }
 
-func TestEngine_FixWithParser_PullUpstreamHintStaysUnchanged(t *testing.T) {
+func TestEngine_FixWithParser_MismatchedPullUpstreamHintStaysUnchanged(t *testing.T) {
 	eng := NewEngine(
 		WithParser(parser.NewRegistry()),
 	)
 
 	result := eng.FixWithContext(itypes.ParserContext{
 		Command:  "git remove -v && git pull",
-		Stderr:   "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
+		Stderr:   "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main feature/topic\n",
 		ExitCode: 1,
 	})
 	if result.Fixed {
-		t.Fatalf("Expected pull upstream target to remain user-controlled, got %+v", result)
+		t.Fatalf("Expected mismatched pull upstream target to stay unchanged, got %+v", result)
 	}
 }
 

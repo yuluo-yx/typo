@@ -82,6 +82,25 @@ To push the current branch and set the remote as upstream, use
 
 Press `Esc` `Esc`. Typo applies Git's concrete suggestion when the remote and branch names are safe across every supported shell; otherwise it leaves the command unchanged.
 
+## `git pull --set-upstream`
+
+When the current branch has no upstream, Git may leave the remote branch as a placeholder:
+
+```shell
+$ git pull
+There is no tracking information for the current branch.
+
+    git branch --set-upstream-to=origin/<branch> test/dev
+```
+
+Press `Esc` `Esc`. Typo resolves the placeholder from the explicit local branch and verifies that both `test/dev` and `origin/test/dev` exist in the current repository before suggesting:
+
+```shell
+git pull --set-upstream origin test/dev
+```
+
+Typo leaves the command unchanged when the remote is also a placeholder, the branch names are ambiguous, or either verified reference is missing.
+
 ## `git pull --rebase`
 
 When Git refuses to pull because the local and remote branches diverged:
