@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/yuluo-yx/typo/compare/v1.7.1...v1.8.0) (2026-07-28)
+
+
+### Features
+
+* add git pull fix ([c848e15](https://github.com/yuluo-yx/typo/commit/c848e15ffb788c98ba913cd812f82c4d746adc0d))
+
 ## [1.7.1](https://github.com/yuluo-yx/typo/compare/v1.7.0...v1.7.1) (2026-07-26)
 
 
