@@ -32,7 +32,7 @@ jobs:
           - ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: Homebrew/actions/setup-homebrew@df4b09108a1de9d6f995fe68f302b3f68bd6d2ef
+      - uses: Homebrew/actions/setup-homebrew@5037c6f1012cc5ea0b9f03fedbaf9955ed9e51e0
 
       - name: Tap local checkout
         run: brew tap yuluo-yx/typo "$GITHUB_WORKSPACE"
