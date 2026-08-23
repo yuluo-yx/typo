@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/yuluo-yx/typo/compare/v1.8.0...v1.8.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **zsh:** refresh stderr fd per command ([#225](https://github.com/yuluo-yx/typo/issues/225)) ([057aff2](https://github.com/yuluo-yx/typo/commit/057aff24ddf60b6367a16f20b9b4682bf7fe9d37))
+
 ## [1.8.0](https://github.com/yuluo-yx/typo/compare/v1.7.1...v1.8.0) (2026-07-28)
 
 
