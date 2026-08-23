@@ -13,6 +13,8 @@ import (
 // pnpm, poetry, pip).
 type GenericParser struct{}
 
+const genericParserName = "generic"
+
 var (
 	genericParserRegexOnce sync.Once
 	genericInlineRegex     *regexp.Regexp
@@ -44,7 +46,7 @@ func genericParserRegexes() (*regexp.Regexp, *regexp.Regexp) {
 
 // Name returns the parser name.
 func (p *GenericParser) Name() string {
-	return "generic"
+	return genericParserName
 }
 
 // Parse parses generic error output.
