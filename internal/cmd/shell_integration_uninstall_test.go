@@ -40,6 +40,33 @@ fi
 `)
 }
 
+func TestZshIntegrationUsesCommandTimeStderr(t *testing.T) {
+	output := runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+
+# Simulate a prompt plugin temporarily redirecting stderr while .zshrc loads.
+exec {terminal_stderr_fd}>&2
+exec 2>/dev/null
+source "$1"
+exec 2>&$terminal_stderr_fd
+
+_typo_preexec
+print -u2 "captured-stderr"
+_typo_precmd
+print -u2 "restored-stderr"
+sleep 0.1
+_typo_zshexit
+`)
+
+	if !bytes.Contains(output, []byte("captured-stderr")) {
+		t.Fatalf("Expected command stderr to remain visible, got %q", output)
+	}
+	if !bytes.Contains(output, []byte("restored-stderr")) {
+		t.Fatalf("Expected stderr to remain usable after precmd, got %q", output)
+	}
+}
+
 func TestZshIntegrationIsolatesParentAndChildCaches(t *testing.T) {
 	runZshIntegrationScript(t, `
 zle() { true; }

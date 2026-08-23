@@ -380,7 +380,7 @@ _typo_write_alias_context() {
     fi
 }
 
-# Save the original stderr so repeated commands do not keep chaining shell file descriptors.
+# Save the stderr active when the command starts.
 _typo_save_original_stderr() {
     local shell_id
 
@@ -403,9 +403,17 @@ _typo_restore_stderr() {
     fi
 }
 
+_typo_release_original_stderr() {
+    if _typo_owns_original_stderr_fd; then
+        exec {TYPO_ORIG_STDERR_FD}>&-
+    fi
+    unset TYPO_ORIG_STDERR_FD
+    unset TYPO_ORIG_STDERR_FD_OWNER
+}
+
 _typo_preexec() {
     _typo_init_stderr_cache || return
-    _typo_save_original_stderr
+    _typo_save_original_stderr || return
     : >| "$TYPO_STDERR_CACHE"
     exec 2> >(tee "$TYPO_STDERR_CACHE" >&$TYPO_ORIG_STDERR_FD)
 }
@@ -413,16 +421,12 @@ _typo_preexec() {
 _typo_precmd() {
     TYPO_LAST_EXIT_CODE=$?
     _typo_restore_stderr
+    _typo_release_original_stderr
 }
 
 _typo_zshexit() {
     _typo_restore_stderr
-
-    if _typo_owns_original_stderr_fd; then
-        exec {TYPO_ORIG_STDERR_FD}>&-
-    fi
-    unset TYPO_ORIG_STDERR_FD
-    unset TYPO_ORIG_STDERR_FD_OWNER
+    _typo_release_original_stderr
 
     if _typo_owns_stderr_cache; then
         rm -f -- "$TYPO_STDERR_CACHE" 2>/dev/null
@@ -447,7 +451,7 @@ add-zsh-hook zshexit _typo_zshexit
 
 _typo_init_stderr_cache
 _typo_init_alias_context
-_typo_save_original_stderr
+_typo_release_original_stderr
 _typo_cleanup_stale_caches
 
 # Mark shell integration as loaded
