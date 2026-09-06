@@ -510,3 +510,55 @@ func TestRules_TargetPriority(t *testing.T) {
 		t.Fatalf("Expected unknown target priority 0, got %d", got)
 	}
 }
+
+func TestRulesTargetPriorityTracksMutationsAndRollback(t *testing.T) {
+	r := NewRules("")
+	baseline := r.TargetPriority("docker")
+	if err := r.AddUserRule(itypes.Rule{From: "customtypo", To: "docker"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.TargetPriority("docker"); got != baseline+200 {
+		t.Fatalf("added rule priority=%d, want %d", got, baseline+200)
+	}
+	if err := r.AddUserRule(itypes.Rule{From: "customtypo", To: "customtool"}); err != nil {
+		t.Fatal(err)
+	}
+	if r.TargetPriority("docker") != baseline || r.TargetPriority("customtool") != 200 {
+		t.Fatal("replacement left stale priorities")
+	}
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	if err := os.WriteFile(blocked, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r.configDir = blocked
+	if err := r.AddUserRule(itypes.Rule{From: "customtypo", To: "docker"}); err == nil {
+		t.Fatal("save to a file path must fail")
+	}
+	if r.TargetPriority("docker") != baseline || r.TargetPriority("customtool") != 200 {
+		t.Fatal("failed save did not restore priorities")
+	}
+	r.configDir = ""
+	if err := r.RemoveUserRule("customtypo"); err != nil {
+		t.Fatal(err)
+	}
+	if r.TargetPriority("customtool") != 0 || r.IsTarget("customtool") {
+		t.Fatal("removed rule remained a preferred target")
+	}
+}
+
+func TestRulesTargetPriorityTracksScopeToggle(t *testing.T) {
+	r := NewRules("")
+	baseline := r.TargetPriority("docker")
+	if err := r.EnableRuleSet("docker", false); err != nil {
+		t.Fatal(err)
+	}
+	if r.TargetPriority("docker") != 0 {
+		t.Fatal("disabled rule scope retained its priority")
+	}
+	if err := r.EnableRuleSet("docker", true); err != nil {
+		t.Fatal(err)
+	}
+	if r.TargetPriority("docker") != baseline {
+		t.Fatal("re-enabled scope did not restore priority")
+	}
+}

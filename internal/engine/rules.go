@@ -30,7 +30,7 @@ type Rules struct {
 	user      map[string]itypes.Rule // from -> itypes.Rule, loaded from user config
 	ruleSets  map[string]RuleSet     // scope -> RuleSet
 	configDir string
-	targets   map[string]bool // cached set of all rule .To values
+	targets   map[string]int // cached preference scores for active rule targets
 }
 
 // NewRules creates a new Rules instance.
@@ -185,20 +185,7 @@ func (r *Rules) TargetPriority(cmd string) int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	score := 0
-	for _, rule := range r.user {
-		if rule.Enable && rule.To == cmd {
-			score += 200
-		}
-	}
-
-	for _, rule := range r.builtin {
-		if rule.Enable && rule.To == cmd {
-			score += 100
-		}
-	}
-
-	return score
+	return r.targets[cmd]
 }
 
 // EnableRuleSet enables or disables a rule set by scope.
@@ -239,19 +226,19 @@ func (r *Rules) GetRuleSets() []RuleSet {
 func (r *Rules) IsTarget(cmd string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.targets[cmd]
+	return r.targets[cmd] > 0
 }
 
 func (r *Rules) rebuildTargets() {
-	r.targets = make(map[string]bool, len(r.builtin)+len(r.user))
+	r.targets = make(map[string]int, len(r.builtin)+len(r.user))
 	for _, rule := range r.builtin {
 		if rule.Enable {
-			r.targets[rule.To] = true
+			r.targets[rule.To] += 100
 		}
 	}
 	for _, rule := range r.user {
 		if rule.Enable {
-			r.targets[rule.To] = true
+			r.targets[rule.To] += 200
 		}
 	}
 }

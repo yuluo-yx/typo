@@ -145,9 +145,8 @@ function Resolve-ReleaseTag {
         return $normalized
     }
 
-    $apiUrl = (Join-Url @((Get-ReleaseApiBase), 'releases?per_page=1'))
-    $response = Invoke-RestMethod -Headers @{ Accept = 'application/vnd.github+json' } -Uri $apiUrl
-    $release = @($response) | Select-Object -First 1
+    $apiUrl = (Join-Url @((Get-ReleaseApiBase), 'releases/latest'))
+    $release = Invoke-RestMethod -Headers @{ Accept = 'application/vnd.github+json' } -Uri $apiUrl
     if ($null -eq $release -or [string]::IsNullOrWhiteSpace($release.tag_name)) {
         throw "Unable to resolve the latest release tag from $apiUrl"
     }

@@ -7,6 +7,9 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
+	"unicode"
 
 	"golang.org/x/term"
 
@@ -137,7 +140,7 @@ func drawFixCandidateMenu(output io.Writer, candidates []itypes.FixCandidate, se
 		if idx == selected {
 			prefix = "> "
 		}
-		if _, err := fmt.Fprintf(output, "%s%d) %s\r\n", prefix, idx+1, candidate.Command); err != nil {
+		if _, err := fmt.Fprintf(output, "%s%d) %s\r\n", prefix, idx+1, displayFixCandidate(candidate.Command)); err != nil {
 			return err
 		}
 	}
@@ -146,11 +149,26 @@ func drawFixCandidateMenu(output io.Writer, candidates []itypes.FixCandidate, se
 }
 
 func redrawFixCandidateMenu(output io.Writer, candidates []itypes.FixCandidate, selected int) error {
-	menuLines := len(candidates) + 2
+	// The prompt has no trailing newline, so it does not add another row to move up.
+	menuLines := len(candidates) + 1
 	if _, err := fmt.Fprintf(output, "\r\x1b[%dA\x1b[J", menuLines); err != nil {
 		return err
 	}
 	return drawFixCandidateMenu(output, candidates, selected)
+}
+
+// Escape control characters for display without changing the selected command.
+func displayFixCandidate(command string) string {
+	var display strings.Builder
+	for _, r := range command {
+		if unicode.IsPrint(r) {
+			display.WriteRune(r)
+			continue
+		}
+		quoted := strconv.QuoteRune(r)
+		display.WriteString(quoted[1 : len(quoted)-1])
+	}
+	return display.String()
 }
 
 func chooseFixCandidateFromTerminal(candidates []itypes.FixCandidate) (itypes.FixCandidate, bool, error) {

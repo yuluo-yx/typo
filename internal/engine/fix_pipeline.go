@@ -51,14 +51,28 @@ func (e *Engine) FixCandidatesWithContext(input itypes.ParserContext, limit int)
 		}
 		seen[result.Command] = true
 		candidates = append(candidates, itypes.FixCandidate{
-			Command: result.Command,
-			Source:  result.Source,
-			Message: result.Message,
+			Command:    result.Command,
+			Source:     result.Source,
+			Message:    result.Message,
+			Kind:       result.Kind,
+			UsedParser: result.UsedParser,
 		})
 	}
 
 	addResult(e.FixWithContext(input))
-	for _, result := range e.distanceFixCandidates(input.Command, limit) {
+	if len(candidates) >= limit {
+		return candidates
+	}
+	// Rank alternatives against expanded commands, then restore their shell aliases.
+	command := input.Command
+	expanded, records, expandedOK := expandCommandAliases(command, input.AliasContext)
+	if expandedOK {
+		command = expanded
+	}
+	for _, result := range e.distanceFixCandidates(command, limit) {
+		if expandedOK {
+			result.Command = rewriteCommandAliases(result.Command, records)
+		}
 		addResult(result)
 		if len(candidates) >= limit {
 			break
@@ -287,7 +301,7 @@ func (e *Engine) fixCommandWordWithShell(cmd string) itypes.FixResult {
 			}
 		}
 
-		if rule, ok := e.rules.MatchBuiltin(cmdWord); ok {
+		if rule, ok := e.rules.MatchBuiltin(cmdWord); ok && !e.isAvailableCommand(cmdWord) {
 			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(rule.To),

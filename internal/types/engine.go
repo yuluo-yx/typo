@@ -15,9 +15,11 @@ type FixResult struct {
 
 // FixCandidate represents one selectable correction candidate.
 type FixCandidate struct {
-	Command string
-	Source  string
-	Message string
+	Command    string
+	Source     string
+	Message    string
+	Kind       string // Preserve the result category through candidate selection.
+	UsedParser bool   // Parser-assisted candidates must not be learned as reusable corrections.
 }
 
 // FixDebugInfo carries one `typo fix --debug` trace.

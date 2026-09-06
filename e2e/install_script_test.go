@@ -166,7 +166,10 @@ done
 printf '%s\n' "$url" >> "$TYPO_TEST_CURL_LOG"
 case "$url" in
   "https://api.github.com/repos/yuluo-yx/typo/releases?per_page=1")
-    printf '[\n  {\n    "tag_name": "v9.9.9"\n  }\n]\n'
+    printf '[{"tag_name":"v10.0.0-rc.1","prerelease":true}]\n'
+    ;;
+  "https://api.github.com/repos/yuluo-yx/typo/releases/latest")
+    printf '{"tag_name":"v9.9.9","prerelease":false}\n'
     ;;
   "https://github.com/yuluo-yx/typo/releases/download/v9.9.9/typo-linux-amd64")
     cp "$TYPO_TEST_RELEASE_BINARY" "$output"
@@ -204,7 +207,7 @@ esac
 		t.Fatalf("failed to read curl log: %v", err)
 	}
 	logText := string(logData)
-	if !strings.Contains(logText, "https://api.github.com/repos/yuluo-yx/typo/releases?per_page=1") {
+	if !strings.Contains(logText, "https://api.github.com/repos/yuluo-yx/typo/releases/latest") {
 		t.Fatalf("latest release lookup was not requested: %s", logText)
 	}
 	if !strings.Contains(logText, "https://github.com/yuluo-yx/typo/releases/download/v9.9.9/typo-linux-amd64") {
@@ -212,6 +215,23 @@ esac
 	}
 	if !strings.Contains(logText, "https://github.com/yuluo-yx/typo/releases/download/v9.9.9/checksums.txt") {
 		t.Fatalf("checksum manifest download was not requested: %s", logText)
+	}
+}
+
+func TestInstallScriptRejectsPositionalArguments(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh e2e is only supported on Unix hosts")
+	}
+	env := newInstallScriptEnv(t)
+	env.writeBinScript(t, "curl", "#!/bin/sh\necho unexpected-network-call >&2\nexit 1\n")
+	for _, args := range [][]string{{"1.8.2"}, {"--", "-b"}, {"-b", "extra"}} {
+		result := env.runWithEnv(t, nil, args...)
+		if result.code == 0 || !strings.Contains(result.stderr, "does not accept positional arguments") {
+			t.Fatalf("arguments %q: code=%d stderr=%q", args, result.code, result.stderr)
+		}
+		if strings.Contains(result.stderr, "unexpected-network-call") {
+			t.Fatal("invalid arguments must fail before downloading")
+		}
 	}
 }
 

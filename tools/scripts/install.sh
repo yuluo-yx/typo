@@ -52,6 +52,13 @@ while getopts ":s:bh" opt; do
   esac
 done
 
+shift "$((OPTIND - 1))"
+if [[ "$#" -ne 0 ]]; then
+  echo "install.sh does not accept positional arguments; use -s VERSION." >&2
+  usage >&2
+  exit 1
+fi
+
 if [[ "$BUILD_FROM_SOURCE" -eq 1 && -n "$VERSION_SELECTOR" ]]; then
   echo "Options -b and -s cannot be used together." >&2
   usage >&2
@@ -215,10 +222,10 @@ verify_release_checksum() {
 }
 
 resolve_latest_release_tag() {
-  local api_url="https://api.github.com/repos/${REPO}/releases?per_page=1"
+  local api_url="https://api.github.com/repos/${REPO}/releases/latest"
   local tag=""
 
-  tag="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api_url" | grep -m1 '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')"
+  tag="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api_url" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
 
   if [[ -z "$tag" ]]; then
     echo "Unable to resolve the latest release tag from ${api_url}" >&2

@@ -23,6 +23,13 @@ func Distance(a, b string, weights KeyboardWeights) int {
 }
 
 func distanceRunes(runesA, runesB []rune, weights KeyboardWeights) int {
+	// Shared boundaries do not contribute to weighted Levenshtein distance.
+	for len(runesA) > 0 && len(runesB) > 0 && runesA[0] == runesB[0] {
+		runesA, runesB = runesA[1:], runesB[1:]
+	}
+	for len(runesA) > 0 && len(runesB) > 0 && runesA[len(runesA)-1] == runesB[len(runesB)-1] {
+		runesA, runesB = runesA[:len(runesA)-1], runesB[:len(runesB)-1]
+	}
 	lenA := len(runesA)
 	lenB := len(runesB)
 	if lenA == 0 {

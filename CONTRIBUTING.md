@@ -16,6 +16,10 @@ After cloning the repository, run the one-time setup:
 make setup
 ```
 
+本地 `go mod tidy` 和 `govulncheck` 提交钩子复用当前 `PATH` 中的工具，不再单独下载 Go。
+首次提交前运行 `make install-govulncheck`，并确认 `go version` 与项目要求一致。
+通过 mise 选择 Go 时，请在同一工具链环境中执行测试和提交。
+
 This creates the project-local Python virtual environment in `.venv/`, installs
 the pinned `pre-commit` there, and configures Git to use the project's hook
 directory. From this point on, every `git commit` will automatically run

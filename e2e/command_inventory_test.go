@@ -94,12 +94,24 @@ func TestE2EInventory_BuiltinsAndSystemCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := env.run(t, "fix", "--no-history", tt.command)
+			// Keep the typo corpus independent of real tools such as dc or sl on the host.
+			result := env.runWithEnv(t, []string{"PATH=" + env.binDir}, "fix", "--no-history", tt.command)
 			if result.code != 0 || result.stdout != tt.want {
 				t.Fatalf("unexpected fix result: stdout=%q stderr=%q code=%d", result.stdout, result.stderr, result.code)
 			}
 		})
 	}
+}
+
+func TestE2EInventory_ExistingCommandTakesPrecedence(t *testing.T) {
+	env := newE2EEnv(t)
+	env.seedCommandStubs(t, "dc")
+	result := env.runWithEnv(t, []string{"PATH=" + env.binDir}, "fix", "--no-history", "dc /tmp")
+	if result.code != 1 || result.stdout != "" {
+		t.Fatalf("existing dc executable was replaced: %+v", result)
+	}
+	assertE2EStdoutContains(t, env.run(t, "learn", "dc", "cd"), "Learned", "explicit override")
+	assertE2EStdoutEquals(t, env.runWithEnv(t, []string{"PATH=" + env.binDir}, "fix", "--no-history", "dc /tmp"), "cd /tmp\n", "user rule override")
 }
 
 func TestE2EInventory_SupportedTools(t *testing.T) {

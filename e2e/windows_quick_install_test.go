@@ -134,7 +134,7 @@ func TestWindowsQuickInstallInstallsLatestRelease(t *testing.T) {
 	assertInstalledBinaryMatches(t, installedBinary, binaryContent)
 	assertQuickInstallOutput(t, result.stdout, installedBinary)
 	assertRequestedPaths(t, recorder.snapshot(),
-		"/repos/yuluo-yx/typo/releases?per_page=1",
+		"/repos/yuluo-yx/typo/releases/latest?",
 		"/releases/download/v9.9.9/typo-windows-amd64.exe?",
 		"/releases/download/v9.9.9/checksums.txt?",
 	)
@@ -149,11 +149,11 @@ func TestWindowsQuickInstallInstallsWhenChecksumsMissing(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recorder.add(r.URL.Path + "?" + r.URL.RawQuery)
 
-		switch {
-		case r.URL.Path == "/repos/yuluo-yx/typo/releases" && r.URL.RawQuery == "per_page=1":
+		switch r.URL.Path {
+		case "/repos/yuluo-yx/typo/releases/latest":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"tag_name":"v0.2.0"}]`))
-		case r.URL.Path == "/releases/download/v0.2.0/typo-windows-amd64.exe":
+			_, _ = w.Write([]byte(`{"tag_name":"v0.2.0"}`))
+		case "/releases/download/v0.2.0/typo-windows-amd64.exe":
 			_, _ = w.Write(binaryContent)
 		default:
 			http.NotFound(w, r)
@@ -180,7 +180,7 @@ func TestWindowsQuickInstallInstallsWhenChecksumsMissing(t *testing.T) {
 	}
 
 	assertRequestedPaths(t, recorder.snapshot(),
-		"/repos/yuluo-yx/typo/releases?per_page=1",
+		"/repos/yuluo-yx/typo/releases/latest?",
 		"/releases/download/v0.2.0/typo-windows-amd64.exe?",
 		"/releases/download/v0.2.0/checksums.txt?",
 	)
@@ -221,7 +221,7 @@ func TestWindowsQuickInstallFailsOnChecksumMismatch(t *testing.T) {
 	}
 
 	requests := recorder.snapshot()
-	if containsRequest(requests, "/repos/yuluo-yx/typo/releases?per_page=1") {
+	if containsRequest(requests, "/repos/yuluo-yx/typo/releases/latest?") {
 		t.Fatalf("latest release lookup should not be requested for explicit version: %v", requests)
 	}
 	assertRequestedPaths(t, requests,
@@ -297,13 +297,13 @@ func newLatestReleaseServer(recorder *recordedRequests, binaryContent []byte, ex
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recorder.add(r.URL.Path + "?" + r.URL.RawQuery)
 
-		switch {
-		case r.URL.Path == "/repos/yuluo-yx/typo/releases" && r.URL.RawQuery == "per_page=1":
+		switch r.URL.Path {
+		case "/repos/yuluo-yx/typo/releases/latest":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"tag_name":"v9.9.9"}]`))
-		case r.URL.Path == "/releases/download/v9.9.9/typo-windows-amd64.exe":
+			_, _ = w.Write([]byte(`{"tag_name":"v9.9.9"}`))
+		case "/releases/download/v9.9.9/typo-windows-amd64.exe":
 			_, _ = w.Write(binaryContent)
-		case r.URL.Path == "/releases/download/v9.9.9/checksums.txt":
+		case "/releases/download/v9.9.9/checksums.txt":
 			_, _ = w.Write([]byte(expectedHash + "  typo-windows-amd64.exe\n"))
 		default:
 			http.NotFound(w, r)

@@ -101,7 +101,7 @@ func parseFixOptions(args []string) (fixOptions, error) {
 	}
 
 	return fixOptions{
-		command:          strings.Join(fs.Args(), " "),
+		command:          strings.TrimSpace(strings.Join(fs.Args(), " ")),
 		stderrFile:       *stderrFile,
 		exitCode:         *exitCode,
 		noHistory:        *noHistory,
@@ -176,10 +176,12 @@ func selectFixResult(eng *engine.Engine, input itypes.ParserContext, limit int) 
 
 func fixResultFromCandidate(candidate itypes.FixCandidate) itypes.FixResult {
 	return itypes.FixResult{
-		Fixed:   true,
-		Command: candidate.Command,
-		Source:  candidate.Source,
-		Message: candidate.Message,
+		Fixed:      true,
+		Command:    candidate.Command,
+		Source:     candidate.Source,
+		Message:    candidate.Message,
+		Kind:       candidate.Kind,
+		UsedParser: candidate.UsedParser,
 	}
 }
 

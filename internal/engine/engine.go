@@ -305,6 +305,9 @@ func (e *Engine) tryUserRules(cmd string) itypes.FixResult {
 func (e *Engine) tryBuiltinRules(cmd string) itypes.FixResult {
 	result := e.tryMatchOnCommand(cmd, "rule", func(s string) (string, bool) {
 		rule, ok := e.rules.MatchBuiltin(s)
+		if ok && isSingleCommandWord(s) && e.isAvailableCommand(s) {
+			return "", false
+		}
 		if ok {
 			return rule.To, true
 		}
@@ -473,7 +476,7 @@ func (e *Engine) distanceFixCandidates(cmd string, limit int) []itypes.FixResult
 	}
 
 	parts := strings.Fields(cmd)
-	if len(parts) == 0 || e.isProtectedCommandWord(parts[0]) {
+	if len(parts) == 0 || e.isProtectedCommandWord(parts[0]) || e.isAvailableCommand(parts[0]) {
 		return nil
 	}
 
@@ -518,7 +521,7 @@ func (e *Engine) distanceFixCandidatesWithShell(cmd string, limit int) ([]itypes
 	results := make([]itypes.FixResult, 0, limit)
 	for _, line := range lines {
 		cmdWord := line.commandWord()
-		if e.isProtectedCommandWord(cmdWord) {
+		if e.isProtectedCommandWord(cmdWord) || e.isAvailableCommand(cmdWord) {
 			continue
 		}
 		for _, candidate := range e.rankedKnownCommandCandidates(cmdWord) {

@@ -38,6 +38,9 @@ func (e *Engine) findClosestCommand(cmd string) string {
 }
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
+	if e.isAvailableCommand(cmd) {
+		return cmd, 0
+	}
 	matchCfg := e.distanceMatchConfig()
 	bestMatch, bestDistance := e.closestKnownCommandFromCandidates(cmd, e.availableCommandCandidates(cmd, matchCfg.maxEditDistance))
 	if isGoodCommandDistanceMatch(cmd, bestMatch, bestDistance, matchCfg) || e.commandLoader == nil || e.commandsFullyLoad {
@@ -90,32 +93,40 @@ func (e *Engine) rankedKnownCommandCandidatesFrom(cmd string, knownCommands []co
 
 func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []commandRuneCandidate) (string, int) {
 	cmdRunes := []rune(cmd)
-	candidates := make([]commandCandidate, 0, len(knownCommands))
-	seen := make(map[string]bool, len(knownCommands))
+	matchCfg := e.distanceMatchConfig()
+	var best, rejected commandCandidate
+	hasBest, hasRejected := false, false
 
 	for _, known := range knownCommands {
-		if known.name == "" || seen[known.name] {
+		if known.name == "" {
 			continue
 		}
-		seen[known.name] = true
 
 		d := distanceRunes(cmdRunes, known.runes, e.keyboard)
-		candidates = append(candidates, commandCandidate{
+		candidate := commandCandidate{
 			name:       known.name,
 			distance:   d,
 			similarity: SimilarityFromDistance(len(cmdRunes), len(known.runes), d),
 			priority:   e.commandPriority(known.name),
 			transposed: isSingleAdjacentTransposition(cmd, known.name),
-		})
+		}
+		if isGoodCommandDistanceMatch(cmd, known.name, d, matchCfg) {
+			if !hasBest || commandCandidateLess(candidate, best) {
+				best, hasBest = candidate, true
+			}
+		} else if !hasRejected || commandCandidateLess(candidate, rejected) {
+			rejected, hasRejected = candidate, true
+		}
 	}
 
-	if len(candidates) == 0 {
-		return "", 999
+	if hasBest {
+		return best.name, best.distance
 	}
-
-	sortCommandCandidates(candidates)
-
-	return candidates[0].name, candidates[0].distance
+	// Preserve the closest rejected match for diagnostic traces when nothing qualifies.
+	if hasRejected {
+		return rejected.name, rejected.distance
+	}
+	return "", 999
 }
 
 func (e *Engine) availableCommands() []string {
@@ -239,12 +250,16 @@ func (index commandCandidateIndex) candidatesFor(cmd string, maxEditDistance int
 		return index.all
 	}
 
-	cmdLen := len([]rune(cmd))
-	minLen := cmdLen - maxEditDistance
-	if minLen < 0 {
-		minLen = 0
+	cmdLen := runeCount(cmd)
+	minLen := index.minLen
+	if cmdLen > maxEditDistance {
+		minLen = max(minLen, cmdLen-maxEditDistance)
 	}
-	maxLen := cmdLen + maxEditDistance
+	// Clamp before adding to avoid overflow with very large configured distances.
+	maxLen := index.maxLen
+	if cmdLen < index.maxLen && maxEditDistance < index.maxLen-cmdLen {
+		maxLen = cmdLen + maxEditDistance
+	}
 	if minLen <= index.minLen && maxLen >= index.maxLen {
 		return index.all
 	}
@@ -280,20 +295,19 @@ type commandCandidate struct {
 
 func sortCommandCandidates(candidates []commandCandidate) {
 	sort.Slice(candidates, func(i, j int) bool {
-		// Exact matches must stay first; otherwise, prefer adjacent
-		// transpositions over ordinary fuzzy matches from PATH.
-		if cmp := compareFuzzyCandidateOrder(
-			candidates[i].distance, candidates[j].distance,
-			candidates[i].transposed, candidates[j].transposed,
-			candidates[i].similarity, candidates[j].similarity,
-		); cmp != 0 {
-			return cmp < 0
-		}
-		if candidates[i].priority != candidates[j].priority {
-			return candidates[i].priority > candidates[j].priority
-		}
-		return candidates[i].name < candidates[j].name
+		return commandCandidateLess(candidates[i], candidates[j])
 	})
+}
+
+func commandCandidateLess(a, b commandCandidate) bool {
+	// Exact matches stay first, followed by adjacent transpositions and fuzzy matches.
+	if cmp := compareFuzzyCandidateOrder(a.distance, b.distance, a.transposed, b.transposed, a.similarity, b.similarity); cmp != 0 {
+		return cmp < 0
+	}
+	if a.priority != b.priority {
+		return a.priority > b.priority
+	}
+	return a.name < b.name
 }
 
 func compareFuzzyCandidateOrder(distanceA, distanceB int, transposedA, transposedB bool, similarityA, similarityB float64) int {

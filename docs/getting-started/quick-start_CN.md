@@ -40,6 +40,10 @@ curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/in
 
 脚本默认下载预编译的 Release 二进制。只有在从 `main` 分支源码构建时才需要 `Go`。
 
+默认安装和 `-s latest` 使用 GitHub 标记的最新正式版，不选择预发布版。
+Windows quick-install 的默认版本查询也遵循这一规则。
+macOS / Linux 安装脚本不接受位置参数；指定版本必须使用 `-s VERSION`，错误参数会在下载前被拒绝。
+
 可选参数：
 
 ```bash

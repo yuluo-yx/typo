@@ -45,7 +45,7 @@ repos:
       - id: go-mod-tidy
         name: go mod tidy
         entry: go mod tidy -v
-        language: golang
+        language: system
         pass_filenames: false
         files: (\.go|go\.mod|go\.sum)$
 
@@ -59,7 +59,6 @@ repos:
       - id: govulncheck
         name: govulncheck
         entry: govulncheck ./...
-        language: golang
-        additional_dependencies: ["golang.org/x/vuln/cmd/govulncheck@v1.3.0"]
+        language: system
         pass_filenames: false
         files: (\.go|go\.mod|go\.sum)$

@@ -125,6 +125,9 @@ func cmdConfigGen(cfg *config.Config, args []string) int {
 	fs.SetOutput(os.Stderr)
 	force := fs.Bool("force", false, "overwrite existing config file")
 	if err := fs.Parse(args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 1
 	}
 	if fs.NArg() != 0 {
