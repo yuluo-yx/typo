@@ -19,6 +19,7 @@ make setup
 本地 `go mod tidy` 和 `govulncheck` 提交钩子复用当前 `PATH` 中的工具，不再单独下载 Go。
 首次提交前运行 `make install-govulncheck`，并确认 `go version` 与项目要求一致。
 通过 mise 选择 Go 时，请在同一工具链环境中执行测试和提交。
+常规 CI 与 Release CI 使用 Go 1.26.6 构建和验收；`go.mod` 的最低版本保持 1.26.3。
 
 This creates the project-local Python virtual environment in `.venv/`, installs
 the pinned `pre-commit` there, and configures Git to use the project's hook
