@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.2](https://github.com/yuluo-yx/typo/compare/v1.8.1...v1.8.2) (2026-09-06)
+
+
+### Bug Fixes
+
+* improve command matching and correction reliability [skip ci] ([834fcbd](https://github.com/yuluo-yx/typo/commit/834fcbdc27afd25c73427755d0a6311f4244050d))
+
 ## [1.8.1](https://github.com/yuluo-yx/typo/compare/v1.8.0...v1.8.1) (2026-08-23)
 
 
