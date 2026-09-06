@@ -1,7 +1,6 @@
 class Typo < Formula
   desc "Command auto-correction tool"
   homepage "https://github.com/yuluo-yx/typo"
-  version "1.8.2"
   license "MIT"
 
   if OS.mac? && Hardware::CPU.arm?

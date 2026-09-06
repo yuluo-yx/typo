@@ -50,15 +50,10 @@ unless missing.empty?
   exit 1
 end
 
-version = tag.delete_prefix("v")
 formula = File.read(formula_path)
 
-version_pattern = /version "[^"]+"/
-unless formula.match?(version_pattern)
-  warn "Unable to find version declaration in #{formula_path}"
-  exit 1
-end
-formula = formula.sub(version_pattern, %(version "#{version}"))
+# Homebrew infers the version from release URLs; remove legacy redundant declarations.
+formula = formula.gsub(/^[ \t]*version "[^"]+"[ \t]*\n/, "")
 
 formula = formula.gsub(%r{releases/download/v[^/"]+/}, "releases/download/#{tag}/")
 
