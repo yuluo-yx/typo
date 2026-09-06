@@ -22,6 +22,7 @@ make setup
 常规 CI 与 Release CI 使用 Go 1.26.6 构建和验收；`go.mod` 的最低版本保持 1.26.3。
 Homebrew formula 的版本由 Release 下载 URL 推导，不添加重复的 `version` 声明。
 发布脚本同时更新四个平台的 URL 与校验和，并兼容移除旧声明；修改后需通过 Homebrew 严格审查、安装及测试。
+Homebrew CI 使用完整 tap 名称安装本地 formula，保留默认 API 模式，避免额外克隆 `homebrew/core`。
 
 This creates the project-local Python virtual environment in `.venv/`, installs
 the pinned `pre-commit` there, and configures Git to use the project's hook

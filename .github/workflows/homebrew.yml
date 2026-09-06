@@ -41,7 +41,7 @@ jobs:
         run: brew audit --strict --online yuluo-yx/typo/typo
 
       - name: Install formula
-        run: HOMEBREW_NO_INSTALL_FROM_API=1 brew install --verbose yuluo-yx/typo/typo
+        run: brew install --verbose yuluo-yx/typo/typo
 
       - name: Test formula
         run: brew test yuluo-yx/typo/typo
