@@ -34,7 +34,7 @@ func genericParserRegexes() (*regexp.Regexp, *regexp.Regexp) {
 				`\s+['` + "`" + `"]([\w][\w-]*)['` + "`" + `"][?!.]?`,
 		)
 		genericNextLineRegex = regexp.MustCompile(
-			`(?i)did you mean (?:this|one of these)\?[^\n]*\n[ \t]+([\w][\w-]*)`,
+			`(?i)did you mean (?:this|one of these)\?[^\n]*\n[ \t]+([\w][\w-]*)(?:\s|$)`,
 		)
 		genericWrongRegexes = []*regexp.Regexp{
 			regexp.MustCompile("(?i)(?:unknown command|no such subcommand)[: ]+['`\"]?([\\w][\\w-]*)"),
@@ -66,14 +66,8 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	if strings.HasPrefix(suggested, "-") {
 		return itypes.ParserResult{Fixed: false}
 	}
-	parts := strings.Fields(cmd)
-	if len(parts) < 2 {
-		return itypes.ParserResult{Fixed: false}
-	}
-	binary := parts[0]
-
 	call, err := parseShellCall(cmd)
-	if err != nil {
+	if err != nil || len(call.args) < 2 {
 		return itypes.ParserResult{Fixed: false}
 	}
 
@@ -83,9 +77,12 @@ func (p *GenericParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	if wrong != "" {
 		fixed, ok = replaceReportedShellWord(call, wrong, suggested)
 	} else {
-		// expected is empty so replaceSubcommand replaces whatever positional
-		// argument is at the subcommand position, regardless of its current value.
-		fixed, ok = call.replaceSubcommand(binary, "", suggested, genericParserOptionsWithValues)
+		// Without a reported token, only the immediate positional argument is known.
+		// Unknown tools may give any leading option a separate value.
+		word, static := staticShellWordValue(call.args[1])
+		if static && word != "" && !strings.HasPrefix(word, "-") {
+			fixed, ok = call.replaceWord(1, suggested), true
+		}
 	}
 	if !ok {
 		return itypes.ParserResult{Fixed: false}
@@ -122,10 +119,25 @@ func (p *GenericParser) extractWrongCommand(stderr string) string {
 }
 
 func replaceReportedShellWord(call *shellCall, wrong, replacement string) (string, bool) {
+	index := -1
 	for i := 1; i < len(call.args); i++ {
-		if call.args[i].Lit() == wrong {
-			return call.replaceWord(i, replacement), true
+		word, static := staticShellWordValue(call.args[i])
+		if static && word == wrong {
+			if index != -1 {
+				return "", false
+			}
+			index = i
 		}
 	}
-	return "", false
+	if index == -1 {
+		return "", false
+	}
+	// A word directly after an unknown option may be its value.
+	if index > 1 {
+		previous, static := staticShellWordValue(call.args[index-1])
+		if !static || strings.HasPrefix(previous, "-") {
+			return "", false
+		}
+	}
+	return call.replaceWord(index, replacement), true
 }

@@ -1025,20 +1025,6 @@ func (e *Engine) isProtectedCommandWord(cmd string) bool {
 	return e.rules.IsTarget(cmd) || e.history.IsTarget(cmd)
 }
 
-func (e *Engine) rebuildCommand(cmdWord string, args []string, source string) itypes.FixResult {
-	result := itypes.FixResult{
-		Fixed:   true,
-		Command: cmdWord,
-		Source:  source,
-	}
-
-	if len(args) > 0 {
-		result.Command = cmdWord + " " + strings.Join(args, " ")
-	}
-
-	return result
-}
-
 func closestSubcommand(subcmd string, knownSubcommands []string, cfg distanceMatchConfig) (string, int) {
 	bestMatch := ""
 	bestDistance := 999
