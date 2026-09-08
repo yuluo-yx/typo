@@ -22,6 +22,9 @@ func TestE2ESuggestionCommandBoundaries(t *testing.T) {
 		{"acmetool --directory project buid", "Did you mean 'build'?", ""},
 		{"acmetool --directory project buid", "Unknown command 'buid'. Did you mean 'build'?", "acmetool --directory project build"},
 		{"acmetool 'buid' --release", "Unknown command 'buid'. Did you mean 'build'?", "acmetool build --release"},
+		{"acmetool remote remote.list", `Unknown command "remote.list". Did you mean "remote-list"?`, "acmetool remote remote-list"},
+		{"acmetool remote", `Unknown command "remote.list". Did you mean "remote-list"?`, ""},
+		{"acmetool -- file remote.list", `Unknown command "remote.list". Did you mean "remote-list"?`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.command+tt.stderr, func(t *testing.T) {

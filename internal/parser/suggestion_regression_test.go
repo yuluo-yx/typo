@@ -69,10 +69,42 @@ func TestGenericSuggestionTargetIsUnambiguous(t *testing.T) {
 		{"poetry --directory addd install", "Unknown command 'addd'. Did you mean 'add'?", ""},
 		{"poetry --directory project addd requests", "Did you mean 'add'?", ""},
 		{"poetry --directory project addd requests", "Unknown command 'addd'. Did you mean 'add'?", "poetry --directory project add requests"},
+		{"poetry --directory=project addd requests", "Unknown command 'addd'. Did you mean 'add'?", "poetry --directory=project add requests"},
+		{"cargo --color=always buid", "Unknown command 'buid'. Did you mean 'build'?", "cargo --color=always build"},
+		{"tool --verbose buid", "Unknown command 'buid'. Did you mean 'build'?", ""},
+		{"tool -o=data buid", "Unknown command 'buid'. Did you mean 'build'?", ""},
 		{"poetry addd addd", "Unknown command 'addd'. Did you mean 'add'?", ""},
 		{"cargo 'buid' --release", "Unknown command 'buid'. Did you mean 'build'?", "cargo build --release"},
 		{"cargo buid --release", "Did you mean 'build'?", "cargo build --release"},
 		{"tool -- data", "Did you mean 'date'?", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.command+tt.stderr, func(t *testing.T) {
+			got := NewGenericParser().Parse(itypes.ParserContext{Command: tt.command, Stderr: tt.stderr})
+			if got.Fixed != (tt.want != "") || got.Command != tt.want {
+				t.Fatalf("Parse() = %+v, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenericReportedCommandUsesWholeToken(t *testing.T) {
+	tests := []struct {
+		command, stderr, want string
+	}{
+		{"tool remote remote.list", `Unknown command "remote.list". Did you mean "remote-list"?`, "tool remote remote-list"},
+		{"tool remote remote.list", "Unknown command 'remote.list'. Did you mean 'remote-list'?", "tool remote remote-list"},
+		{"tool remote remote.list", "no such subcommand: `remote.list`\nDid you mean `remote-list`?", "tool remote remote-list"},
+		{"tool remote remote.list", "unknown command: remote.list\nDid you mean 'remote-list'?", "tool remote remote-list"},
+		{"tool remote 'remote list'", `Unknown command "remote list". Did you mean "remote-list"?`, "tool remote remote-list"},
+		{"tool remote remote.list", `The command "remote.list" is not defined. Did you mean "remote-list"?`, "tool remote remote-list"},
+		{"tool remote remote.list", "command remote.list not found. Did you mean 'remote-list'?", "tool remote remote-list"},
+		{"tool remote remote/list", `Unknown command "remote/list". Did you mean "remote-list"?`, "tool remote remote-list"},
+		{"tool remote remote+list", `Unknown command "remote+list". Did you mean "remote-list"?`, "tool remote remote-list"},
+		{"tool remote", `Unknown command "remote.list". Did you mean "remote-list"?`, ""},
+		{"tool -- file remote.list", `Unknown command "remote.list". Did you mean "remote-list"?`, ""},
+		{"tool -- file remote.list", "Unknown command 'remote.list'. Did you mean 'remote-list'?", ""},
+		{"tool remote.list -- 'file name'", `Unknown command "remote.list". Did you mean "remote-list"?`, "tool remote-list -- 'file name'"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.command+tt.stderr, func(t *testing.T) {

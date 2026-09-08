@@ -15,6 +15,10 @@ type GenericParser struct{}
 
 const genericParserName = "generic"
 
+// Capture complete quoted or unquoted error tokens; the replacement suggestion
+// is validated separately and never incorporates the reported token's bytes.
+const reportedCommandTokenPattern = `(?:'([^'\r\n]+)'|"([^"\r\n]+)"|` + "`([^`\r\n]+)`" + `|([^\s'"` + "`" + `]+))`
+
 var (
 	genericParserRegexOnce sync.Once
 	genericInlineRegex     *regexp.Regexp
@@ -37,8 +41,8 @@ func genericParserRegexes() (*regexp.Regexp, *regexp.Regexp) {
 			`(?i)did you mean (?:this|one of these)\?[^\n]*\n[ \t]+([\w][\w-]*)(?:\s|$)`,
 		)
 		genericWrongRegexes = []*regexp.Regexp{
-			regexp.MustCompile("(?i)(?:unknown command|no such subcommand)[: ]+['`\"]?([\\w][\\w-]*)"),
-			regexp.MustCompile("(?i)command ['`\"]?([\\w][\\w-]*)['`\"]? (?:is not defined|not found)"),
+			regexp.MustCompile(`(?i)(?:unknown command|no such subcommand)[: ]+` + reportedCommandTokenPattern),
+			regexp.MustCompile(`(?i)command ` + reportedCommandTokenPattern + ` (?:is not defined|not found)`),
 		}
 	})
 	return genericInlineRegex, genericNextLineRegex
@@ -112,7 +116,11 @@ func (p *GenericParser) extractWrongCommand(stderr string) string {
 	genericParserRegexes()
 	for _, re := range genericWrongRegexes {
 		if m := re.FindStringSubmatch(stderr); len(m) >= 2 {
-			return m[1]
+			for _, token := range m[1:] {
+				if token != "" {
+					return token
+				}
+			}
 		}
 	}
 	return ""
@@ -120,10 +128,14 @@ func (p *GenericParser) extractWrongCommand(stderr string) string {
 
 func replaceReportedShellWord(call *shellCall, wrong, replacement string) (string, bool) {
 	index := -1
+	afterSeparator := false
 	for i := 1; i < len(call.args); i++ {
 		word, static := staticShellWordValue(call.args[i])
+		if static && word == "--" {
+			afterSeparator = true
+		}
 		if static && word == wrong {
-			if index != -1 {
+			if index != -1 || afterSeparator {
 				return "", false
 			}
 			index = i
@@ -135,9 +147,18 @@ func replaceReportedShellWord(call *shellCall, wrong, replacement string) (strin
 	// A word directly after an unknown option may be its value.
 	if index > 1 {
 		previous, static := staticShellWordValue(call.args[index-1])
-		if !static || strings.HasPrefix(previous, "-") {
+		if !static || genericOptionMayTakeNextValue(previous) {
 			return "", false
 		}
 	}
 	return call.replaceWord(index, replacement), true
+}
+
+func genericOptionMayTakeNextValue(arg string) bool {
+	if !strings.HasPrefix(arg, "-") {
+		return false
+	}
+	// A long option with an explicit inline value cannot consume the next word.
+	name, _, inline := strings.Cut(arg, "=")
+	return !inline || !strings.HasPrefix(name, "--") || len(name) == 2
 }
