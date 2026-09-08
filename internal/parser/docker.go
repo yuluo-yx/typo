@@ -16,8 +16,8 @@ type DockerParser struct {
 // NewDockerParser creates a new DockerParser.
 func NewDockerParser() *DockerParser {
 	return &DockerParser{
-		didYouMeanRegex: regexp.MustCompile(`(?s)docker: '([^']+)' is not a docker command\..*Similar command:\s+(\w+)`),
-		notFoundRegex:   regexp.MustCompile(`(?s)unknown command:\s+([^\s]+).*Did you mean:\s+(\w+)`),
+		didYouMeanRegex: regexp.MustCompile(`(?s)docker: '([^']+)' is not a docker command\..*Similar command:\s+([\w][\w-]*)[?!.]?(?:\s|$)`),
+		notFoundRegex:   regexp.MustCompile(`(?s)unknown command:\s+([^\s]+).*Did you mean:\s+([\w][\w-]*)[?!.]?(?:\s|$)`),
 	}
 }
 

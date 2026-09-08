@@ -17,7 +17,7 @@ type NpmParser struct {
 func NewNpmParser() *NpmParser {
 	return &NpmParser{
 		notFoundRegex:   regexp.MustCompile(`(?s)npm ERR!.*command\s+([^\s]+)\s+not found`),
-		didYouMeanRegex: regexp.MustCompile(`(?s)npm ERR!.*Did you mean\s+(\w+)`),
+		didYouMeanRegex: regexp.MustCompile(`(?s)npm ERR!.*Did you mean\s+([\w][\w-]*)[?!.]?(?:\s|$)`),
 	}
 }
 

@@ -30,7 +30,7 @@ var gitUpstreamTokenRegex = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._/@+-]*
 // NewGitParser creates a new GitParser.
 func NewGitParser() *GitParser {
 	return &GitParser{
-		didYouMeanRegex:            regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+(\w+)`),
+		didYouMeanRegex:            regexp.MustCompile(`(?s)git: '([^']+)' is not a git command\..*The most similar commands? (?:is|are)\s+([\w][\w-]*)(?:\s|$)`),
 		pullNoTrackingRegex:        regexp.MustCompile(`(?m)^There is no tracking information for the current branch\.[\t\r ]*$`),
 		pullSetUpstreamRegex:       regexp.MustCompile(`(?m)^[ \t]*git branch --set-upstream-to(?:=|[ \t]+)([^\s]+)(?:[ \t]+([^\s]+))?[\t\r ]*$`),
 		branchUpstreamMissingRegex: regexp.MustCompile(`(?m)^fatal: the requested upstream branch '([^'\r\n]+)' does not exist[\t\r ]*$`),

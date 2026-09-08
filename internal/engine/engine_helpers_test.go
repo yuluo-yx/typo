@@ -39,18 +39,6 @@ func TestTryMatch(t *testing.T) {
 	}
 }
 
-func TestEngine_RebuildCommand(t *testing.T) {
-	eng := NewEngine()
-
-	if got := eng.rebuildCommand("git", nil, "rule"); got.Command != "git" {
-		t.Fatalf("Expected bare command rebuild, got %+v", got)
-	}
-
-	if got := eng.rebuildCommand("git", []string{"status", "--short"}, "rule"); got.Command != "git status --short" {
-		t.Fatalf("Expected args to be preserved, got %+v", got)
-	}
-}
-
 func TestFindSubcommandIndex(t *testing.T) {
 	tests := []struct {
 		name    string

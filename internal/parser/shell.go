@@ -158,5 +158,3 @@ var npmParserOptionsWithValues = map[string]bool{
 	"--userconfig": true,
 	"-C":           true,
 }
-
-var genericParserOptionsWithValues = map[string]bool{}

@@ -196,10 +196,7 @@ func findExecutableArgIndex(args []*syntax.Word) int {
 		case "and", "or", "not":
 			idx++
 		case "command":
-			idx++
-			for idx < len(args) && commandWrapperOptions[args[idx].Lit()] {
-				idx++
-			}
+			idx = skipCommandWrapperOptions(args, idx+1)
 		case "env":
 			next := skipEnvWrapperArgs(args, idx+1)
 			if next == -1 {
@@ -227,27 +224,32 @@ func findExecutableArgIndex(args []*syntax.Word) int {
 
 func skipWrapperOptions(args []*syntax.Word, start int, optionsWithValues, optionsWithoutValues map[string]bool) int {
 	expectValue := false
+	optionsEnded := false
 	for i := start; i < len(args); i++ {
-		arg := args[i].Lit()
+		arg := wrapperArgText(args[i])
 		if expectValue {
 			expectValue = false
 			continue
 		}
 
-		if arg == "--" {
-			if i+1 < len(args) {
-				return i + 1
+		if !optionsEnded {
+			if arg == "--" {
+				optionsEnded = true
+				continue
 			}
-			return -1
+			if handled, needsValue := handleLongWrapperOption(arg, optionsWithValues, optionsWithoutValues); handled {
+				expectValue = needsValue
+				continue
+			}
+			if handled, needsValue := handleShortWrapperOption(arg, optionsWithValues, optionsWithoutValues); handled {
+				expectValue = needsValue
+				continue
+			}
 		}
-
-		if handled, needsValue := handleLongWrapperOption(arg, optionsWithValues, optionsWithoutValues); handled {
-			expectValue = needsValue
-			continue
-		}
-
-		if handled, needsValue := handleShortWrapperOption(arg, optionsWithValues, optionsWithoutValues); handled {
-			expectValue = needsValue
+		// Both env and sudo accept assignments before the executable. Options no
+		// longer apply after an assignment, but further assignments remain valid.
+		if isEnvAssignment(arg) {
+			optionsEnded = true
 			continue
 		}
 
@@ -258,39 +260,91 @@ func skipWrapperOptions(args []*syntax.Word, start int, optionsWithValues, optio
 }
 
 func skipEnvWrapperArgs(args []*syntax.Word, start int) int {
-	expectValue := false
-	for i := start; i < len(args); i++ {
-		arg := args[i].Lit()
-		if expectValue {
-			expectValue = false
-			continue
-		}
+	return skipWrapperOptions(args, start, envWrapperOptionsWithValues, envWrapperOptions)
+}
 
-		if arg == "--" {
-			if i+1 < len(args) {
-				return i + 1
-			}
-			return -1
-		}
-
-		if handled, needsValue := handleLongWrapperOption(arg, envWrapperOptionsWithValues, envWrapperOptions); handled {
-			expectValue = needsValue
-			continue
-		}
-
-		if handled, needsValue := handleShortWrapperOption(arg, envWrapperOptionsWithValues, envWrapperOptions); handled {
-			expectValue = needsValue
-			continue
-		}
-
-		if isEnvAssignment(arg) {
-			continue
-		}
-
-		return i
+// wrapperArgText reads only syntax literals. Quoted scalar expansions after '='
+// preserve argument boundaries, so their values are not needed for classification.
+func wrapperArgText(word *syntax.Word) string {
+	if value := word.Lit(); value != "" {
+		return value
 	}
+	if wrapperPartsMaySplit(word.Parts, false) {
+		return ""
+	}
+	var prefix strings.Builder
+	complete := appendWrapperLiteralPrefix(&prefix, word.Parts)
+	value := prefix.String()
+	if complete || strings.Contains(value, "=") {
+		return value
+	}
+	return ""
+}
 
-	return -1
+func wrapperPartsMaySplit(parts []syntax.WordPart, quoted bool) bool {
+	for _, part := range parts {
+		maySplit := false
+		switch node := part.(type) {
+		case *syntax.Lit, *syntax.SglQuoted:
+		case *syntax.DblQuoted:
+			maySplit = wrapperPartsMaySplit(node.Parts, true)
+		case *syntax.CmdSubst, *syntax.ArithmExp:
+			maySplit = !quoted
+		case *syntax.ParamExp:
+			maySplit = wrapperParameterMaySplit(node, quoted)
+		default:
+			maySplit = true
+		}
+		if maySplit {
+			return true
+		}
+	}
+	return false
+}
+
+func wrapperParameterMaySplit(param *syntax.ParamExp, quoted bool) bool {
+	if !quoted || param.Param == nil || param.Param.Value == "@" || param.Index != nil || param.Excl || param.Names != 0 {
+		return true
+	}
+	return param.Exp != nil && param.Exp.Word != nil && wrapperPartsMaySplit(param.Exp.Word.Parts, true)
+}
+
+func appendWrapperLiteralPrefix(prefix *strings.Builder, parts []syntax.WordPart) bool {
+	for _, part := range parts {
+		switch node := part.(type) {
+		case *syntax.Lit:
+			prefix.WriteString(node.Value)
+		case *syntax.SglQuoted:
+			if node.Dollar {
+				return false
+			}
+			prefix.WriteString(node.Value)
+		case *syntax.DblQuoted:
+			if node.Dollar {
+				return false
+			}
+			if !appendWrapperLiteralPrefix(prefix, node.Parts) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func skipCommandWrapperOptions(args []*syntax.Word, start int) int {
+	for start < len(args) {
+		arg := wrapperArgText(args[start])
+		if arg == "--" {
+			return start + 1
+		}
+		if !commandWrapperOptions[arg] {
+			break
+		}
+		start++
+	}
+	return start
 }
 
 func handleLongWrapperOption(arg string, optionsWithValues, optionsWithoutValues map[string]bool) (bool, bool) {
@@ -320,14 +374,16 @@ func handleShortWrapperOption(arg string, optionsWithValues, optionsWithoutValue
 		return false, false
 	}
 
-	if optionsWithValues[arg] {
-		return true, true
+	for i := 1; i < len(arg); i++ {
+		option := "-" + arg[i:i+1]
+		if optionsWithValues[option] {
+			return true, i+1 == len(arg)
+		}
+		if !optionsWithoutValues[option] {
+			return true, false
+		}
 	}
-	if optionsWithoutValues[arg] || len(arg) > 1 {
-		return true, false
-	}
-
-	return false, false
+	return true, false
 }
 
 func isEnvAssignment(arg string) bool {

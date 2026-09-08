@@ -18,4 +18,5 @@ markdown-lint: ## Lint check the markdown files.
 markdown-lint: install-markdownlint
 	@$(LOG_TARGET)
 	"$(MARKDOWNLINT)" --version
-	"$(MARKDOWNLINT)" --config ./tools/linter/markdownlint/markdown_lint_config.yml --ignore tools/node/node_modules .
+	@git ls-files -z --cached --others --exclude-standard -- '*.md' '*.markdown' | \
+		xargs -0 "$(MARKDOWNLINT)" --config ./tools/linter/markdownlint/markdown_lint_config.yml --

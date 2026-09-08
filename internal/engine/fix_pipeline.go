@@ -194,16 +194,14 @@ func (e *Engine) fixOnePass(input itypes.ParserContext) itypes.FixResult {
 }
 
 // FixCommand attempts to fix only the command word, preserving arguments.
-
-// FixCommand attempts to fix only the command word, preserving arguments.
 func (e *Engine) FixCommand(cmd string) itypes.FixResult {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
 		return itypes.FixResult{Fixed: false}
 	}
 
-	if result := e.fixCommandWordWithShell(cmd); result.Fixed {
-		return result
+	if lines, err := parseShellCommandLines(cmd); err == nil {
+		return e.fixCommandWordWithShell(lines)
 	}
 
 	// Split into command and args
@@ -214,38 +212,42 @@ func (e *Engine) FixCommand(cmd string) itypes.FixResult {
 
 	cmdWord := parts[0]
 	args := parts[1:]
+	// Incomplete shell input still needs its original argument bytes preserved.
+	rebuild := func(replacement, source string) itypes.FixResult {
+		return itypes.FixResult{Fixed: true, Command: replaceFirstField(cmd, cmdWord, replacement), Source: source}
+	}
 
 	// Try to fix just the command word
 	if result := e.tryUserRules(cmdWord); result.Fixed {
-		rebuilt := e.rebuildCommand(result.Command, args, "rule")
+		rebuilt := rebuild(result.Command, "rule")
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
 	}
 
 	if result := e.tryHistory(cmdWord); result.Fixed {
-		rebuilt := e.rebuildCommand(result.Command, args, fixSourceHistory)
+		rebuilt := rebuild(result.Command, fixSourceHistory)
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
 	}
 
 	if replacement := e.findCommandTreeRootForArgs(cmdWord, args); replacement != "" {
-		rebuilt := e.rebuildCommand(replacement, args, "tree")
+		rebuilt := rebuild(replacement, "tree")
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
 	}
 
 	if result := e.tryBuiltinRules(cmdWord); result.Fixed {
-		rebuilt := e.rebuildCommand(result.Command, args, "rule")
+		rebuilt := rebuild(result.Command, "rule")
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
 	}
 
 	if result := e.tryDistance(cmdWord); result.Fixed {
-		rebuilt := e.rebuildCommand(result.Command, args, fixSourceDistance)
+		rebuilt := rebuild(result.Command, fixSourceDistance)
 		if isMeaningfulFix(cmd, rebuilt) {
 			return rebuilt
 		}
@@ -254,13 +256,9 @@ func (e *Engine) FixCommand(cmd string) itypes.FixResult {
 	return itypes.FixResult{Fixed: false}
 }
 
-func (e *Engine) fixCommandWordWithShell(cmd string) itypes.FixResult {
-	lines, err := parseShellCommandLines(cmd)
-	if err != nil {
-		return itypes.FixResult{Fixed: false}
-	}
-
+func (e *Engine) fixCommandWordWithShell(lines []*shellCommandLine) itypes.FixResult {
 	for _, line := range lines {
+		cmd := line.raw
 		cmdWord := line.commandWord()
 
 		if rule, ok := e.rules.MatchUser(cmdWord); ok {
