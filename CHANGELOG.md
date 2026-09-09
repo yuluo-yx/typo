@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.8.3](https://github.com/yuluo-yx/typo/compare/v1.8.2...v1.8.3) (2026-09-09)
+
+### 修复
+
+* 修复 Shell 命令修正时目标与参数的保留问题（#237）。
+* 修复 Homebrew 本地 tap 安装时的 API 模式，并通过发布 URL 推断版本。
+
+### 构建与依赖
+
+* 升级 `mvdan.cc/sh/v3` 至 3.14.0（#234）。
+* 升级 Homebrew setup-homebrew 至 2026.09.07.1（#235）。
+* 升级 softprops/action-gh-release 至 3.0.3，并修正版本注释（#236）。
+
+发布二进制使用 Go 1.26.6 在本地构建，附带六个平台产物及 SHA-256 校验清单。
+
+无迁移，直接替换二进制；配置格式不变。需要回滚时安装 v1.8.2。
+
 ## [1.8.2](https://github.com/yuluo-yx/typo/compare/v1.8.1...v1.8.2) (2026-09-06)
 
 ### 修复
