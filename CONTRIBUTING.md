@@ -20,9 +20,9 @@ make setup
 首次提交前运行 `make install-govulncheck`，并确认 `go version` 与项目要求一致。
 通过 mise 选择 Go 时，请在同一工具链环境中执行测试和提交。
 常规 CI 与 Release CI 使用 Go 1.26.6 构建和验收；`go.mod` 的最低版本保持 1.26.3。
-Homebrew formula 的版本由 Release 下载 URL 推导，不添加重复的 `version` 声明。
-发布脚本同时更新四个平台的 URL 与校验和，并兼容移除旧声明；修改后需通过 Homebrew 严格审查、安装及测试。
-Homebrew CI 使用完整 tap 名称安装本地 formula，保留默认 API 模式，避免额外克隆 `homebrew/core`。
+本仓库不再维护自建 Homebrew tap、二进制 Formula 或配方更新工作流。
+Homebrew core 配方需在上游仓库独立维护，从正式版本源码构建，并通过配方审查、安装及功能测试。
+官方收录前，请使用 README 中的脚本或 Release 安装方式。
 
 This creates the project-local Python virtual environment in `.venv/`, installs
 the pinned `pre-commit` there, and configures Git to use the project's hook
