@@ -1,0 +1,50 @@
+name: Homebrew
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Formula/**'
+      - 'tools/release/update-homebrew-formula.sh'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Formula/**'
+      - 'tools/release/update-homebrew-formula.sh'
+
+jobs:
+  test:
+    name: Homebrew ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # Dependabot does not maintain the Homebrew formula, so dependency PRs must not run brew even if path filters expand later.
+    if: >-
+      github.repository == 'yuluo-yx/typo' &&
+      (github.event_name != 'pull_request' || github.actor != 'dependabot[bot]')
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Homebrew/actions/setup-homebrew@f8d4222eb633e65c2a0157383cf80861fc7fae7f
+
+      - name: Tap local checkout
+        run: brew tap yuluo-yx/typo "$GITHUB_WORKSPACE"
+
+      - name: Audit formula
+        run: brew audit --strict --online yuluo-yx/typo/typo
+
+      - name: Install formula
+        run: brew install --verbose yuluo-yx/typo/typo
+
+      - name: Test formula
+        run: brew test yuluo-yx/typo/typo
+
+      - name: Verify binary
+        run: typo version

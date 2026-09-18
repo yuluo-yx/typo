@@ -6,17 +6,31 @@ English | [简体中文](quick-start_CN.md)
 
 ### Homebrew
 
-本仓库已移除自建 Homebrew tap。官方 core 尚未收录时，请使用下方脚本安装；
-不要直接运行 `brew install typo`，也不要继续添加旧 tap。
+Homebrew installs the prebuilt Release binary for macOS or Linux.
+Because the tap is maintained in this repository, add it with the explicit repository URL first.
 
-已有 tap 安装可先按下方脚本安装方式确认可用版本，再卸载旧包、移除 tap 并安装脚本版本：
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+Upgrade an existing Homebrew installation:
+
+```bash
+typo update
+```
+
+`typo update` runs `brew update` and `brew upgrade typo` when the running
+`typo` binary is managed by Homebrew.
+
+Uninstall typo and remove the tap:
 
 ```bash
 brew uninstall typo
 brew untap yuluo-yx/typo
 ```
 
-用户配置目录 `~/.typo` 无需迁移。安装完成后按 README 配置 Shell 集成。
+After installing, continue with the shell integration steps in the `Shell Integration` section of the README.
 
 ### macOS / Linux via script
 

@@ -39,9 +39,14 @@ Typo 是用 Go 编写的命令自动修正工具。输入命令后按两次 `Esc
 
 ## 快速开始
 
-自建 Homebrew tap 已移除；官方 core 收录前，请使用以下安装方式。
+使用 Homebrew 安装：
 
-在 macOS / Linux 上使用脚本安装：
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+或者在 macOS / Linux 上使用脚本安装：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash
