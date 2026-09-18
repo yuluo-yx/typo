@@ -1,3 +1,4 @@
+# This project tap distributes prebuilt binaries from tagged releases.
 class Typo < Formula
   desc "Command auto-correction tool"
   homepage "https://github.com/yuluo-yx/typo"

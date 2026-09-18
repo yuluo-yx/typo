@@ -38,7 +38,7 @@ For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is
 
 ## Quick Start
 
-Install with Homebrew:
+Install with Homebrew using the project's own tap:
 
 ```bash
 brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo

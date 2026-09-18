@@ -39,7 +39,7 @@ Typo 是用 Go 编写的命令自动修正工具。输入命令后按两次 `Esc
 
 ## 快速开始
 
-使用 Homebrew 安装：
+通过项目自有 tap 使用 Homebrew 安装：
 
 ```bash
 brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo

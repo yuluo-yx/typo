@@ -35,6 +35,7 @@ jobs:
       - uses: Homebrew/actions/setup-homebrew@f8d4222eb633e65c2a0157383cf80861fc7fae7f
 
       - name: Tap local checkout
+        # Validate the formula from this commit instead of the remote tap checkout.
         run: brew tap yuluo-yx/typo "$GITHUB_WORKSPACE"
 
       - name: Audit formula
