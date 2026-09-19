@@ -38,9 +38,21 @@ For these reasons, I wrote Typo in Go. It is not a translation of TheFuck. It is
 
 ## Quick Start
 
-自建 Homebrew tap 已移除；官方 core 收录前，请使用以下安装方式。
+Install with Homebrew using the project's own tap:
 
-macOS / Linux 脚本安装：
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+Or manage the installation with [mise](https://mise.jdx.dev/getting-started.html):
+
+```bash
+mise use -g github:yuluo-yx/typo@latest
+mise exec -- typo version
+```
+
+Or install on macOS / Linux with the script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yuluo-yx/typo/main/tools/scripts/install.sh | bash

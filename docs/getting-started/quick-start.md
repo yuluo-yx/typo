@@ -6,17 +6,68 @@ English | [简体中文](quick-start_CN.md)
 
 ### Homebrew
 
-本仓库已移除自建 Homebrew tap。官方 core 尚未收录时，请使用下方脚本安装；
-不要直接运行 `brew install typo`，也不要继续添加旧 tap。
+Homebrew installs the prebuilt Release binary for macOS or Linux.
+Because the tap is maintained in this repository, add it with the explicit repository URL first.
 
-已有 tap 安装可先按下方脚本安装方式确认可用版本，再卸载旧包、移除 tap 并安装脚本版本：
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+Upgrade an existing Homebrew installation:
+
+```bash
+typo update
+```
+
+`typo update` runs `brew update` and `brew upgrade typo` when the running
+`typo` binary is managed by Homebrew.
+
+Uninstall typo and remove the tap:
 
 ```bash
 brew uninstall typo
 brew untap yuluo-yx/typo
 ```
 
-用户配置目录 `~/.typo` 无需迁移。安装完成后按 README 配置 Shell 集成。
+After installing, continue with the shell integration steps in the `Shell Integration` section of the README.
+
+### mise
+
+First [install and activate mise](https://mise.jdx.dev/getting-started.html) in your shell.
+The [GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html) downloads the
+Release binary for your platform without requiring Go or a separate plugin.
+
+Install globally and verify the executable selected by mise:
+
+```bash
+mise use -g github:yuluo-yx/typo@latest
+mise which typo
+mise exec -- typo version
+```
+
+`@latest` follows GitHub's latest Release, whose tag may not be a semantic version.
+To select a specific tagged release, use:
+
+```bash
+mise use -g github:yuluo-yx/typo@1.8.2
+```
+
+Omit `-g` to save the version in the current project's `mise.toml` instead.
+
+For an installation configured with `@latest`, upgrade with mise:
+
+```bash
+mise upgrade github:yuluo-yx/typo
+```
+
+For a pinned installation, select the desired version with `mise use` again.
+Use mise to manage updates; `typo update` does not manage mise installations.
+
+After activating mise, follow the README's `Shell Integration` section to enable
+Typo in your shell. Place Typo's init command after mise activation so it resolves
+the mise-managed binary. If another installation is also present, compare
+`mise which typo` with `typo doctor` to check which executable your shell uses.
 
 ### macOS / Linux via script
 

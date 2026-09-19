@@ -6,17 +6,67 @@
 
 ### Homebrew
 
-本仓库已移除自建 Homebrew tap。官方 core 尚未收录时，请使用下方脚本安装；
-不要直接运行 `brew install typo`，也不要继续添加旧 tap。
+Homebrew 会安装 macOS 或 Linux 对应的预编译 Release 二进制。
+由于 tap 维护在当前仓库内，请先使用显式仓库 URL 添加 tap。
 
-已有 tap 安装可先按下方脚本安装方式确认可用版本，再卸载旧包、移除 tap 并安装脚本版本：
+```bash
+brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
+brew install typo
+```
+
+升级已有的 Homebrew 安装：
+
+```bash
+typo update
+```
+
+当当前正在运行的 `typo` 二进制由 Homebrew 管理时，`typo update` 会执行 `brew update`
+和 `brew upgrade typo`。
+
+卸载 typo 并移除 tap：
 
 ```bash
 brew uninstall typo
 brew untap yuluo-yx/typo
 ```
 
-用户配置目录 `~/.typo` 无需迁移。安装完成后按 README 配置 Shell 集成。
+安装完成后，请继续参考 README 中的 `Shell 集成` 部分配置 shell 集成。
+
+### mise
+
+先按照 [mise 入门指南](https://mise.jdx.dev/getting-started.html)安装 mise，并在 shell 中激活。
+mise 的 [GitHub 后端](https://mise.jdx.dev/dev-tools/backends/github.html)会下载当前平台对应的
+Release 二进制，无需安装 Go 或额外插件。
+
+全局安装并检查 mise 选中的可执行文件：
+
+```bash
+mise use -g github:yuluo-yx/typo@latest
+mise which typo
+mise exec -- typo version
+```
+
+`@latest` 跟随 GitHub 标记的最新 Release，其标签不一定是语义化版本号。
+如果需要固定到指定版本标签，使用：
+
+```bash
+mise use -g github:yuluo-yx/typo@1.8.2
+```
+
+省略 `-g` 可将版本写入当前项目的 `mise.toml`。
+
+使用 `@latest` 配置的安装可通过 mise 升级：
+
+```bash
+mise upgrade github:yuluo-yx/typo
+```
+
+固定版本的安装需再次运行 `mise use` 选择目标版本。
+请通过 mise 管理更新；`typo update` 不管理 mise 安装的版本。
+
+激活 mise 后，按 README 的“Shell 集成”部分启用 Typo。
+将 Typo 初始化命令放在 mise 激活命令之后，确保使用 mise 管理的二进制。
+如果同时存在其他安装方式，可对照 `mise which typo` 与 `typo doctor` 的结果确认 shell 使用的可执行文件。
 
 ### macOS / Linux 脚本安装
 
