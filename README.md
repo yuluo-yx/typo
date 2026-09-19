@@ -45,6 +45,13 @@ brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
 brew install typo
 ```
 
+Or manage the installation with [mise](https://mise.jdx.dev/getting-started.html):
+
+```bash
+mise use -g github:yuluo-yx/typo@latest
+mise exec -- typo version
+```
+
 Or install on macOS / Linux with the script:
 
 ```bash

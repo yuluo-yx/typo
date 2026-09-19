@@ -32,6 +32,43 @@ brew untap yuluo-yx/typo
 
 After installing, continue with the shell integration steps in the `Shell Integration` section of the README.
 
+### mise
+
+First [install and activate mise](https://mise.jdx.dev/getting-started.html) in your shell.
+The [GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html) downloads the
+Release binary for your platform without requiring Go or a separate plugin.
+
+Install globally and verify the executable selected by mise:
+
+```bash
+mise use -g github:yuluo-yx/typo@latest
+mise which typo
+mise exec -- typo version
+```
+
+`@latest` follows GitHub's latest Release, whose tag may not be a semantic version.
+To select a specific tagged release, use:
+
+```bash
+mise use -g github:yuluo-yx/typo@1.8.2
+```
+
+Omit `-g` to save the version in the current project's `mise.toml` instead.
+
+For an installation configured with `@latest`, upgrade with mise:
+
+```bash
+mise upgrade github:yuluo-yx/typo
+```
+
+For a pinned installation, select the desired version with `mise use` again.
+Use mise to manage updates; `typo update` does not manage mise installations.
+
+After activating mise, follow the README's `Shell Integration` section to enable
+Typo in your shell. Place Typo's init command after mise activation so it resolves
+the mise-managed binary. If another installation is also present, compare
+`mise which typo` with `typo doctor` to check which executable your shell uses.
+
 ### macOS / Linux via script
 
 ```bash

@@ -46,6 +46,13 @@ brew tap yuluo-yx/typo https://github.com/yuluo-yx/typo
 brew install typo
 ```
 
+也可以使用 [mise](https://mise.jdx.dev/getting-started.html) 管理安装：
+
+```bash
+mise use -g github:yuluo-yx/typo@latest
+mise exec -- typo version
+```
+
 或者在 macOS / Linux 上使用脚本安装：
 
 ```bash

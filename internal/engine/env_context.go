@@ -30,11 +30,16 @@ func (e *Engine) tryEnvVarFix(cmd string, entries []itypes.AliasContextEntry) it
 	if err != nil {
 		return itypes.FixResult{Fixed: false}
 	}
+	boundNames := shellBoundVariableNames(cmd)
 
 	replacements := make([]rawRangeReplacement, 0)
 	for _, line := range lines {
 		for _, word := range line.args {
-			replacements = append(replacements, collectEnvVarWordReplacements(word, cmd, envNames, e.envDistanceMatchConfig())...)
+			for _, replacement := range collectEnvVarWordReplacements(word, cmd, envNames, e.envDistanceMatchConfig()) {
+				if !boundNames[cmd[replacement.start:replacement.end]] {
+					replacements = append(replacements, replacement)
+				}
+			}
 		}
 	}
 
@@ -52,6 +57,54 @@ func (e *Engine) tryEnvVarFix(cmd string, entries []itypes.AliasContextEntry) it
 		Command: fixedCommand,
 		Source:  "env",
 	}
+}
+
+// shellBoundVariableNames protects explicit bindings throughout an input line.
+// Shell control flow and function invocation can make scope dynamic, so a name
+// bound anywhere in the input is conservatively excluded from fuzzy correction.
+func shellBoundVariableNames(raw string) map[string]bool {
+	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.RecoverErrors(1)).Parse(strings.NewReader(raw+"\n"), "")
+	if err != nil {
+		return nil
+	}
+	names := make(map[string]bool)
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if name := shellBindingName(node); name != "" {
+			names[name] = true
+		}
+		return true
+	})
+	return names
+}
+
+func shellBindingName(node syntax.Node) string {
+	switch node := node.(type) {
+	case *syntax.Assign:
+		if node.Name != nil {
+			return node.Name.Value
+		}
+	case *syntax.WordIter:
+		return node.Name.Value
+	case *syntax.BinaryArithm:
+		switch node.Op {
+		case syntax.Assgn, syntax.AddAssgn, syntax.SubAssgn, syntax.MulAssgn,
+			syntax.QuoAssgn, syntax.RemAssgn, syntax.AndAssgn, syntax.OrAssgn,
+			syntax.XorAssgn, syntax.ShlAssgn, syntax.ShrAssgn:
+			return arithmeticBindingName(node.X)
+		}
+	case *syntax.UnaryArithm:
+		if node.Op == syntax.Inc || node.Op == syntax.Dec {
+			return arithmeticBindingName(node.X)
+		}
+	}
+	return ""
+}
+
+func arithmeticBindingName(expr syntax.ArithmExpr) string {
+	if word, ok := expr.(*syntax.Word); ok && isSimpleEnvName(word.Lit()) {
+		return word.Lit()
+	}
+	return ""
 }
 
 func (e *Engine) envDistanceMatchConfig() distanceMatchConfig {

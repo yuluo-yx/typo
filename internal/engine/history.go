@@ -32,7 +32,7 @@ func NewHistory(configDir string) *History {
 	if configDir != "" {
 		_ = os.MkdirAll(configDir, 0755)
 	}
-	h.load()
+	_ = h.load()
 	h.rebuildTargets()
 	return h
 }
@@ -268,26 +268,31 @@ func (h *History) Count() int {
 	return len(h.entries)
 }
 
-func (h *History) load() {
+func (h *History) load() error {
 	if h.configDir == "" {
-		return
+		return nil
 	}
 
 	historyFile := filepath.Join(h.configDir, usageHistoryFileName)
 	data, err := os.ReadFile(historyFile)
-	if err != nil {
-		return // No history file yet
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	h.entries = make(map[string]itypes.HistoryEntry)
+	if os.IsNotExist(err) {
+		return nil
 	}
 
 	var entries []itypes.HistoryEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
 		storage.QuarantineInvalidJSON(historyFile, err)
-		return
+		return nil
 	}
 
 	for _, entry := range entries {
 		h.entries[entry.From] = entry
 	}
+	return nil
 }
 
 func (h *History) save() error {

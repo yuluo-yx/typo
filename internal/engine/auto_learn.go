@@ -19,7 +19,19 @@ type autoLearnResult struct {
 
 // MaybeAutoLearnFromHistory silently promotes a repeated history pair into a user rule.
 func (e *Engine) MaybeAutoLearnFromHistory(ctx context.Context, from, to string) itypes.AutoLearnDebugInfo {
-	return toAutoLearnDebugInfo(e.maybeAutoLearnFromHistory(ctx, from, to))
+	if !autoLearnEnabled(e) {
+		return toAutoLearnDebugInfo(e.maybeAutoLearnFromHistory(ctx, from, to))
+	}
+	ctx = autoLearnContext(ctx)
+	var result autoLearnResult
+	err := e.withPersistentState(ctx, func() error {
+		result = e.maybeAutoLearnFromHistory(ctx, from, to)
+		return nil
+	})
+	if err != nil {
+		result = autoLearnResultWithErr(result, err)
+	}
+	return toAutoLearnDebugInfo(result)
 }
 
 func (e *Engine) maybeAutoLearnFromHistory(ctx context.Context, from, to string) autoLearnResult {
