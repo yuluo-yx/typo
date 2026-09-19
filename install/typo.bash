@@ -86,7 +86,7 @@ _typo_init_stderr_cache() {
     if _typo_owns_stderr_cache && [[ -f "$TYPO_STDERR_CACHE" && -w "$TYPO_STDERR_CACHE" ]]; then
         # Cache already exists, but we still need to ensure FIFO exists
         if [[ -z "${_TYPO_STDERR_FIFO:-}" ]]; then
-            _TYPO_STDERR_FIFO="$tmp_dir/typo-fifo-$$.fifo"
+            _TYPO_STDERR_FIFO="$TYPO_STDERR_CACHE.fifo"
             rm -f "$_TYPO_STDERR_FIFO"
             if ! mkfifo "$_TYPO_STDERR_FIFO"; then
                 echo "typo debug: mkfifo $_TYPO_STDERR_FIFO failed (cache exists)" >&2
@@ -116,7 +116,7 @@ _typo_init_stderr_cache() {
     # Create a named pipe (FIFO) for reliable stderr capture in bash 4.x
     # This avoids the process substitution race condition issue
     if [[ -z "${_TYPO_STDERR_FIFO:-}" ]]; then
-        _TYPO_STDERR_FIFO="$tmp_dir/typo-fifo-$$.fifo"
+        _TYPO_STDERR_FIFO="$TYPO_STDERR_CACHE.fifo"
         # Remove any existing file with the same name (could be leftover or regular file)
         rm -f "$_TYPO_STDERR_FIFO"
         if ! mkfifo "$_TYPO_STDERR_FIFO"; then
@@ -452,6 +452,18 @@ _typo_restore_stderr() {
 }
 
 _typo_preexec() {
+    # A background command may still own the previous FIFO's write end. Retire
+    # its names before starting a new capture; tee keeps its open descriptors,
+    # so delayed output remains visible without contaminating the next cache.
+    if [[ -n "${_TYPO_TEE_PID:-}" ]]; then
+        if _typo_owns_stderr_cache; then
+            rm -f -- "$TYPO_STDERR_CACHE" 2>/dev/null
+        fi
+        if [[ -n "${_TYPO_STDERR_FIFO:-}" ]]; then
+            rm -f -- "$_TYPO_STDERR_FIFO" 2>/dev/null
+        fi
+        unset TYPO_STDERR_CACHE TYPO_STDERR_CACHE_OWNER _TYPO_STDERR_FIFO _TYPO_TEE_PID
+    fi
     _typo_init_stderr_cache || return
     _typo_save_original_stderr || return
     : > "$TYPO_STDERR_CACHE"
@@ -462,12 +474,12 @@ _typo_preexec() {
     # Our approach: use a named pipe with carefully ordered operations:
     # 1. Start tee reading from FIFO (it will block until FIFO is opened for write)
     # 2. Redirect stderr to FIFO (this unblocks tee)
-    # 3. In precmd, close stderr->FIFO (tee gets EOF) and wait for tee to finish
+    # 3. In precmd, close stderr->FIFO and allow a bounded drain before the prompt
     if [[ -n "${_TYPO_STDERR_FIFO:-}" && -p "${_TYPO_STDERR_FIFO:-}" ]]; then
         # Start tee in background, reading from FIFO
         tee "$TYPO_STDERR_CACHE" >&"$TYPO_ORIG_STDERR_FD" < "$_TYPO_STDERR_FIFO" &
         _TYPO_TEE_PID=$!
-               # Now redirect stderr to the FIFO (this unblocks tee)
+        # Now redirect stderr to the FIFO (this unblocks tee)
         exec 2> "$_TYPO_STDERR_FIFO"
     else
         # Fallback: direct redirect to cache file (no real-time stderr display)
@@ -478,19 +490,28 @@ _typo_preexec() {
 # Called from PROMPT_COMMAND; capture previous command status and restore stderr.
 _typo_precmd() {
     local status=$?
+    local attempt=0
     TYPO_LAST_EXIT_CODE=$status
 
     # First restore stderr to original (closes write end of FIFO)
     # This sends EOF to tee, allowing it to terminate
     _typo_restore_stderr
 
-    # Wait for tee process to finish writing all stderr output
+    # Foreground output normally drains immediately. A background process can
+    # retain stderr indefinitely, so never wait for it before showing a prompt.
     if [[ -n "${_TYPO_TEE_PID:-}" ]]; then
-        wait "$_TYPO_TEE_PID" 2>/dev/null
-        unset _TYPO_TEE_PID
+        while kill -0 "$_TYPO_TEE_PID" 2>/dev/null && (( attempt < 5 )); do
+            sleep 0.01
+            attempt=$((attempt + 1))
+        done
+        if ! kill -0 "$_TYPO_TEE_PID" 2>/dev/null; then
+            wait "$_TYPO_TEE_PID" 2>/dev/null
+            unset _TYPO_TEE_PID
+        fi
     fi
 
     TYPO_READY_FOR_PREEXEC=1
+    return "$status"
 }
 
 _typo_bashexit() {
@@ -522,11 +543,18 @@ _typo_bashexit() {
 }
 
 _typo_bash_exit_trap() {
+    local status=$?
     _typo_bashexit
 
     if [[ -n "${_TYPO_PREV_EXIT_TRAP:-}" ]]; then
-        eval -- "$_TYPO_PREV_EXIT_TRAP"
+        # Restore $? in both branches without triggering errexit on failure.
+        if (exit "$status"); then
+            eval -- "$_TYPO_PREV_EXIT_TRAP"
+        else
+            eval -- "$_TYPO_PREV_EXIT_TRAP"
+        fi
     fi
+    return "$status"
 }
 
 _typo_debug_trap() {

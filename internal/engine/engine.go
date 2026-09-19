@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -1537,12 +1538,14 @@ var builtinToolOptionsWithValues = map[string]map[string]bool{
 
 // Learn stores a user-taught correction as a rule instead of history.
 func (e *Engine) Learn(from, to string) error {
-	return e.storeUserRule(from, to)
+	return e.AddRule(from, to)
 }
 
 // AddRule adds a user rule.
 func (e *Engine) AddRule(from, to string) error {
-	return e.storeUserRule(from, to)
+	return e.withPersistentState(context.Background(), func() error {
+		return e.storeUserRule(from, to)
+	})
 }
 
 func (e *Engine) storeUserRule(from, to string) error {
@@ -1572,6 +1575,12 @@ func (e *Engine) storeUserRule(from, to string) error {
 
 // RemoveRule removes a user rule and clears its related correction history in the same operation.
 func (e *Engine) RemoveRule(from string) error {
+	return e.withPersistentState(context.Background(), func() error {
+		return e.removeRule(from)
+	})
+}
+
+func (e *Engine) removeRule(from string) error {
 	from = strings.TrimSpace(from)
 	previous, existed := e.rules.MatchUser(from)
 	if !existed {
@@ -1601,7 +1610,9 @@ func (e *Engine) ListHistory() []itypes.HistoryEntry {
 
 // RecordHistory records a correction that actually happened.
 func (e *Engine) RecordHistory(from, to string) error {
-	return e.history.Record(from, to)
+	return e.withPersistentState(context.Background(), func() error {
+		return e.history.Record(from, to)
+	})
 }
 
 func (e *Engine) clearConflictingHistory(from string) error {

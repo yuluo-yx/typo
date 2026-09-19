@@ -212,6 +212,44 @@ func TestQuarantineInvalidJSON_RenameFailure(t *testing.T) {
 	}
 }
 
+func TestQuarantinePreservesRepeatedVersions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.json")
+	const versions = 20
+	want := make(map[string]bool)
+	for i := range versions {
+		content := strings.Repeat("{", i+1)
+		want[content] = true
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := quarantineFile(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	backups, err := filepath.Glob(path + ".corrupt-*")
+	if err != nil || len(backups) != versions {
+		t.Fatalf("backups = %d, want %d: %v", len(backups), versions, err)
+	}
+	for _, backup := range backups {
+		content, err := os.ReadFile(backup)
+		if err != nil || !want[string(content)] {
+			t.Fatalf("unexpected backup %q: %v", content, err)
+		}
+		delete(want, string(content))
+	}
+	if _, err := quarantineFile(path); err == nil {
+		t.Fatal("missing source must fail")
+	}
+	remaining, _ := filepath.Glob(path + ".corrupt-*")
+	if len(remaining) != versions {
+		t.Fatal("failed quarantine left an empty reservation")
+	}
+	if _, err := quarantineFile(filepath.Join(path, "missing", "nested.json")); err == nil {
+		t.Fatal("missing destination directory must fail")
+	}
+}
+
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
 

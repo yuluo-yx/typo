@@ -85,11 +85,30 @@ func writeFileAtomicWithOps(filename string, data []byte, perm os.FileMode, ops 
 
 // QuarantineInvalidJSON moves a corrupted JSON file aside so later writes do not silently overwrite it.
 func QuarantineInvalidJSON(path string, parseErr error) {
-	backupPath := fmt.Sprintf("%s.corrupt-%s", path, time.Now().UTC().Format("20060102T150405"))
-	if err := os.Rename(path, backupPath); err != nil {
+	backupPath, err := quarantineFile(path)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "typo: ignoring invalid JSON file %s: %v\n", path, parseErr)
 		return
 	}
 
 	fmt.Fprintf(os.Stderr, "typo: moved invalid JSON file %s to %s: %v\n", path, backupPath, parseErr)
+}
+
+func quarantineFile(path string) (string, error) {
+	pattern := filepath.Base(path) + ".corrupt-" + time.Now().UTC().Format("20060102T150405") + "-*"
+	// Reserve a unique destination before rename, so no existing backup is replaced.
+	reservation, err := os.CreateTemp(filepath.Dir(path), pattern)
+	if err != nil {
+		return "", err
+	}
+	backupPath := reservation.Name()
+	if err := reservation.Close(); err != nil {
+		_ = os.Remove(backupPath)
+		return "", err
+	}
+	if err := os.Rename(path, backupPath); err != nil {
+		_ = os.Remove(backupPath)
+		return "", err
+	}
+	return backupPath, nil
 }
