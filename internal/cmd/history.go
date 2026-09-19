@@ -29,7 +29,7 @@ func cmdHistory(args []string) int {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
-		if err := h.Clear(); err != nil {
+		if err := engine.NewEngine(engine.WithHistory(h)).ClearHistory(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}

@@ -45,7 +45,7 @@ func NewRules(configDir string) *Rules {
 		_ = os.MkdirAll(configDir, 0755)
 	}
 	r.initBuiltinRules()
-	r.loadUserRules()
+	_ = r.loadUserRules()
 	r.rebuildTargets()
 	return r
 }
@@ -456,21 +456,25 @@ func (r *Rules) initBuiltinRules() {
 	}
 }
 
-func (r *Rules) loadUserRules() {
+func (r *Rules) loadUserRules() error {
 	if r.configDir == "" {
-		return
+		return nil
 	}
 
 	rulesFile := filepath.Join(r.configDir, "rules.json")
 	data, err := os.ReadFile(rulesFile)
-	if err != nil {
-		return // No user rules file yet
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	r.user = make(map[string]itypes.Rule)
+	if os.IsNotExist(err) {
+		return nil
 	}
 
 	var userRules []itypes.Rule
 	if err := json.Unmarshal(data, &userRules); err != nil {
 		storage.QuarantineInvalidJSON(rulesFile, err)
-		return
+		return nil
 	}
 
 	for _, rule := range userRules {
@@ -483,6 +487,7 @@ func (r *Rules) loadUserRules() {
 		rule.Enable = true
 		r.user[rule.From] = rule
 	}
+	return nil
 }
 
 func (r *Rules) saveUserRules() error {
