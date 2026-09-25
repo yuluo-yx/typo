@@ -92,10 +92,12 @@ func substitutionCost(a, b rune, weights KeyboardWeights) float64 {
 
 // Similarity calculates the similarity ratio between two strings (0-1).
 func Similarity(a, b string, weights KeyboardWeights) float64 {
-	if len(a) == 0 && len(b) == 0 {
+	runesA := []rune(a)
+	runesB := []rune(b)
+	if len(runesA) == 0 && len(runesB) == 0 {
 		return 1.0
 	}
-	return SimilarityFromDistance(runeCount(a), runeCount(b), Distance(a, b, weights))
+	return SimilarityFromDistance(len(runesA), len(runesB), distanceRunes(runesA, runesB, weights))
 }
 
 func runeCount(value string) int {
