@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+* Fix `typo fix` losing required quoting when command arguments are passed separately, preventing commit messages and similar values from turning into bare options or split words after correction.
+
 ## [1.8.3](https://github.com/yuluo-yx/typo/compare/v1.8.2...v1.8.3) (2026-09-09)
 
 ### 修复

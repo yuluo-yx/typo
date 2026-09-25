@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"mvdan.cc/sh/v3/syntax"
+
 	"github.com/yuluo-yx/typo/internal/config"
 	"github.com/yuluo-yx/typo/internal/engine"
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -101,7 +103,7 @@ func parseFixOptions(args []string) (fixOptions, error) {
 	}
 
 	return fixOptions{
-		command:          strings.TrimSpace(strings.Join(fs.Args(), " ")),
+		command:          fixCommandFromArgs(fs.Args()),
 		stderrFile:       *stderrFile,
 		exitCode:         *exitCode,
 		noHistory:        *noHistory,
@@ -110,6 +112,112 @@ func parseFixOptions(args []string) (fixOptions, error) {
 		traceFile:        *traceFile,
 		selectMode:       *selectMode,
 	}, nil
+}
+
+func fixCommandFromArgs(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	if len(args) == 1 {
+		return strings.TrimSpace(args[0])
+	}
+
+	quoted := make([]string, 0, len(args))
+	quoteNextOptionLikeValue := false
+	for _, arg := range args {
+		word := quoteFixCommandArg(arg)
+		if quoteNextOptionLikeValue && strings.HasPrefix(arg, "-") {
+			word = shellSingleQuote(arg)
+		}
+		quoted = append(quoted, word)
+		quoteNextOptionLikeValue = fixOptionTakesValue(arg)
+	}
+
+	return strings.TrimSpace(strings.Join(quoted, " "))
+}
+
+func quoteFixCommandArg(arg string) string {
+	if isSimpleShellExpansionArg(arg) {
+		return arg
+	}
+	word, err := syntax.Quote(arg, syntax.LangBash)
+	if err != nil {
+		return shellSingleQuote(arg)
+	}
+	return word
+}
+
+func fixOptionTakesValue(arg string) bool {
+	switch arg {
+	case "-C", "-F", "-c", "-m", "-t",
+		"--file", "--message", "--reedit-message", "--reuse-message", "--template":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSimpleShellExpansionArg(arg string) bool {
+	if !strings.HasPrefix(arg, "$") {
+		return false
+	}
+
+	rest, ok := trimSimpleShellVariable(arg)
+	if !ok {
+		return false
+	}
+	for _, r := range rest {
+		if r == '/' || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func trimSimpleShellVariable(arg string) (string, bool) {
+	if strings.HasPrefix(arg, "${") {
+		end := strings.IndexByte(arg, '}')
+		if end == -1 || !isShellIdentifier(arg[2:end]) {
+			return "", false
+		}
+		return arg[end+1:], true
+	}
+
+	end := 1
+	for end < len(arg) {
+		b := arg[end]
+		if b == '_' || b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || end > 1 && b >= '0' && b <= '9' {
+			end++
+			continue
+		}
+		break
+	}
+	if end == 1 || !isShellIdentifier(arg[1:end]) {
+		return "", false
+	}
+	return arg[end:], true
+}
+
+func isShellIdentifier(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		b := value[i]
+		if b == '_' || b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || i > 0 && b >= '0' && b <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func shellSingleQuote(arg string) string {
+	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }
 
 func readFixStderr(stderrFile string) string {

@@ -847,6 +847,44 @@ func TestFixPreservesQuotedArguments(t *testing.T) {
 	}
 }
 
+func TestFixRequotesSplitArgvCommand(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "commit message with spaces",
+			args: []string{"typo", "fix", "--no-history", "gti", "commit", "-m", "docs update"},
+			want: "git commit -m 'docs update'",
+		},
+		{
+			name: "commit message looking like option",
+			args: []string{"typo", "fix", "--no-history", "gti", "commit", "-m", "-h"},
+			want: "git commit -m '-h'",
+		},
+		{
+			name: "git global config value looking like option",
+			args: []string{"typo", "fix", "--no-history", "gti", "-c", "-h"},
+			want: "git -c '-h'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useTempHome(t)
+
+			code, stdout, stderr := runCLI(t, tt.args)
+			if code != 0 {
+				t.Fatalf("fix failed: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if got := strings.TrimSpace(stdout); got != tt.want {
+				t.Fatalf("fixed command = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFixPreservesCompoundCommandWithSemicolon(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
