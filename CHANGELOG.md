@@ -6,6 +6,14 @@
 
 * Fix `typo fix` losing required quoting when command arguments are passed separately, preventing commit messages and similar values from turning into bare options or split words after correction.
 
+## [1.9.2](https://github.com/yuluo-yx/typo/compare/v1.9.1...v1.9.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* **cmd:** preserve quoting for split fix args ([#251](https://github.com/yuluo-yx/typo/issues/251)) ([f9c664d](https://github.com/yuluo-yx/typo/commit/f9c664d813340ebba8a7b20f1b41832fb809c124))
+* **core:** reduce similarity benchmark overhead ([50f5b14](https://github.com/yuluo-yx/typo/commit/50f5b14f4e474f4962d346e3dbf050f4d2188c84))
+
 ## [1.8.3](https://github.com/yuluo-yx/typo/compare/v1.8.2...v1.8.3) (2026-09-09)
 
 ### 修复
