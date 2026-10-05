@@ -48,3 +48,7 @@ bin/
 # Local tool environments
 .venv/
 tools/node/node_modules/
+
+# Python tool caches
+__pycache__/
+*.py[cod]
