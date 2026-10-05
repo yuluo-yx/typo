@@ -4,13 +4,17 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   schedule:
     - cron: '0 12 * * *'
   workflow_dispatch:
     inputs:
       force_compare:
-        description: Force a same-run comparison against HEAD^ even if this commit was already benchmarked.
+        description: Force a comparison against HEAD^, including unchanged benchmark inputs.
         required: false
         type: boolean
         default: false
@@ -18,8 +22,15 @@ on:
 jobs:
   benchmark:
     name: Benchmark
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     if: github.repository == 'yuluo-yx/typo'
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOMAXPROCS: '4'
+      GOFLAGS: '-buildvcs=false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,7 +39,10 @@ jobs:
       - run: make download
 
       - name: Install benchstat
-        run: go install golang.org/x/perf/cmd/benchstat@latest
+        run: go install golang.org/x/perf/cmd/benchstat@406019bb8b6893dd1245d31bf511c719619bb5c9
+
+      - name: Test benchmark CI tools
+        run: python3 -m unittest discover -s tools -p 'benchmark_ci_test.py' -v
 
       - name: Restore benchmark state
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
@@ -42,90 +56,76 @@ jobs:
         env:
           FORCE_COMPARE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_compare == true }}
         run: |
-          current_sha="$(git rev-parse HEAD)"
-          previous_sha=""
-          if [ -f benchmark-state.env ]; then
-            previous_sha="$(sed -n 's/^sha=//p' benchmark-state.env | head -n 1)"
+          force_args=()
+          if [ "$FORCE_COMPARE" = "true" ]; then
+            force_args+=(--force)
           fi
+          python3 tools/benchmark_ci.py select "${force_args[@]}" --output "$GITHUB_OUTPUT"
 
-          baseline_ref=""
-          if [ "$FORCE_COMPARE" = "true" ] || [ "$previous_sha" = "$current_sha" ] || [ -z "$previous_sha" ]; then
-            if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
-              baseline_ref="$(git rev-parse HEAD^)"
-            fi
-          elif git cat-file -e "$previous_sha^{commit}" 2>/dev/null; then
-            baseline_ref="$previous_sha"
-          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
-            baseline_ref="$(git rev-parse HEAD^)"
-          fi
-
-          should_compare=false
-          skip_reason="no baseline commit is available"
-          if [ -n "$baseline_ref" ] && [ "$baseline_ref" != "$current_sha" ]; then
-            if [ "$FORCE_COMPARE" = "true" ] || [ "$previous_sha" != "$current_sha" ]; then
-              should_compare=true
-              skip_reason=""
-            else
-              skip_reason="current commit was already benchmarked"
-            fi
-          fi
-
-          echo "current_sha=$current_sha" >> "$GITHUB_OUTPUT"
-          echo "previous_sha=$previous_sha" >> "$GITHUB_OUTPUT"
-          echo "baseline_ref=$baseline_ref" >> "$GITHUB_OUTPUT"
-          echo "should_compare=$should_compare" >> "$GITHUB_OUTPUT"
-          echo "skip_reason=$skip_reason" >> "$GITHUB_OUTPUT"
-
-      - name: Run baseline benchmarks
+      - name: Run interleaved benchmarks
         if: steps.state.outputs.should_compare == 'true'
+        env:
+          BASELINE_REF: ${{ steps.state.outputs.baseline_ref }}
+          CURRENT_REF: ${{ steps.state.outputs.current_sha }}
         run: |
-          baseline_parent="$(mktemp -d "${RUNNER_TEMP}/typo-benchmark-baseline.XXXXXX")"
-          baseline_dir="${baseline_parent}/repo"
-          trap 'git worktree remove --force "$baseline_dir" >/dev/null 2>&1 || true; rmdir "$baseline_parent" >/dev/null 2>&1 || true' EXIT
-          git worktree add --detach "$baseline_dir" "${{ steps.state.outputs.baseline_ref }}"
-          (
-            cd "$baseline_dir"
-            go mod download
-            go test -bench=. -benchmem -count=10 -run='^$' -timeout=30m ./benchmarks/
-          ) | tee baseline.txt
+          python3 tools/benchmark_ci.py sample --baseline "$BASELINE_REF" \
+            --current "$CURRENT_REF" --output-dir benchmark-results/initial
 
       - name: Run benchmarks
+        if: steps.state.outputs.should_compare != 'true'
         run: |
           go test -bench=. -benchmem -count=10 -run='^$' -timeout=30m ./benchmarks/ \
             | tee current.txt
 
       - name: Report skipped comparison
         if: steps.state.outputs.should_compare != 'true'
+        env:
+          SKIP_REASON: ${{ steps.state.outputs.skip_reason }}
         run: |
-          echo "Skipping regression comparison: ${{ steps.state.outputs.skip_reason }}."
+          echo "Skipping regression comparison: $SKIP_REASON."
 
       - name: Compare with baseline
         if: steps.state.outputs.should_compare == 'true'
-        id: compare
-        env:
-          REGRESSION_THRESHOLD: 10
+        id: initial
         run: |
-          echo "=== benchstat comparison ==="
-          benchstat baseline.txt current.txt 2>&1 | tee comparison.txt || true
+          benchstat benchmark-results/initial/baseline.txt benchmark-results/initial/current.txt \
+            | tee benchmark-results/initial/comparison.txt
+          python3 tools/benchmark_ci.py detect --initial benchmark-results/initial/comparison.txt \
+            --report benchmark-results/candidates.txt --output "$GITHUB_OUTPUT"
 
-          if grep -E '\+[0-9]+\.[0-9]+%.*\(p=0\.0[0-4]' comparison.txt | \
-             awk -v t="$REGRESSION_THRESHOLD" '{
-               for (i=1; i<=NF; i++) {
-                 if ($i ~ /^\+[0-9.]+%$/) {
-                   v = $i; gsub(/[+%]/, "", v)
-                   if (v+0 >= t) { found=1; exit }
-                 }
-               }
-             } END { exit !found }'; then
-            echo "regression=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "regression=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Confirm suspected regressions
+        if: steps.initial.outputs.regression == 'true'
+        env:
+          BASELINE_REF: ${{ steps.state.outputs.baseline_ref }}
+          CURRENT_REF: ${{ steps.state.outputs.current_sha }}
+          BENCHMARK_PATTERN: ${{ steps.initial.outputs.benchmark_pattern }}
+        run: |
+          python3 tools/benchmark_ci.py sample --baseline "$BASELINE_REF" \
+            --current "$CURRENT_REF" --pattern "$BENCHMARK_PATTERN" --reverse \
+            --output-dir benchmark-results/confirmation
+          benchstat benchmark-results/confirmation/baseline.txt benchmark-results/confirmation/current.txt \
+            | tee benchmark-results/confirmation/comparison.txt
+
+      - name: Check confirmed regressions
+        if: steps.initial.outputs.regression == 'true'
+        id: compare
+        run: |
+          python3 tools/benchmark_ci.py detect --initial benchmark-results/initial/comparison.txt \
+            --confirmation benchmark-results/confirmation/comparison.txt \
+            --report benchmark-results/regressions.txt --output "$GITHUB_OUTPUT"
 
       - name: Update benchmark state
+        env:
+          CURRENT_SHA: ${{ steps.state.outputs.current_sha }}
+          BASELINE_SHA: ${{ steps.state.outputs.baseline_ref }}
+          CONFIRMED_REGRESSION: ${{ steps.compare.outputs.regression }}
         run: |
+          state_sha="$CURRENT_SHA"
+          if [ "$CONFIRMED_REGRESSION" = "true" ]; then
+            state_sha="$BASELINE_SHA"
+          fi
           {
-            echo "sha=${{ steps.state.outputs.current_sha }}"
+            echo "sha=$state_sha"
             echo "updated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > benchmark-state.env
 
@@ -144,49 +144,29 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const comparison = fs.readFileSync('comparison.txt', 'utf8');
+            const comparison = fs.readFileSync('benchmark-results/initial/comparison.txt', 'utf8');
+            const confirmation = fs.readFileSync('benchmark-results/confirmation/comparison.txt', 'utf8');
+            const regressions = fs.readFileSync('benchmark-results/regressions.txt', 'utf8').trim();
 
             const THRESHOLD = 10;
-            const regressions = comparison.split('\n')
-              .filter(line => {
-                const pctMatch = line.match(/\+(\d+\.\d+)%/);
-                const pMatch = line.match(/\(p=0\.0[0-4]/);
-                return pctMatch && pMatch && parseFloat(pctMatch[1]) >= THRESHOLD;
-              })
-              .map(line => line.trim())
-              .filter(Boolean);
-
-            const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-            const { data: pulls } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'closed',
-              sort: 'updated',
-              direction: 'desc',
-              per_page: 20,
-            });
-            const recentPRs = pulls
-              .filter(pr => pr.merged_at && new Date(pr.merged_at) > new Date(since))
-              .map(pr => `- #${pr.number} ${pr.title} (by @${pr.user.login})`);
 
             const runURL = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const date = new Date().toISOString().slice(0, 10);
 
-            let body = `The nightly benchmark run detected a performance regression (≥${THRESHOLD}% with p<0.05).\n\n`;
+            let body = `The nightly benchmark run detected a performance regression (≥${THRESHOLD}% with p<0.05 in both interleaved comparisons).\n\n`;
             body += `**Workflow run:** ${runURL}\n\n`;
             body += `**Baseline commit:** ${process.env.BASELINE_SHA}\n`;
             body += `**Current commit:** ${process.env.CURRENT_SHA}\n\n`;
             body += `### Regressed benchmarks\n\n`;
-            body += '```\n' + regressions.join('\n') + '\n```\n\n';
+            body += '```\n' + regressions + '\n```\n\n';
             body += `### Full comparison\n\n`;
             body += '<details>\n<summary>benchstat output</summary>\n\n';
             body += '```\n' + comparison.trim() + '\n```\n\n</details>\n\n';
-            body += `### Potential causes\n\n`;
-            if (recentPRs.length > 0) {
-              body += `PRs merged in the last 24 hours:\n\n${recentPRs.join('\n')}\n`;
-            } else {
-              body += `No PRs were merged in the last 24 hours. This comparison was generated by benchmarking the baseline and current commits in the same workflow run.\n`;
-            }
+            body += '<details>\n<summary>Confirmation benchstat output</summary>\n\n';
+            body += '```\n' + confirmation.trim() + '\n```\n\n</details>\n\n';
+            body += `### Measurement method\n\n`;
+            body += `Both commits were warmed up, then sampled in alternating order with 10 samples per commit. Suspected regressions were sampled again with the starting order reversed. Only benchmark metrics exceeding the threshold in both comparisons are listed.\n\n`;
+            body += `Review the commit range: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/compare/${process.env.BASELINE_SHA}...${process.env.CURRENT_SHA}\n`;
 
             const { data: openIssues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -224,14 +204,13 @@ jobs:
           name: benchmark-results
           path: |
             current.txt
-            baseline.txt
-            comparison.txt
+            benchmark-results/
           if-no-files-found: ignore
           retention-days: 90
 
       - name: Fail on regression
         if: steps.compare.outputs.regression == 'true'
         run: |
-          echo "::error::Benchmark regression detected (>=10% with p<0.05) against the same-run baseline."
-          cat comparison.txt
+          echo "::error::Benchmark regression confirmed (>=10% with p<0.05 in both interleaved comparisons)."
+          cat benchmark-results/regressions.txt
           exit 1

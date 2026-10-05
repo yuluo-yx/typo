@@ -2,6 +2,8 @@
 
 This directory contains the benchmark suite for `typo`.
 
+性能 CI 的采样、告警确认、基线状态和本地验证流程见 [性能 CI 说明](CI_CN.md)。
+
 ## Contents
 
 ```text
