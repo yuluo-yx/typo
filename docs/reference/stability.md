@@ -37,6 +37,16 @@ Every public interface falls into one of two tiers:
 New files may be added to `~/.typo/` in minor releases, but existing files will
 not be renamed, moved, or have their purpose changed.
 
+Rule and history CLI writes are serialized by a cross-process file lock and reload
+the latest state after acquiring it. On Windows, readers allow delete sharing and
+writes use the standard library's POSIX replacement semantics. On file systems
+supporting these semantics, a startup reader cannot block another Typo process from
+committing a write. Existing readers retain their previous snapshot; new readers
+see the replacement. The standard library falls back when these semantics are
+unsupported. This does not provide crash atomicity across both files. External
+programs that deny delete sharing can still block replacement. No data migration
+is needed; replace the binary and retain the existing JSON files.
+
 ### Migration
 
 If a minor release changes the internal schema of a config file, Typo will

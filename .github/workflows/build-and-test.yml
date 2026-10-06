@@ -91,6 +91,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./tools/github-setup-deps
+      - name: Run Windows persistence unit tests
+        if: runner.os == 'Windows'
+        shell: bash
+        run: go test ./internal/storage ./internal/engine -race -coverprofile=windows-persistence-coverage.out
       - name: Run e2e tests
         shell: bash
         run: make test-e2e

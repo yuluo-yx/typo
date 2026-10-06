@@ -274,7 +274,7 @@ func (h *History) load() error {
 	}
 
 	historyFile := filepath.Join(h.configDir, usageHistoryFileName)
-	data, err := os.ReadFile(historyFile)
+	data, err := storage.ReadFile(historyFile)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
