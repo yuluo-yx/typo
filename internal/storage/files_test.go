@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -29,8 +30,12 @@ func TestWriteFileAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to stat atomic write target: %v", err)
 	}
-	if info.Mode().Perm() != 0600 {
+	// Windows maps Go permission bits to the read-only attribute, not POSIX modes.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("unexpected atomic write permission: %v", info.Mode().Perm())
+	}
+	if info.Mode().Perm()&0200 == 0 {
+		t.Fatal("atomic write target is unexpectedly read-only")
 	}
 }
 
@@ -57,8 +62,11 @@ func TestWriteFileAtomic_OverwritesExistingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to stat overwritten target: %v", err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("unexpected overwritten permission: %v", info.Mode().Perm())
+	}
+	if info.Mode().Perm()&0200 == 0 {
+		t.Fatal("overwritten target is unexpectedly read-only")
 	}
 }
 

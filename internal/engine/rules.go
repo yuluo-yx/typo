@@ -462,7 +462,7 @@ func (r *Rules) loadUserRules() error {
 	}
 
 	rulesFile := filepath.Join(r.configDir, "rules.json")
-	data, err := os.ReadFile(rulesFile)
+	data, err := storage.ReadFile(rulesFile)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
