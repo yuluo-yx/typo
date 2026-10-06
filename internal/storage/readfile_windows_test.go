@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -56,5 +57,20 @@ func TestReadFileLongPath(t *testing.T) {
 	got, err := ReadFile(target)
 	if err != nil || string(got) != "snapshot" {
 		t.Fatalf("long-path reader = %q, %v; want snapshot", got, err)
+	}
+}
+
+func TestAtomicReplacementPathErrors(t *testing.T) {
+	dir := t.TempDir()
+	for _, paths := range [][2]string{
+		{filepath.Join(dir, "missing-source"), filepath.Join(dir, "target")},
+		{filepath.Join(dir, "missing-dir", "source"), filepath.Join(dir, "missing-dir", "target")},
+		{filepath.Join(dir, "source"), filepath.Join(dir, "another-dir", "target")},
+	} {
+		err := (osAtomicFileOps{}).rename(paths[0], paths[1])
+		var linkErr *os.LinkError
+		if !errors.As(err, &linkErr) || linkErr.Old != paths[0] || linkErr.New != paths[1] {
+			t.Fatalf("replacement error = %v, want LinkError preserving both paths", err)
+		}
 	}
 }

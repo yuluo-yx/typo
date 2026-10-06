@@ -28,10 +28,6 @@ func (osAtomicFileOps) createTemp(dir, pattern string) (atomicFile, error) {
 	return os.CreateTemp(dir, pattern)
 }
 
-func (osAtomicFileOps) rename(oldpath, newpath string) error {
-	return os.Rename(oldpath, newpath)
-}
-
 func (osAtomicFileOps) remove(name string) error {
 	return os.Remove(name)
 }
