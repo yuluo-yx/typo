@@ -6,6 +6,14 @@
 
 * Fix `typo fix` losing required quoting when command arguments are passed separately, preventing commit messages and similar values from turning into bare options or split words after correction.
 
+## [1.9.3](https://github.com/yuluo-yx/typo/compare/v1.9.2...v1.9.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **git:** preserve alias arguments and bind upstream after failed pulls ([1064d69](https://github.com/yuluo-yx/typo/commit/1064d6969a215824d113d62725487085fec226d6))
+* **storage:** allow Windows readers during state replacement ([#258](https://github.com/yuluo-yx/typo/issues/258)) ([791611a](https://github.com/yuluo-yx/typo/commit/791611a445a780eecbcc0b086227f74ade8d1d82))
+
 ## [1.9.2](https://github.com/yuluo-yx/typo/compare/v1.9.1...v1.9.2) (2026-09-25)
 
 
