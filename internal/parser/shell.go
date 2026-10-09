@@ -73,6 +73,23 @@ func (c *shellCall) insertAfterWord(index int, insertion string) string {
 	return c.raw[:end] + insertion + c.raw[end:]
 }
 
+// replaceArgsFrom replaces the command's trailing arguments without deleting
+// redirections between them, assignments, or the surrounding shell syntax.
+func (c *shellCall) replaceArgsFrom(index int, replacement string) string {
+	start, previousEnd := utils.ShellNodeRange(c.args[index], len(c.raw))
+	var fixed strings.Builder
+	fixed.Grow(len(c.raw) + len(replacement))
+	fixed.WriteString(c.raw[:start])
+	fixed.WriteString(replacement)
+	for i := index + 1; i < len(c.args); i++ {
+		start, end := utils.ShellNodeRange(c.args[i], len(c.raw))
+		fixed.WriteString(strings.TrimRight(c.raw[previousEnd:start], " \t"))
+		previousEnd = end
+	}
+	fixed.WriteString(c.raw[previousEnd:])
+	return fixed.String()
+}
+
 func (c *shellCall) replaceSubcommand(command, expected, replacement string, optionsWithValues map[string]bool) (string, bool) {
 	index := findShellSubcommandIndex(c.args, command, optionsWithValues)
 	if index == -1 {

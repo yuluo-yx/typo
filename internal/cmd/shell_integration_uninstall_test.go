@@ -7,6 +7,50 @@ import (
 	"testing"
 )
 
+func TestZshIntegrationAssociatesRecalledFailureWithExactCommand(t *testing.T) {
+	for _, tt := range []struct {
+		name, command, buffer, exitCode, changeDirectory, wantFailure string
+	}{
+		{"recalled failure", "git pull", "git pull", "1", "0", "1"},
+		{"edited input", "git pull", "git pull --quiet", "1", "0", "0"},
+		{"different command", "git pull", "git status", "1", "0", "0"},
+		{"different directory", "git pull", "git pull", "1", "1", "0"},
+		{"successful command", "git pull", "git pull", "0", "0", "0"},
+		{"missing command", "", "git pull", "1", "0", "0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+typo() { printf '%s\n' "$@" > "$TMPDIR/fix.args"; }
+source "$1"
+_typo_preexec "$TEST_COMMAND"
+print -u2 -- 'captured failure'
+command_status() { return "$TEST_EXIT_CODE"; }
+command_status
+_typo_precmd
+# Use deterministic cache content; the real async capture is covered by E2E.
+print -r -- 'captured failure' > "$TYPO_STDERR_CACHE"
+if [[ "$TEST_CHANGE_DIRECTORY" == 1 ]]; then cd /; fi
+BUFFER="$TEST_BUFFER"
+_typo_fix_command
+if [[ "$TEST_WANT_FAILURE" == 1 ]]; then
+    grep -qx -- '--exit-code' "$TMPDIR/fix.args" || exit 91
+    grep -qx -- '-s' "$TMPDIR/fix.args" || exit 92
+    grep -qx -- '--no-history' "$TMPDIR/fix.args" && exit 93
+else
+    grep -qx -- '--no-history' "$TMPDIR/fix.args" || exit 94
+    grep -qx -- '--exit-code' "$TMPDIR/fix.args" && exit 95
+    grep -qx -- '-s' "$TMPDIR/fix.args" && exit 96
+fi
+_typo_zshexit
+[[ -z "${_TYPO_LAST_COMMAND+x}" && -z "${_TYPO_LAST_COMMAND_PWD+x}" ]] || exit 97
+`, "TEST_COMMAND="+tt.command, "TEST_BUFFER="+tt.buffer, "TEST_EXIT_CODE="+tt.exitCode,
+				"TEST_CHANGE_DIRECTORY="+tt.changeDirectory, "TEST_WANT_FAILURE="+tt.wantFailure)
+		})
+	}
+}
+
 func TestZshIntegrationCleansAndRotatesStderrCache(t *testing.T) {
 	runZshIntegrationScript(t, `
 zle() { true; }
