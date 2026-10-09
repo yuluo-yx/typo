@@ -29,6 +29,12 @@ _typo_fix_command() {
     if [[ -z "$cmd" ]]; then
         use_last_command=1
         cmd=$(fc -ln -1 | sed 's/^[[:space:]]*//')
+    elif [[ "$last_exit_code" -ne 0 &&
+            "$cmd" == "${_TYPO_LAST_COMMAND:-}" &&
+            "$PWD" == "${_TYPO_LAST_COMMAND_PWD:-}" ]]; then
+        # A recalled failed command needs its captured error just like an empty
+        # prompt. Never attach that error to edited input or another directory.
+        use_last_command=1
     fi
 
     [[ -z "$cmd" ]] && return
@@ -412,9 +418,13 @@ _typo_release_original_stderr() {
 }
 
 _typo_preexec() {
+    unset _TYPO_LAST_COMMAND _TYPO_LAST_COMMAND_PWD
     _typo_init_stderr_cache || return
     _typo_save_original_stderr || return
-    : >| "$TYPO_STDERR_CACHE"
+    : >| "$TYPO_STDERR_CACHE" || return
+    # Keep the exact executed input and repository context for recalled fixes.
+    _TYPO_LAST_COMMAND="${1:-}"
+    _TYPO_LAST_COMMAND_PWD="$PWD"
     exec 2> >(tee "$TYPO_STDERR_CACHE" >&$TYPO_ORIG_STDERR_FD)
 }
 
@@ -439,6 +449,7 @@ _typo_zshexit() {
     fi
     unset TYPO_ALIAS_CONTEXT
     unset TYPO_ALIAS_CONTEXT_OWNER
+    unset _TYPO_LAST_COMMAND _TYPO_LAST_COMMAND_PWD
 }
 
 autoload -Uz add-zsh-hook

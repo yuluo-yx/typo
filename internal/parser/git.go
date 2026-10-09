@@ -132,11 +132,16 @@ func (p *GitParser) parsePullNoTracking(cmd, stderr string) itypes.ParserResult 
 		return itypes.ParserResult{Fixed: false}
 	}
 
-	insertion := " --set-upstream " + remote + " " + branch
+	// Follow Git's branch-binding hint without fetching or merging. Pull-only
+	// options must not be carried over to the replacement branch command.
+	replacement := "branch --set-upstream-to=" + target + " " + branch
+	if pullIndex == 0 {
+		replacement = "git " + replacement
+	}
 	return itypes.ParserResult{
 		Fixed:   true,
-		Command: call.insertAfterWord(len(call.args)-1, insertion),
-		Message: "adding upstream tracking: " + target,
+		Command: call.replaceArgsFrom(pullIndex, replacement),
+		Message: "setting branch upstream to " + target,
 	}
 }
 

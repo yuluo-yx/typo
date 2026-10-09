@@ -635,7 +635,10 @@ func (r *ToolTreeRegistry) getNestedHelpOutput(tool string, prefix []string) (st
 
 	switch tool {
 	case "git":
-		if len(prefix) != 1 {
+		// Aliases and external Git commands may treat -h as data and execute
+		// side effects. Only probe commands in our trusted builtin grammar,
+		// never names learned from help output or the dynamic cache.
+		if len(prefix) != 1 || builtinNodeForPath(tool, prefix) == nil {
 			return "", nil
 		}
 		return r.runHelpCommand(tool, append(append([]string(nil), prefix...), "-h")...)

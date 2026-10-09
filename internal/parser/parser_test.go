@@ -64,21 +64,21 @@ func TestGitParser_Parse(t *testing.T) {
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
 			wantFix: true,
-			wantCmd: "git pull --set-upstream origin main",
+			wantCmd: "git branch --set-upstream-to=origin/main main",
 		},
 		{
-			name:    "pull upstream hint preserves safe options",
+			name:    "pull upstream hint drops pull options when binding branch",
 			cmd:     "git pull --rebase --quiet",
 			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=origin/main main\n",
 			wantFix: true,
-			wantCmd: "git pull --rebase --quiet --set-upstream origin main",
+			wantCmd: "git branch --set-upstream-to=origin/main main",
 		},
 		{
 			name:    "no upstream branch resolves placeholder branch",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to rebase against.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check\n",
 			wantFix: true,
-			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
+			wantCmd: "git branch --set-upstream-to=origin/0322-yuluo/inprove-add-check 0322-yuluo/inprove-add-check",
 		},
 		{
 			name:    "no upstream branch rejects placeholder remote and branch",
@@ -91,7 +91,7 @@ func TestGitParser_Parse(t *testing.T) {
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to origin/main main\n",
 			wantFix: true,
-			wantCmd: "git pull --set-upstream origin main",
+			wantCmd: "git branch --set-upstream-to=origin/main main",
 		},
 		{
 			name:    "pull legacy set upstream hint is not inferred",
@@ -874,7 +874,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git pull --set-upstream origin test/dev",
+			wantCmd:        "git branch --set-upstream-to=origin/test/dev test/dev",
 		},
 		{
 			name:           "concrete upstream branch",
@@ -886,7 +886,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git pull --set-upstream origin test/dev",
+			wantCmd:        "git branch --set-upstream-to=origin/test/dev test/dev",
 		},
 		{
 			name:           "repository selector and safe pull options",
@@ -899,7 +899,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git -C 'repo path' pull --rebase --quiet --set-upstream origin test/dev",
+			wantCmd:        "git -C 'repo path' branch --set-upstream-to=origin/test/dev test/dev",
 		},
 		{
 			name:           "git pull executable form",
@@ -911,7 +911,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git-pull --set-upstream origin test/dev",
+			wantCmd:        "git branch --set-upstream-to=origin/test/dev test/dev",
 		},
 		{
 			name:       "placeholder remote is rejected",

@@ -82,7 +82,7 @@ To push the current branch and set the remote as upstream, use
 
 按两次 `Esc`，当远端名和分支名可在所有支持的 Shell 中安全表示时，Typo 会采用 Git 给出的具体建议；否则保持原命令不变。
 
-## `git pull --set-upstream`
+## `git branch --set-upstream-to`
 
 当前分支没有上游分支（upstream）时，Git 可能在建议中保留远端分支占位符：
 
@@ -96,8 +96,12 @@ There is no tracking information for the current branch.
 按两次 `Esc`。Typo 会根据明确的本地分支解析占位符，并确认当前仓库同时存在 `test/dev` 和 `origin/test/dev`，然后给出以下命令：
 
 ```shell
-git pull --set-upstream origin test/dev
+git branch --set-upstream-to=origin/test/dev test/dev
 ```
+
+This suggestion only binds the branch upstream; it does not fetch, merge, or rebase. Run `git pull` afterward to retrieve changes. Repository-selection arguments are preserved, while pull-only options are removed.
+
+In zsh, after the failed pull, press `Esc` `Esc` at the empty prompt or press `Up` to recall the unchanged command and then `Esc` `Esc`. Execute the suggested `git branch` command to establish tracking, then run `git pull` again. Edited commands and commands recalled in a different directory do not reuse the previous error.
 
 如果远端名也是占位符、分支名存在歧义或任一引用不存在，Typo 会保持原命令不变。
 

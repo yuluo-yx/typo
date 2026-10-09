@@ -35,6 +35,16 @@ docker imagess <Esc, Esc>
 docker images
 ```
 
+Git aliases are preserved, including their arguments and quoted messages:
+
+```shell
+gti c -m "message with spaces" <Esc, Esc>
+
+git c -m "message with spaces"
+```
+
+Typo does not execute Git aliases or external Git subcommands with `-h` to discover nested commands. Generating this correction does not execute the commit alias or change the repository.
+
 ## Commands joined with `&&`
 
 Typo can fix commands on both sides of `&&` in the same line.
@@ -82,7 +92,7 @@ To push the current branch and set the remote as upstream, use
 
 Press `Esc` `Esc`. Typo applies Git's concrete suggestion when the remote and branch names are safe across every supported shell; otherwise it leaves the command unchanged.
 
-## `git pull --set-upstream`
+## `git branch --set-upstream-to`
 
 When the current branch has no upstream, Git may leave the remote branch as a placeholder:
 
@@ -96,8 +106,12 @@ There is no tracking information for the current branch.
 Press `Esc` `Esc`. Typo resolves the placeholder from the explicit local branch and verifies that both `test/dev` and `origin/test/dev` exist in the current repository before suggesting:
 
 ```shell
-git pull --set-upstream origin test/dev
+git branch --set-upstream-to=origin/test/dev test/dev
 ```
+
+This follows Git's branch-binding hint: executing the suggestion sets the upstream without fetching, merging, or rebasing. Run `git pull` afterward when you want to retrieve changes. Repository-selection arguments such as `git -C 'repo path'` are preserved; pull-only options are removed instead of being passed to `git branch`.
+
+In zsh, after the failed pull, press `Esc` `Esc` at the empty prompt or press `Up` to recall the unchanged command and then `Esc` `Esc`. Execute the suggested `git branch` command to establish tracking, then run `git pull` again. Edited commands and commands recalled in a different directory do not reuse the previous error.
 
 Typo leaves the command unchanged when the remote is also a placeholder, the branch names are ambiguous, or either verified reference is missing.
 
