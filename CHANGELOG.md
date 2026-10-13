@@ -6,6 +6,13 @@
 
 * Fix `typo fix` losing required quoting when command arguments are passed separately, preventing commit messages and similar values from turning into bare options or split words after correction.
 
+## [1.9.4](https://github.com/yuluo-yx/typo/compare/v1.9.3...v1.9.4) (2026-10-13)
+
+
+### Bug Fixes
+
+* **git:** leave divergent pull strategy to the user ([8ae339b](https://github.com/yuluo-yx/typo/commit/8ae339b71d9269142c15fd7f0700932144af28bd))
+
 ## [1.9.3](https://github.com/yuluo-yx/typo/compare/v1.9.2...v1.9.3) (2026-10-09)
 
 
