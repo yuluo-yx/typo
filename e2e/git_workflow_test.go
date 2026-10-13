@@ -131,6 +131,119 @@ func readGitWorkflowFile(t *testing.T, path string) []byte {
 	return data
 }
 
+func TestE2EGitDivergentPullDoesNotChooseStrategy(t *testing.T) {
+	for _, forcedUpdate := range []bool{false, true} {
+		name := "divergent branches"
+		if forcedUpdate {
+			name = "forced remote update"
+		}
+		t.Run(name, func(t *testing.T) {
+			env, git, extra, stderrFile := newDivergentGitWorkflowEnv(t, forcedUpdate)
+			head := runRealGitWorkflow(t, env, git, extra, "rev-parse", "HEAD")
+			tracked := runRealGitWorkflow(t, env, git, extra, "rev-parse", "origin/main")
+			gitDir := filepath.Join(env.root, ".git")
+			snapshots := make(map[string][]byte)
+			for _, file := range []string{"config", "index", "FETCH_HEAD"} {
+				snapshots[file] = readGitWorkflowFile(t, filepath.Join(gitDir, file))
+			}
+			if result := env.run(t, "config", "set", "candidates.enabled", "true"); result.code != 0 {
+				t.Fatalf("failed to enable candidate selection: %+v", result)
+			}
+			for _, selectMode := range []bool{false, true} {
+				args := []string{"fix", "--no-history", "--exit-code", "128", "-s", stderrFile}
+				if selectMode {
+					args = append(args, "--select")
+				}
+				result := env.runWithEnv(t, extra, append(args, "git pull")...)
+				if result.code != 1 || result.stdout != "" || !strings.Contains(result.stderr, "no correction found") {
+					t.Fatalf("divergent pull must not select a strategy (select=%v): %+v", selectMode, result)
+				}
+			}
+			assertZshDivergentPullBufferUnchanged(t, env, extra, stderrFile)
+			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", "HEAD"); after != head {
+				t.Fatalf("correction modified local history: %s -> %s", head, after)
+			}
+			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", "origin/main"); after != tracked {
+				t.Fatalf("correction modified the tracking branch: %s -> %s", tracked, after)
+			}
+			for file, before := range snapshots {
+				if !bytes.Equal(before, readGitWorkflowFile(t, filepath.Join(gitDir, file))) {
+					t.Fatalf("correction modified .git/%s", file)
+				}
+			}
+		})
+	}
+}
+
+func newDivergentGitWorkflowEnv(t *testing.T, forcedUpdate bool) (*e2eEnv, string, []string, string) {
+	t.Helper()
+	env, git, extra := newRealGitWorkflowEnv(t, "main")
+	root := runRealGitWorkflow(t, env, git, extra, "rev-parse", "HEAD")
+	remote := filepath.Join(env.tmpDir, "remote.git")
+	runRealGitWorkflow(t, env, git, extra, "init", "--bare", "--initial-branch=main", remote)
+	runRealGitWorkflow(t, env, git, extra, "remote", "add", "origin", remote)
+	runRealGitWorkflow(t, env, git, extra, "commit", "--allow-empty", "-m", "old remote history")
+	runRealGitWorkflow(t, env, git, extra, "push", "--set-upstream", "origin", "main")
+	seed := filepath.Join(env.tmpDir, "remote-seed")
+	runRealGitWorkflow(t, env, git, extra, "clone", remote, seed)
+	runRealGitWorkflow(t, env, git, extra, "commit", "--allow-empty", "-m", "local change")
+	if forcedUpdate {
+		// Rewrite only the disposable local remote; never touch a public repository.
+		runRealGitWorkflow(t, env, git, extra, "-C", seed, "switch", "-c", "rewritten", root)
+	}
+	runRealGitWorkflow(t, env, git, extra, "-C", seed, "commit", "--allow-empty", "-m", "remote change")
+	pushArgs := []string{"-C", seed, "push"}
+	if forcedUpdate {
+		pushArgs = append(pushArgs, "--force")
+	}
+	runRealGitWorkflow(t, env, git, extra, append(pushArgs, "origin", "HEAD:main")...)
+
+	failed := exec.Command(git, "pull")
+	failed.Dir = env.root
+	failed.Env = env.commandEnv(extra...)
+	stderr, err := failed.CombinedOutput()
+	if err == nil || !strings.Contains(string(stderr), "Need to specify how to reconcile divergent branches") {
+		t.Fatalf("expected a real divergent-pull error: %v\n%s", err, stderr)
+	}
+	if forcedUpdate && !strings.Contains(string(stderr), "forced update") {
+		t.Fatalf("expected a real forced-update notice, got %s", stderr)
+	}
+	return env, git, extra, env.writeTempFile(t, "divergent-pull.stderr", string(stderr))
+}
+
+func assertZshDivergentPullBufferUnchanged(t *testing.T, env *e2eEnv, extra []string, stderrFile string) {
+	t.Helper()
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Log("zsh is not installed; skipping the shell buffer assertion")
+		return
+	}
+	initScript := env.initZshScript(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	// Supply the real Git failure to the widget without re-running the pull.
+	cmd := exec.CommandContext(ctx, zsh, "-f", "-c", `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+TYPO_STDERR_CACHE="$2"
+_TYPO_LAST_COMMAND='git pull'
+TYPO_LAST_EXIT_CODE=128
+_TYPO_LAST_COMMAND_PWD="$PWD"
+print -s -- 'git pull'
+for BUFFER in '' 'git pull'; do
+    expected="$BUFFER"
+    _typo_fix_command
+    [[ "$BUFFER" == "$expected" ]] || { print -r -- "unexpected buffer: $BUFFER"; exit 61; }
+done
+`, "zsh", initScript, stderrFile)
+	cmd.Dir = env.root
+	cmd.Env = env.commandEnv(extra...)
+	if output, runErr := cmd.CombinedOutput(); runErr != nil {
+		t.Fatalf("divergent-pull shell workflow failed: %v\n%s", runErr, output)
+	}
+}
+
 func TestE2EGitAliasCorrectionDoesNotExecuteAlias(t *testing.T) {
 	for _, alias := range []string{"commit", "commit -s -m", "!printf executed > \"$HOME/alias-executed\""} {
 		t.Run(alias, func(t *testing.T) {

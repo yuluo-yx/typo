@@ -1396,92 +1396,79 @@ func TestGitParser_ParsePushNoUpstream(t *testing.T) {
 	}
 }
 
-func TestGitParser_ParseDivergentPullRebase(t *testing.T) {
+func TestGitParser_DivergentPullDoesNotChooseStrategy(t *testing.T) {
 	p := NewGitParser()
 	stderr := gitDivergentPullStderr()
 
 	tests := []struct {
-		name    string
-		cmd     string
-		wantFix bool
-		wantCmd string
+		name string
+		cmd  string
 	}{
 		{
-			name:    "plain pull",
-			cmd:     "git pull",
-			wantFix: true,
-			wantCmd: "git pull --rebase",
+			name: "plain pull",
+			cmd:  "git pull",
 		},
 		{
-			name:    "pull with remote and branch",
-			cmd:     "git pull origin main",
-			wantFix: true,
-			wantCmd: "git pull --rebase origin main",
+			name: "pull with remote and branch",
+			cmd:  "git pull origin main",
 		},
 		{
-			name:    "pull with global option",
-			cmd:     "git -C repo pull origin main",
-			wantFix: true,
-			wantCmd: "git -C repo pull --rebase origin main",
+			name: "pull with global option",
+			cmd:  "git -C repo pull origin main",
 		},
 		{
-			name:    "git-pull form",
-			cmd:     "git-pull origin main",
-			wantFix: true,
-			wantCmd: "git-pull --rebase origin main",
+			name: "git-pull form",
+			cmd:  "git-pull origin main",
 		},
 		{
-			name:    "unclosed quoted argument stays unchanged",
-			cmd:     "git pull 'foo   bar",
-			wantFix: false,
+			name: "unclosed quoted argument stays unchanged",
+			cmd:  "git pull 'foo   bar",
 		},
 		{
-			name:    "already has rebase",
-			cmd:     "git pull --rebase origin main",
-			wantFix: false,
+			name: "already has rebase",
+			cmd:  "git pull --rebase origin main",
 		},
 		{
-			name:    "already has rebase mode",
-			cmd:     "git pull --rebase=merges origin main",
-			wantFix: false,
+			name: "already has rebase mode",
+			cmd:  "git pull --rebase=merges origin main",
 		},
 		{
-			name:    "already has no rebase",
-			cmd:     "git pull --no-rebase origin main",
-			wantFix: false,
+			name: "already has no rebase",
+			cmd:  "git pull --no-rebase origin main",
 		},
 		{
-			name:    "already has ff only",
-			cmd:     "git pull --ff-only origin main",
-			wantFix: false,
+			name: "already has ff only",
+			cmd:  "git pull --ff-only origin main",
 		},
 		{
-			name:    "non pull command",
-			cmd:     "git fetch origin main",
-			wantFix: false,
+			name: "non pull command",
+			cmd:  "git fetch origin main",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: stderr})
-			if result.Fixed != tt.wantFix {
-				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
-			}
-			if tt.wantFix && result.Command != tt.wantCmd {
-				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
+			if result.Fixed || result.Command != "" {
+				t.Fatalf("Divergent pull must leave the strategy to the user, got %+v", result)
 			}
 		})
 	}
 }
 
-func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
-	p := NewGitParser()
-
+func TestRegistry_DivergentPullDoesNotChooseStrategy(t *testing.T) {
 	tests := []struct {
 		name   string
 		stderr string
 	}{
+		{
+			name:   "complete hints",
+			stderr: gitDivergentPullStderr(),
+		},
+		{
+			name:   "forced remote update",
+			stderr: "From https://example.invalid/repo\n + 5a7678d24...93e0d1482 main -> origin/main (forced update)\n" + gitDivergentPullStderr(),
+		},
 		{
 			name:   "missing fatal signal",
 			stderr: "hint: You have divergent branches and need to specify how to reconcile them.\n",
@@ -1494,9 +1481,9 @@ func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.Parse(itypes.ParserContext{Command: "git pull", Stderr: tt.stderr})
+			result := NewRegistry().Parse(itypes.ParserContext{Command: "git pull", Stderr: tt.stderr})
 			if result.Fixed {
-				t.Fatalf("Expected incomplete divergent pull stderr to stay unchanged, got %+v", result)
+				t.Fatalf("Expected divergent pull stderr to stay unchanged, got %+v", result)
 			}
 		})
 	}
@@ -1536,53 +1523,6 @@ func TestGitParser_ParseDidYouMeanRejectsShellParseFailure(t *testing.T) {
 	})
 	if result.Fixed {
 		t.Fatalf("Expected invalid shell command to stay unchanged, got %+v", result)
-	}
-}
-
-func TestGitPullRebaseHelpers(t *testing.T) {
-	tests := []struct {
-		name    string
-		run     func() (string, bool)
-		wantCmd string
-		wantOK  bool
-	}{
-		{
-			name: "plain pull malformed command",
-			run: func() (string, bool) {
-				return addGitPullRebaseFlag("git pull origin main '")
-			},
-			wantOK: false,
-		},
-		{
-			name: "git-prefixed malformed command",
-			run: func() (string, bool) {
-				return addGitPullRebaseFlag("git-pull origin main '")
-			},
-			wantOK: false,
-		},
-		{
-			name: "no pull token",
-			run: func() (string, bool) {
-				return addGitPullRebaseFlag("git fetch origin main '")
-			},
-			wantOK: false,
-		},
-		{
-			name: "empty prefixed command",
-			run: func() (string, bool) {
-				return addGitPullRebaseFlag("")
-			},
-			wantOK: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := tt.run()
-			if ok != tt.wantOK || got != tt.wantCmd {
-				t.Fatalf("helper = %q, %v; want %q, %v", got, ok, tt.wantCmd, tt.wantOK)
-			}
-		})
 	}
 }
 

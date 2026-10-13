@@ -18,8 +18,6 @@ type GitParser struct {
 	branchUpstreamMissingRegex *regexp.Regexp
 	pushNoUpstreamFatalRegex   *regexp.Regexp
 	pushNoUpstreamRegex        *regexp.Regexp
-	divergentBranchesRegex     *regexp.Regexp
-	reconcileDivergenceRegex   *regexp.Regexp
 	placeholderRegex           *regexp.Regexp
 	notGitRepoRegex            *regexp.Regexp
 	resolveBranchUpstream      gitBranchUpstreamResolver
@@ -36,8 +34,6 @@ func NewGitParser() *GitParser {
 		branchUpstreamMissingRegex: regexp.MustCompile(`(?m)^fatal: the requested upstream branch '([^'\r\n]+)' does not exist[\t\r ]*$`),
 		pushNoUpstreamFatalRegex:   regexp.MustCompile(`(?m)^fatal: The current branch ([^\s]+) has no upstream branch\.[\t\r ]*$`),
 		pushNoUpstreamRegex:        regexp.MustCompile(`(?m)^[ \t]*git push (?:-u|--set-upstream)[ \t]+([^\s]+)[ \t]+([^\s]+)[ \t\r]*$`),
-		divergentBranchesRegex:     regexp.MustCompile(`(?i)You have divergent branches and need to specify how to reconcile them\.`),
-		reconcileDivergenceRegex:   regexp.MustCompile(`(?i)fatal: Need to specify how to reconcile divergent branches\.`),
 		placeholderRegex:           regexp.MustCompile(`^<[^>\s]+>$`),
 		notGitRepoRegex:            regexp.MustCompile(`fatal: not a git repository`),
 		resolveBranchUpstream:      resolveGitBranchUpstream,
@@ -76,10 +72,8 @@ func (p *GitParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 		return result
 	}
 
-	if result := p.parseDivergentPullRebase(cmd, stderr); result.Fixed {
-		return result
-	}
-
+	// Divergent pull hints offer workflow choices, not a unique correction.
+	// Leave merge, rebase, and fast-forward policy decisions to the user.
 	return itypes.ParserResult{Fixed: false}
 }
 
@@ -483,26 +477,6 @@ func gitPushUpstreamArgsAllowed(args []string) bool {
 	return true
 }
 
-func (p *GitParser) parseDivergentPullRebase(cmd, stderr string) itypes.ParserResult {
-	if gitSubcommand(cmd) != "pull" || gitCommandHasPullReconcileFlag(cmd) {
-		return itypes.ParserResult{Fixed: false}
-	}
-	if !p.divergentBranchesRegex.MatchString(stderr) || !p.reconcileDivergenceRegex.MatchString(stderr) {
-		return itypes.ParserResult{Fixed: false}
-	}
-
-	fixed, ok := addGitPullRebaseFlag(cmd)
-	if !ok {
-		return itypes.ParserResult{Fixed: false}
-	}
-
-	return itypes.ParserResult{
-		Fixed:   true,
-		Command: fixed,
-		Message: "adding git pull rebase strategy",
-	}
-}
-
 func gitSubcommand(cmd string) string {
 	parts := shellCommandWords(cmd)
 	return gitSubcommandFromWords(parts)
@@ -619,43 +593,12 @@ func gitCommandHasUpstreamFlag(cmd string) bool {
 	return false
 }
 
-func gitCommandHasPullReconcileFlag(cmd string) bool {
-	for _, part := range shellCommandWords(cmd) {
-		switch {
-		case part == "--rebase", part == "--no-rebase", part == "--ff-only":
-			return true
-		case strings.HasPrefix(part, "--rebase="):
-			return true
-		}
-	}
-
-	return false
-}
-
 func gitShellArgsLits(args []*syntax.Word) []string {
 	lits := make([]string, 0, len(args))
 	for _, arg := range args {
 		lits = append(lits, arg.Lit())
 	}
 	return lits
-}
-
-func addGitPullRebaseFlag(cmd string) (string, bool) {
-	call, err := parseShellCall(cmd)
-	if err != nil || len(call.args) == 0 {
-		return "", false
-	}
-
-	if gitPrefixedSubcommand(call.args[0].Lit()) == "pull" {
-		return call.insertAfterWord(0, " --rebase"), true
-	}
-
-	index := findShellSubcommandIndex(call.args, parserNameGit, gitParserOptionsWithValues)
-	if index != -1 && call.args[index].Lit() == "pull" {
-		return call.insertAfterWord(index, " --rebase"), true
-	}
-
-	return "", false
 }
 
 var gitGlobalOptions = map[string]bool{

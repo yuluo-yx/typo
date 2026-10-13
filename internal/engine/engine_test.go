@@ -367,24 +367,32 @@ func TestEngine_FixWithParser_RejectsAmbiguousCompoundTargets(t *testing.T) {
 	}
 }
 
-func TestEngine_FixWithParser_DivergentPullRebaseTargetsPullOnly(t *testing.T) {
-	eng := NewEngine(
-		WithParser(parser.NewRegistry()),
-	)
+func TestEngine_DivergentPullDoesNotChooseStrategy(t *testing.T) {
+	eng := NewEngine(WithParser(parser.NewRegistry()))
+	stderr := "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n"
+	for _, command := range []string{
+		"git pull",
+		"git pull origin main",
+		"git -C repo pull",
+		"git status && git pull origin main",
+		"sudo git pull",
+		"git pull --quiet > pull.log",
+	} {
+		t.Run(command, func(t *testing.T) {
+			input := itypes.ParserContext{Command: command, Stderr: stderr, ExitCode: 128}
+			if result := eng.FixWithContext(input); result.Fixed {
+				t.Fatalf("Divergent pull must not choose a strategy, got %+v", result)
+			}
+			if candidates := eng.FixCandidatesWithContext(input, 3); len(candidates) != 0 {
+				t.Fatalf("Divergent pull must not rank workflow choices as corrections, got %+v", candidates)
+			}
+		})
+	}
 
-	result := eng.FixWithContext(itypes.ParserContext{
-		Command:  "git status && git pull origin main",
-		Stderr:   "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n",
-		ExitCode: 1,
-	})
-	if !result.Fixed {
-		t.Fatal("Expected divergent pull command to be fixed")
-	}
-	if result.Command != "git status && git pull --rebase origin main" {
-		t.Fatalf("Expected rebase fix to apply only to git pull, got %q", result.Command)
-	}
-	if !result.UsedParser {
-		t.Fatal("Expected parser-assisted fix chain to retain parser usage marker")
+	// An actual typo can still be corrected without selecting a pull policy.
+	result := eng.FixWithContext(itypes.ParserContext{Command: "gti pull", Stderr: stderr, ExitCode: 128})
+	if !result.Fixed || result.Command != "git pull" || result.UsedParser {
+		t.Fatalf("Expected only the executable typo to be corrected, got %+v", result)
 	}
 }
 

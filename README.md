@@ -111,6 +111,11 @@ cd $HOEM/project
 cd $HOME/project
 ```
 
+Git errors with multiple valid workflow choices are not automatic corrections.
+For example, when `git pull` reports divergent branches, typo leaves the command
+unchanged rather than choosing merge, rebase, or fast-forward-only for you. Follow
+Git's hints to choose a one-time option or a repository-level configuration.
+
 ## CLI Commands
 
 Use the CLI directly when you want explicit output or custom rules:
