@@ -5,17 +5,17 @@ class Typo < Formula
   license "MIT"
 
   if OS.mac? && Hardware::CPU.arm?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.4/typo-darwin-arm64", using: :nounzip
-    sha256 "e5ecf6a30229faaa0ad1489dd46e1296871856d426053751298755f11a86e48d"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.5/typo-darwin-arm64", using: :nounzip
+    sha256 "c5a28883613a9ce1a6db3b6dc1ac9be3d852a8d43377ff9510adad9a840bceb0"
   elsif OS.mac?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.4/typo-darwin-amd64", using: :nounzip
-    sha256 "32cd4f082c24d0b3728a8e64d6cfdf7d0b7b5fa467375a42b3239b405ce0a6b4"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.5/typo-darwin-amd64", using: :nounzip
+    sha256 "123f89339b1a3068e82f85d78842bb6346eb25a15ec2db6d2e6295932223054e"
   elsif OS.linux? && Hardware::CPU.arm?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.4/typo-linux-arm64", using: :nounzip
-    sha256 "47711b45d0cc77776b97f972c913e15d88062d0fb798338771f402ca5621930c"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.5/typo-linux-arm64", using: :nounzip
+    sha256 "2571864d11940a8c32b67723a4635762bf176f5a86a0b64b75a3b006c7c056a0"
   elsif OS.linux?
-    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.4/typo-linux-amd64", using: :nounzip
-    sha256 "be72712ea6ac5272683c530a29f4a03840d6dcaa89f4c400739fae611e11d5ec"
+    url "https://github.com/yuluo-yx/typo/releases/download/v1.9.5/typo-linux-amd64", using: :nounzip
+    sha256 "3c651e55ef54f6e760be5eb975f5cf6562fe08bb8c29957eac6741527de490fb"
   end
 
   def install
