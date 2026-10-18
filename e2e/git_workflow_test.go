@@ -43,7 +43,7 @@ func TestE2EZshGitPullNoUpstreamUsesCapturedFailure(t *testing.T) {
 	if copyErr != nil {
 		t.Skip("cp is not installed")
 	}
-	const binding = "git branch --set-upstream-to=origin/main main"
+	const binding = "git pull --set-upstream origin main"
 	for _, tt := range []struct {
 		name, buffer, want, bind, changeDirectory string
 	}{
@@ -58,6 +58,10 @@ func TestE2EZshGitPullNoUpstreamUsesCapturedFailure(t *testing.T) {
 			runRealGitWorkflow(t, env, git, extra, "init", "--bare", "--initial-branch=main", remote)
 			runRealGitWorkflow(t, env, git, extra, "remote", "add", "origin", remote)
 			runRealGitWorkflow(t, env, git, extra, "push", "origin", "main")
+			seed := filepath.Join(env.tmpDir, "remote-seed")
+			runRealGitWorkflow(t, env, git, extra, "clone", remote, seed)
+			runRealGitWorkflow(t, env, git, extra, "-C", seed, "commit", "--allow-empty", "-m", "remote advance")
+			runRealGitWorkflow(t, env, git, extra, "-C", seed, "push", "origin", "main")
 			initScript := env.initZshScript(t)
 			extra = append(extra, "COPY_COMMAND="+normalizeShellExecPath(copyCommand), "PULL_BUFFER="+tt.buffer, "EXPECTED_BUFFER="+tt.want, "EXPECT_BINDING="+tt.bind, "CHANGE_DIRECTORY="+tt.changeDirectory)
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -90,12 +94,14 @@ _typo_fix_command
 [[ "$BUFFER" == "$EXPECTED_BUFFER" ]] || { print -r -- "unexpected buffer: $BUFFER"; exit 63; }
 git -C "$repo" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 && exit 64
 if [[ "$EXPECT_BINDING" == 1 ]]; then
-    # Execute the actual widget result through zsh, not reconstructed argv.
-    eval "$BUFFER" >/dev/null || exit 65
-    [[ "$(git rev-parse --abbrev-ref '@{upstream}')" == origin/main ]] || exit 66
     [[ "$(git rev-parse HEAD)" == "$head" ]] || exit 67
     command cmp .git/index "$TMPDIR/index.before" || exit 68
     command cmp .git/FETCH_HEAD "$TMPDIR/fetch.before" || exit 69
+    # Execute the actual widget result through zsh, not reconstructed argv.
+    eval "$BUFFER" >/dev/null || exit 65
+    [[ "$(git rev-parse --abbrev-ref '@{upstream}')" == origin/main ]] || exit 66
+    [[ "$(git rev-parse HEAD)" != "$head" ]] || exit 73
+    [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || exit 74
     git pull --ff-only >/dev/null || exit 70
 fi
 print -r -- "$BUFFER"
@@ -131,7 +137,7 @@ func readGitWorkflowFile(t *testing.T, path string) []byte {
 	return data
 }
 
-func TestE2EGitDivergentPullDoesNotChooseStrategy(t *testing.T) {
+func TestE2EGitDivergentPullExecutesRebase(t *testing.T) {
 	for _, forcedUpdate := range []bool{false, true} {
 		name := "divergent branches"
 		if forcedUpdate {
@@ -155,11 +161,9 @@ func TestE2EGitDivergentPullDoesNotChooseStrategy(t *testing.T) {
 					args = append(args, "--select")
 				}
 				result := env.runWithEnv(t, extra, append(args, "git pull")...)
-				if result.code != 1 || result.stdout != "" || !strings.Contains(result.stderr, "no correction found") {
-					t.Fatalf("divergent pull must not select a strategy (select=%v): %+v", selectMode, result)
-				}
+				assertE2EStdoutEquals(t, result, "git pull --rebase\n", "divergent pull did not suggest rebase")
 			}
-			assertZshDivergentPullBufferUnchanged(t, env, extra, stderrFile)
+			assertZshDivergentPullCorrection(t, env, extra, stderrFile)
 			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", "HEAD"); after != head {
 				t.Fatalf("correction modified local history: %s -> %s", head, after)
 			}
@@ -171,6 +175,22 @@ func TestE2EGitDivergentPullDoesNotChooseStrategy(t *testing.T) {
 					t.Fatalf("correction modified .git/%s", file)
 				}
 			}
+			// Execute the actual CLI output and verify that local work survives.
+			result := env.runWithEnv(t, extra, "fix", "--no-history", "--exit-code", "128", "-s", stderrFile, "git pull")
+			executeGitCorrection(t, env, extra, result)
+			runRealGitWorkflow(t, env, git, extra, "merge-base", "--is-ancestor", tracked, "HEAD")
+			if subject := runRealGitWorkflow(t, env, git, extra, "log", "-1", "--format=%s"); subject != "local change" {
+				t.Fatalf("rebase lost the local commit: %q", subject)
+			}
+			for _, file := range []string{"local.txt", "remote.txt"} {
+				if got := string(readGitWorkflowFile(t, filepath.Join(env.root, file))); got != file+"\n" {
+					t.Fatalf("rebase lost file %s: %q", file, got)
+				}
+			}
+			if !bytes.Equal(snapshots["config"], readGitWorkflowFile(t, filepath.Join(gitDir, "config"))) {
+				t.Fatal("one-time rebase changed repository configuration")
+			}
+			runRealGitWorkflow(t, env, git, extra, "pull", "--ff-only")
 		})
 	}
 }
@@ -186,12 +206,20 @@ func newDivergentGitWorkflowEnv(t *testing.T, forcedUpdate bool) (*e2eEnv, strin
 	runRealGitWorkflow(t, env, git, extra, "push", "--set-upstream", "origin", "main")
 	seed := filepath.Join(env.tmpDir, "remote-seed")
 	runRealGitWorkflow(t, env, git, extra, "clone", remote, seed)
-	runRealGitWorkflow(t, env, git, extra, "commit", "--allow-empty", "-m", "local change")
+	if err := os.WriteFile(filepath.Join(env.root, "local.txt"), []byte("local.txt\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runRealGitWorkflow(t, env, git, extra, "add", "local.txt")
+	runRealGitWorkflow(t, env, git, extra, "commit", "-m", "local change")
 	if forcedUpdate {
 		// Rewrite only the disposable local remote; never touch a public repository.
 		runRealGitWorkflow(t, env, git, extra, "-C", seed, "switch", "-c", "rewritten", root)
 	}
-	runRealGitWorkflow(t, env, git, extra, "-C", seed, "commit", "--allow-empty", "-m", "remote change")
+	if err := os.WriteFile(filepath.Join(seed, "remote.txt"), []byte("remote.txt\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runRealGitWorkflow(t, env, git, extra, "-C", seed, "add", "remote.txt")
+	runRealGitWorkflow(t, env, git, extra, "-C", seed, "commit", "-m", "remote change")
 	pushArgs := []string{"-C", seed, "push"}
 	if forcedUpdate {
 		pushArgs = append(pushArgs, "--force")
@@ -211,7 +239,7 @@ func newDivergentGitWorkflowEnv(t *testing.T, forcedUpdate bool) (*e2eEnv, strin
 	return env, git, extra, env.writeTempFile(t, "divergent-pull.stderr", string(stderr))
 }
 
-func assertZshDivergentPullBufferUnchanged(t *testing.T, env *e2eEnv, extra []string, stderrFile string) {
+func assertZshDivergentPullCorrection(t *testing.T, env *e2eEnv, extra []string, stderrFile string) {
 	t.Helper()
 	zsh, err := exec.LookPath("zsh")
 	if err != nil {
@@ -232,9 +260,8 @@ TYPO_LAST_EXIT_CODE=128
 _TYPO_LAST_COMMAND_PWD="$PWD"
 print -s -- 'git pull'
 for BUFFER in '' 'git pull'; do
-    expected="$BUFFER"
     _typo_fix_command
-    [[ "$BUFFER" == "$expected" ]] || { print -r -- "unexpected buffer: $BUFFER"; exit 61; }
+    [[ "$BUFFER" == "git pull --rebase" ]] || { print -r -- "unexpected buffer: $BUFFER"; exit 61; }
 done
 `, "zsh", initScript, stderrFile)
 	cmd.Dir = env.root
@@ -277,7 +304,7 @@ func TestE2EGitAliasCorrectionDoesNotExecuteAlias(t *testing.T) {
 	}
 }
 
-func TestE2EGitPullCorrectionOnlyBindsUpstream(t *testing.T) {
+func TestE2EGitPullCorrectionSetsUpstreamAndPulls(t *testing.T) {
 	for _, tt := range []struct{ remote, branch string }{{"origin", "main"}, {"upstream", "feature/topic"}} {
 		t.Run(tt.remote+"/"+tt.branch, func(t *testing.T) {
 			env, git, extra := newRealGitWorkflowEnv(t, tt.branch)
@@ -294,7 +321,7 @@ func TestE2EGitPullCorrectionOnlyBindsUpstream(t *testing.T) {
 			}
 			stderrFile := env.writeTempFile(t, "pull.stderr", string(stderr))
 
-			// Advance the remote after the failed pull. Binding must not fetch it.
+			// Advance the remote after the failure; the correction must fetch and integrate it.
 			seed := filepath.Join(env.tmpDir, "remote-seed")
 			runRealGitWorkflow(t, env, git, extra, "clone", remote, seed)
 			runRealGitWorkflow(t, env, git, extra, "-C", seed, "commit", "--allow-empty", "-m", "remote advance")
@@ -306,20 +333,21 @@ func TestE2EGitPullCorrectionOnlyBindsUpstream(t *testing.T) {
 			fetch := readGitWorkflowFile(t, fetchPath)
 			target := tt.remote + "/" + tt.branch
 			tracking := runRealGitWorkflow(t, env, git, extra, "rev-parse", target)
-			want := "git branch --set-upstream-to=" + target + " " + tt.branch
-			var bindingCommand string
+			suffix := " --set-upstream " + tt.remote + " " + tt.branch
+			want := "git pull" + suffix
+			var pullResult e2eResult
 			for _, command := range []struct{ input, output string }{
 				{"git pull", want},
-				{"git pull --rebase --quiet", want},
-				{"git -C '" + env.root + "' pull --quiet", "git -C '" + env.root + "' " + strings.TrimPrefix(want, "git ")},
+				{"git pull --rebase --quiet", "git pull --rebase --quiet" + suffix},
+				{"git -C '" + env.root + "' pull --quiet", "git -C '" + env.root + "' pull --quiet" + suffix},
 				{"git pull && echo ready", want + " && echo ready"},
 				{"echo ready && git pull", "echo ready && " + want},
 				{"sudo git pull", "sudo " + want},
 			} {
-				got := env.runWithEnv(t, extra, "fix", "--no-history", "--exit-code", "1", "-s", stderrFile, command.input)
-				assertE2EStdoutEquals(t, got, command.output+"\n", "pull correction did not follow Git's branch hint")
+				got := env.runWithEnv(t, extra, "fix", "--debug", "--no-history", "--exit-code", "1", "-s", stderrFile, command.input)
+				assertE2EStdoutEquals(t, got, command.output+"\n", "pull correction failed for "+command.input)
 				if command.input == "git pull" {
-					bindingCommand = strings.TrimSpace(got.stdout)
+					pullResult = got
 				}
 			}
 			unbound := exec.Command(git, "rev-parse", "--abbrev-ref", "@{upstream}")
@@ -328,31 +356,68 @@ func TestE2EGitPullCorrectionOnlyBindsUpstream(t *testing.T) {
 			if err := unbound.Run(); err == nil {
 				t.Fatal("generating the correction already changed the upstream")
 			}
-			// Execute the actual suggestion, not argv rebuilt from the expectation.
-			binding := exec.Command("sh", "-c", bindingCommand)
-			binding.Dir = env.root
-			binding.Env = env.commandEnv(extra...)
-			if output, err := binding.CombinedOutput(); err != nil {
-				t.Fatalf("branch suggestion failed: %v\n%s", err, output)
+			// Generating suggestions must not execute the pull.
+			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", "HEAD"); after != head {
+				t.Fatalf("suggestion changed HEAD: %s -> %s", head, after)
 			}
+			if !bytes.Equal(index, readGitWorkflowFile(t, indexPath)) || !bytes.Equal(fetch, readGitWorkflowFile(t, fetchPath)) {
+				t.Fatal("suggestion changed the index or FETCH_HEAD")
+			}
+			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", target); after != tracking {
+				t.Fatalf("suggestion fetched the remote: %s -> %s", tracking, after)
+			}
+			executeGitCorrection(t, env, extra, pullResult)
 			if upstream := runRealGitWorkflow(t, env, git, extra, "rev-parse", "--abbrev-ref", "@{upstream}"); upstream != target {
 				t.Fatalf("upstream = %q, want %q", upstream, target)
 			}
-			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", "HEAD"); after != head {
-				t.Fatalf("branch binding changed HEAD: %s -> %s", head, after)
-			}
-			if !bytes.Equal(index, readGitWorkflowFile(t, indexPath)) || !bytes.Equal(fetch, readGitWorkflowFile(t, fetchPath)) {
-				t.Fatal("branch binding changed the index or FETCH_HEAD")
-			}
-			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", target); after != tracking {
-				t.Fatalf("branch binding fetched the advanced remote: %s -> %s", tracking, after)
-			}
-			// Only a subsequent explicit pull should fetch and integrate changes.
-			runRealGitWorkflow(t, env, git, extra, "pull", "--ff-only")
 			remoteHead := runRealGitWorkflow(t, env, git, extra, "-C", seed, "rev-parse", "HEAD")
 			if after := runRealGitWorkflow(t, env, git, extra, "rev-parse", "HEAD"); after != remoteHead || after == head {
-				t.Fatalf("subsequent pull did not advance to the remote: HEAD=%s, remote=%s, before=%s", after, remoteHead, head)
+				t.Fatalf("corrected pull did not advance to the remote: HEAD=%s, remote=%s, before=%s", after, remoteHead, head)
 			}
 		})
+	}
+}
+
+func TestE2EGitPullRepairsMissingUpstreamThenDivergence(t *testing.T) {
+	env, git, extra, _ := newDivergentGitWorkflowEnv(t, false)
+	runRealGitWorkflow(t, env, git, extra, "branch", "--unset-upstream")
+	command := "git pull"
+	for _, step := range []struct{ signal, want string }{
+		{"There is no tracking information", "git pull --set-upstream origin main"},
+		{"Need to specify how to reconcile divergent branches", "git pull --rebase --set-upstream origin main"},
+	} {
+		failed := exec.Command("sh", "-c", command)
+		failed.Dir = env.root
+		failed.Env = env.commandEnv(extra...)
+		stderr, err := failed.CombinedOutput()
+		if err == nil || !strings.Contains(string(stderr), step.signal) {
+			t.Fatalf("expected %q from %q: %v\n%s", step.signal, command, err, stderr)
+		}
+		stderrFile := env.writeTempFile(t, "pull-step.stderr", string(stderr))
+		result := env.runWithEnv(t, extra, "fix", "--no-history", "--exit-code", "1", "-s", stderrFile, command)
+		assertE2EStdoutEquals(t, result, step.want+"\n", "pull repair chain lost the original operation")
+		command = strings.TrimSpace(result.stdout)
+	}
+	executeGitCorrection(t, env, extra, e2eResult{stdout: command})
+	runRealGitWorkflow(t, env, git, extra, "merge-base", "--is-ancestor", "origin/main", "HEAD")
+	if subject := runRealGitWorkflow(t, env, git, extra, "log", "-1", "--format=%s"); subject != "local change" {
+		t.Fatalf("combined repair lost the local commit: %q", subject)
+	}
+	if upstream := runRealGitWorkflow(t, env, git, extra, "rev-parse", "--abbrev-ref", "@{upstream}"); upstream != "origin/main" {
+		t.Fatalf("combined repair lost upstream tracking: %q", upstream)
+	}
+}
+
+// executeGitCorrection runs exactly the command emitted by the CLI in an isolated repository.
+func executeGitCorrection(t *testing.T, env *e2eEnv, extra []string, result e2eResult) {
+	t.Helper()
+	if result.code != 0 || strings.TrimSpace(result.stdout) == "" {
+		t.Fatalf("expected an executable correction: %+v", result)
+	}
+	cmd := exec.Command("sh", "-c", strings.TrimSpace(result.stdout))
+	cmd.Dir = env.root
+	cmd.Env = env.commandEnv(extra...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("correction %q failed: %v\n%s", result.stdout, err, output)
 	}
 }

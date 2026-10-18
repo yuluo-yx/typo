@@ -92,7 +92,7 @@ To push the current branch and set the remote as upstream, use
 
 Press `Esc` `Esc`. Typo applies Git's concrete suggestion when the remote and branch names are safe across every supported shell; otherwise it leaves the command unchanged.
 
-## `git branch --set-upstream-to`
+## `git pull --set-upstream`
 
 When the current branch has no upstream, Git may leave the remote branch as a placeholder:
 
@@ -106,12 +106,12 @@ There is no tracking information for the current branch.
 Press `Esc` `Esc`. Typo resolves the placeholder from the explicit local branch and verifies that both `test/dev` and `origin/test/dev` exist in the current repository before suggesting:
 
 ```shell
-git branch --set-upstream-to=origin/test/dev test/dev
+git pull --set-upstream origin test/dev
 ```
 
-This follows Git's branch-binding hint: executing the suggestion sets the upstream without fetching, merging, or rebasing. Run `git pull` afterward when you want to retrieve changes. Repository-selection arguments such as `git -C 'repo path'` are preserved; pull-only options are removed instead of being passed to `git branch`.
+Executing the suggestion sets the upstream and completes the requested pull. Repository-selection arguments such as `git -C 'repo path'`, pull options such as `--rebase --autostash`, and shell redirections are preserved. Generating the suggestion does not execute it.
 
-In zsh, after the failed pull, press `Esc` `Esc` at the empty prompt or press `Up` to recall the unchanged command and then `Esc` `Esc`. Execute the suggested `git branch` command to establish tracking, then run `git pull` again. Edited commands and commands recalled in a different directory do not reuse the previous error.
+In zsh, after the failed pull, press `Esc` `Esc` at the empty prompt or press `Up` to recall the unchanged command and then `Esc` `Esc`. Execute the suggested `git pull --set-upstream` command to establish tracking and retrieve changes. Edited commands and commands recalled in a different directory do not reuse the previous error.
 
 Typo leaves the command unchanged when the remote is also a placeholder, the branch names are ambiguous, or either verified reference is missing.
 
@@ -131,6 +131,11 @@ Press `Esc` `Esc`, and Typo can retry the same pull with a command-level rebase 
 ```shell
 git pull --rebase
 ```
+
+This adds a one-time rebase option without changing Git configuration. Existing
+remote, branch, upstream, and pull options are preserved. Explicit `-r`,
+`--rebase`, `--no-rebase`, or `--ff-only` choices are not overridden. If Git reports
+conflicts during execution, resolve them using Git's normal rebase workflow.
 
 ## No permission? Use `sudo`
 

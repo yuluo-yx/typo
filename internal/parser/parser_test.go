@@ -64,21 +64,21 @@ func TestGitParser_Parse(t *testing.T) {
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to=origin/main main\n",
 			wantFix: true,
-			wantCmd: "git branch --set-upstream-to=origin/main main",
+			wantCmd: "git pull --set-upstream origin main",
 		},
 		{
-			name:    "pull upstream hint drops pull options when binding branch",
+			name:    "pull upstream hint preserves pull options",
 			cmd:     "git pull --rebase --quiet",
 			stderr:  "There is no tracking information for the current branch.\n\n    git branch --set-upstream-to=origin/main main\n",
 			wantFix: true,
-			wantCmd: "git branch --set-upstream-to=origin/main main",
+			wantCmd: "git pull --rebase --quiet --set-upstream origin main",
 		},
 		{
 			name:    "no upstream branch resolves placeholder branch",
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to rebase against.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=origin/<branch> 0322-yuluo/inprove-add-check\n",
 			wantFix: true,
-			wantCmd: "git branch --set-upstream-to=origin/0322-yuluo/inprove-add-check 0322-yuluo/inprove-add-check",
+			wantCmd: "git pull --set-upstream origin 0322-yuluo/inprove-add-check",
 		},
 		{
 			name:    "no upstream branch rejects placeholder remote and branch",
@@ -91,7 +91,7 @@ func TestGitParser_Parse(t *testing.T) {
 			cmd:     "git pull",
 			stderr:  "There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.\nSee git-pull(1) for details.\n\n    git pull <remote> <branch>\n\nIf you wish to set tracking information for this branch, you can do so with:\n\n    git branch --set-upstream-to origin/main main\n",
 			wantFix: true,
-			wantCmd: "git branch --set-upstream-to=origin/main main",
+			wantCmd: "git pull --set-upstream origin main",
 		},
 		{
 			name:    "pull legacy set upstream hint is not inferred",
@@ -874,7 +874,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git branch --set-upstream-to=origin/test/dev test/dev",
+			wantCmd:        "git pull --set-upstream origin test/dev",
 		},
 		{
 			name:           "concrete upstream branch",
@@ -886,7 +886,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git branch --set-upstream-to=origin/test/dev test/dev",
+			wantCmd:        "git pull --set-upstream origin test/dev",
 		},
 		{
 			name:           "repository selector and safe pull options",
@@ -899,7 +899,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git -C 'repo path' branch --set-upstream-to=origin/test/dev test/dev",
+			wantCmd:        "git -C 'repo path' pull --rebase --quiet --set-upstream origin test/dev",
 		},
 		{
 			name:           "git pull executable form",
@@ -911,7 +911,7 @@ func TestGitParser_ParsePullNoTrackingFormalEnvironment(t *testing.T) {
 			wantRemote:     "origin",
 			wantBranch:     "test/dev",
 			wantFix:        true,
-			wantCmd:        "git branch --set-upstream-to=origin/test/dev test/dev",
+			wantCmd:        "git-pull --set-upstream origin test/dev",
 		},
 		{
 			name:       "placeholder remote is rejected",
@@ -1223,8 +1223,7 @@ func TestResolveGitBranchUpstreamWithRunner_ExplicitBranch(t *testing.T) {
 		t.Fatalf("resolveGitBranchUpstreamWithRunner() = (%q, %v)", target, ok)
 	}
 	expectedCalls := [][]string{
-		{"show-ref", "--verify", "--quiet", "refs/heads/main"},
-		{"show-ref", "--verify", "--quiet", "refs/remotes/origin/main"},
+		{"show-ref", "--verify", "--quiet", "refs/heads/main", "refs/remotes/origin/main"},
 	}
 	if len(calls) != len(expectedCalls) {
 		t.Fatalf("Git calls = %q, want %q", calls, expectedCalls)
@@ -1396,79 +1395,92 @@ func TestGitParser_ParsePushNoUpstream(t *testing.T) {
 	}
 }
 
-func TestGitParser_DivergentPullDoesNotChooseStrategy(t *testing.T) {
+func TestGitParser_ParseDivergentPullRebase(t *testing.T) {
 	p := NewGitParser()
 	stderr := gitDivergentPullStderr()
 
 	tests := []struct {
-		name string
-		cmd  string
+		name    string
+		cmd     string
+		wantFix bool
+		wantCmd string
 	}{
 		{
-			name: "plain pull",
-			cmd:  "git pull",
+			name:    "plain pull",
+			cmd:     "git pull",
+			wantFix: true,
+			wantCmd: "git pull --rebase",
 		},
 		{
-			name: "pull with remote and branch",
-			cmd:  "git pull origin main",
+			name:    "pull with remote and branch",
+			cmd:     "git pull origin main",
+			wantFix: true,
+			wantCmd: "git pull --rebase origin main",
 		},
 		{
-			name: "pull with global option",
-			cmd:  "git -C repo pull origin main",
+			name:    "pull with global option",
+			cmd:     "git -C repo pull origin main",
+			wantFix: true,
+			wantCmd: "git -C repo pull --rebase origin main",
 		},
 		{
-			name: "git-pull form",
-			cmd:  "git-pull origin main",
+			name:    "git-pull form",
+			cmd:     "git-pull origin main",
+			wantFix: true,
+			wantCmd: "git-pull --rebase origin main",
 		},
 		{
-			name: "unclosed quoted argument stays unchanged",
-			cmd:  "git pull 'foo   bar",
+			name:    "unclosed quoted argument stays unchanged",
+			cmd:     "git pull 'foo   bar",
+			wantFix: false,
 		},
 		{
-			name: "already has rebase",
-			cmd:  "git pull --rebase origin main",
+			name:    "already has rebase",
+			cmd:     "git pull --rebase origin main",
+			wantFix: false,
 		},
 		{
-			name: "already has rebase mode",
-			cmd:  "git pull --rebase=merges origin main",
+			name:    "already has rebase mode",
+			cmd:     "git pull --rebase=merges origin main",
+			wantFix: false,
 		},
 		{
-			name: "already has no rebase",
-			cmd:  "git pull --no-rebase origin main",
+			name:    "already has no rebase",
+			cmd:     "git pull --no-rebase origin main",
+			wantFix: false,
 		},
 		{
-			name: "already has ff only",
-			cmd:  "git pull --ff-only origin main",
+			name:    "already has ff only",
+			cmd:     "git pull --ff-only origin main",
+			wantFix: false,
 		},
 		{
-			name: "non pull command",
-			cmd:  "git fetch origin main",
+			name:    "non pull command",
+			cmd:     "git fetch origin main",
+			wantFix: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := p.Parse(itypes.ParserContext{Command: tt.cmd, Stderr: stderr})
-			if result.Fixed || result.Command != "" {
-				t.Fatalf("Divergent pull must leave the strategy to the user, got %+v", result)
+			if result.Fixed != tt.wantFix {
+				t.Fatalf("Parse().Fixed = %v, want %v (%+v)", result.Fixed, tt.wantFix, result)
+			}
+			if tt.wantFix && result.Command != tt.wantCmd {
+				t.Fatalf("Parse().Command = %q, want %q", result.Command, tt.wantCmd)
 			}
 		})
 	}
 }
 
-func TestRegistry_DivergentPullDoesNotChooseStrategy(t *testing.T) {
+func TestGitParser_ParseDivergentPullRebaseRequiresGitSignals(t *testing.T) {
+	p := NewGitParser()
+
 	tests := []struct {
 		name   string
 		stderr string
 	}{
-		{
-			name:   "complete hints",
-			stderr: gitDivergentPullStderr(),
-		},
-		{
-			name:   "forced remote update",
-			stderr: "From https://example.invalid/repo\n + 5a7678d24...93e0d1482 main -> origin/main (forced update)\n" + gitDivergentPullStderr(),
-		},
 		{
 			name:   "missing fatal signal",
 			stderr: "hint: You have divergent branches and need to specify how to reconcile them.\n",
@@ -1481,9 +1493,9 @@ func TestRegistry_DivergentPullDoesNotChooseStrategy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NewRegistry().Parse(itypes.ParserContext{Command: "git pull", Stderr: tt.stderr})
+			result := p.Parse(itypes.ParserContext{Command: "git pull", Stderr: tt.stderr})
 			if result.Fixed {
-				t.Fatalf("Expected divergent pull stderr to stay unchanged, got %+v", result)
+				t.Fatalf("Expected incomplete divergent pull stderr to stay unchanged, got %+v", result)
 			}
 		})
 	}

@@ -111,10 +111,13 @@ cd $HOEM/project
 cd $HOME/project
 ```
 
-Git errors with multiple valid workflow choices are not automatic corrections.
-For example, when `git pull` reports divergent branches, typo leaves the command
-unchanged rather than choosing merge, rebase, or fast-forward-only for you. Follow
-Git's hints to choose a one-time option or a repository-level configuration.
+When `git pull` has no upstream, typo preserves the pull and its options and adds
+`--set-upstream <remote> <branch>` using verified repository references. When Git
+reports divergent branches without a reconciliation strategy, typo suggests
+`git pull --rebase`, preserving existing arguments. Explicit `--rebase`, `-r`,
+`--no-rebase`, and `--ff-only` choices are kept. Suggestions are placed in the
+command buffer for you to execute; generating one does not change Git history or
+repository configuration.
 
 ## CLI Commands
 

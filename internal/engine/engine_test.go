@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -367,7 +368,7 @@ func TestEngine_FixWithParser_RejectsAmbiguousCompoundTargets(t *testing.T) {
 	}
 }
 
-func TestEngine_DivergentPullDoesNotChooseStrategy(t *testing.T) {
+func TestEngine_DivergentPullSuggestsRebase(t *testing.T) {
 	eng := NewEngine(WithParser(parser.NewRegistry()))
 	stderr := "hint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches.\n"
 	for _, command := range []string{
@@ -377,22 +378,25 @@ func TestEngine_DivergentPullDoesNotChooseStrategy(t *testing.T) {
 		"git status && git pull origin main",
 		"sudo git pull",
 		"git pull --quiet > pull.log",
+		"git pull --set-upstream origin main",
+		"LABEL=ok git -C 'repo path' pull --autostash",
 	} {
 		t.Run(command, func(t *testing.T) {
 			input := itypes.ParserContext{Command: command, Stderr: stderr, ExitCode: 128}
-			if result := eng.FixWithContext(input); result.Fixed {
-				t.Fatalf("Divergent pull must not choose a strategy, got %+v", result)
+			want := strings.Replace(command, " pull", " pull --rebase", 1)
+			if result := eng.FixWithContext(input); !result.Fixed || result.Command != want || !result.UsedParser {
+				t.Fatalf("Expected rebase correction %q, got %+v", want, result)
 			}
-			if candidates := eng.FixCandidatesWithContext(input, 3); len(candidates) != 0 {
-				t.Fatalf("Divergent pull must not rank workflow choices as corrections, got %+v", candidates)
+			if candidates := eng.FixCandidatesWithContext(input, 3); len(candidates) == 0 || candidates[0].Command != want {
+				t.Fatalf("Expected rebase candidate %q, got %+v", want, candidates)
 			}
 		})
 	}
 
-	// An actual typo can still be corrected without selecting a pull policy.
+	// Executable spelling and the captured pull failure are corrected together.
 	result := eng.FixWithContext(itypes.ParserContext{Command: "gti pull", Stderr: stderr, ExitCode: 128})
-	if !result.Fixed || result.Command != "git pull" || result.UsedParser {
-		t.Fatalf("Expected only the executable typo to be corrected, got %+v", result)
+	if !result.Fixed || result.Command != "git pull --rebase" || !result.UsedParser {
+		t.Fatalf("Expected executable and pull strategy correction, got %+v", result)
 	}
 }
 

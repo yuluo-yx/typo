@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-const gitRepositoryQueryTimeout = 500 * time.Millisecond
+// Allow cold Git executables and wrappers time to start while bounding lookup latency.
+const gitRepositoryQueryTimeout = 2 * time.Second
 
 type gitBranchUpstreamResolver func(repositoryArgs []string, remote, localBranch string) (string, bool)
 
@@ -53,26 +54,25 @@ func resolveGitBranchUpstreamWithRunner(
 		!gitUpstreamTokenRegex.MatchString(branch) {
 		return "", false
 	}
-	if localBranch != "" {
-		localRef := "refs/heads/" + branch
-		if !gitRefExists(ctx, repositoryArgs, localRef, run) {
-			return "", false
-		}
-	}
-
 	upstream := remote + "/" + branch
-	remoteRef := "refs/remotes/" + upstream
-	if !gitRefExists(ctx, repositoryArgs, remoteRef, run) {
+	refs := make([]string, 0, 2)
+	if localBranch != "" {
+		refs = append(refs, "refs/heads/"+branch)
+	}
+	refs = append(refs, "refs/remotes/"+upstream)
+	// show-ref --verify fails if any requested ref is absent. Check both refs
+	// in one process so startup cost is paid once for an explicit branch.
+	if !gitRefsExist(ctx, repositoryArgs, refs, run) {
 		return "", false
 	}
 
 	return upstream, true
 }
 
-func gitRefExists(
+func gitRefsExist(
 	ctx context.Context,
 	repositoryArgs []string,
-	ref string,
+	refs []string,
 	run gitCommandRunner,
 ) bool {
 	args := appendGitRepositoryArgs(
@@ -80,8 +80,8 @@ func gitRefExists(
 		"show-ref",
 		"--verify",
 		"--quiet",
-		ref,
 	)
+	args = append(args, refs...)
 	if _, err := run(ctx, args); err != nil {
 		return false
 	}
