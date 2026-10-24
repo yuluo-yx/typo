@@ -84,6 +84,39 @@ fi
 `)
 }
 
+func TestZshIntegrationBackgroundStderrDoesNotOverwriteCurrentCapture(t *testing.T) {
+	runZshIntegrationScript(t, `
+zle() { true; }
+bindkey() { true; }
+source "$1"
+
+gate="${TMPDIR:-/tmp}/typo-gate-$$"
+rm -f -- "$gate"
+
+# The background job keeps the first command's stderr pipe open and writes late.
+_typo_preexec
+{ while [[ ! -e "$gate" ]]; do sleep 0.02; done; print -u2 "OLD_ERROR"; } &
+bg_pid=$!
+# Let the first capture's tee open its file, as it does between real commands.
+sleep 0.1
+_typo_precmd
+
+_typo_preexec
+print -u2 "CURRENT_COMMAND_ERROR_LONG"
+_typo_precmd
+sleep 0.1
+grep -q "CURRENT_COMMAND_ERROR_LONG" "$TYPO_STDERR_CACHE" || exit 81
+
+: > "$gate"
+wait $bg_pid
+sleep 0.1
+rm -f -- "$gate"
+grep -q "OLD_ERROR" "$TYPO_STDERR_CACHE" && exit 82
+[[ "$(<"$TYPO_STDERR_CACHE")" == "CURRENT_COMMAND_ERROR_LONG" ]] || exit 83
+_typo_zshexit
+`)
+}
+
 func TestZshIntegrationUsesCommandTimeStderr(t *testing.T) {
 	output := runZshIntegrationScript(t, `
 zle() { true; }

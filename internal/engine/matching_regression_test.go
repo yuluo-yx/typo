@@ -106,3 +106,39 @@ func referenceWeightedDistance(a, b []rune, weights KeyboardWeights) int {
 	}
 	return int(math.Round(matrix[len(a)][len(b)]))
 }
+
+func TestDistanceRunesWithinMatchesFullDistance(t *testing.T) {
+	words := []string{"", "a", "gti", "git", "gut", "docker", "dcoker", "kubectl", "kubeclt", "custom0500x", "unrelatedxx", "日本語", "本日語", "aaaaaaaaaa", "ab", "ba"}
+	for _, layout := range []string{"qwerty", "dvorak", "colemak"} {
+		weights, err := KeyboardByName(layout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range words {
+			for _, b := range words {
+				full := Distance(a, b, weights)
+				for limit := 0; limit <= 4; limit++ {
+					got, ok := distanceRunesWithin([]rune(a), []rune(b), weights, limit)
+					if ok != (full <= limit) {
+						t.Fatalf("%s within(%q,%q,%d) ok=%v, full distance %d", layout, a, b, limit, ok, full)
+					}
+					if ok && got != full {
+						t.Fatalf("%s within(%q,%q,%d)=%d, full distance %d", layout, a, b, limit, got, full)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestTranspositionRunesMatchesStringForm(t *testing.T) {
+	words := []string{"", "a", "ab", "ba", "gti", "git", "tgi", "abc", "acb", "abcd", "badc", "日本", "本日"}
+	for _, a := range words {
+		for _, b := range words {
+			want := isSingleAdjacentTransposition(a, b)
+			if got := isSingleAdjacentTranspositionRunes([]rune(a), []rune(b)); got != want {
+				t.Fatalf("transposition(%q,%q) runes=%v string=%v", a, b, got, want)
+			}
+		}
+	}
+}

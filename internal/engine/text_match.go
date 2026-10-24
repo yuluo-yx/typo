@@ -1,5 +1,7 @@
 package engine
 
+import "unicode/utf8"
+
 func absInt(value int) int {
 	if value < 0 {
 		return -value
@@ -8,28 +10,36 @@ func absInt(value int) int {
 }
 
 func isSingleAdjacentTransposition(original, candidate string) bool {
-	originalRunes := []rune(original)
-	candidateRunes := []rune(candidate)
+	if utf8.RuneCountInString(original) != utf8.RuneCountInString(candidate) {
+		return false
+	}
+	return isSingleAdjacentTranspositionRunes([]rune(original), []rune(candidate))
+}
+
+// isSingleAdjacentTranspositionRunes is the allocation-free form used in hot loops.
+func isSingleAdjacentTranspositionRunes(originalRunes, candidateRunes []rune) bool {
 	if len(originalRunes) != len(candidateRunes) || len(originalRunes) < 2 {
 		return false
 	}
 
-	diffIdx := make([]int, 0, 2)
+	first, second, diffs := -1, -1, 0
 	for i := range originalRunes {
 		if originalRunes[i] == candidateRunes[i] {
 			continue
 		}
-		diffIdx = append(diffIdx, i)
-		if len(diffIdx) > 2 {
+		diffs++
+		if diffs > 2 {
 			return false
+		}
+		if first == -1 {
+			first = i
+		} else {
+			second = i
 		}
 	}
 
-	if len(diffIdx) != 2 || diffIdx[1] != diffIdx[0]+1 {
+	if diffs != 2 || second != first+1 {
 		return false
 	}
-
-	i := diffIdx[0]
-	j := diffIdx[1]
-	return originalRunes[i] == candidateRunes[j] && originalRunes[j] == candidateRunes[i]
+	return originalRunes[first] == candidateRunes[second] && originalRunes[second] == candidateRunes[first]
 }

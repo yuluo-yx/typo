@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -138,6 +139,12 @@ func TestDefaultUserConfig(t *testing.T) {
 	if cfg.Candidates.Limit != 3 {
 		t.Fatalf("Candidates.Limit = %d, want 3", cfg.Candidates.Limit)
 	}
+	if cfg.Candidates.FZF {
+		t.Fatal("candidates.fzf should default to false")
+	}
+	if !cfg.Paths.Enabled {
+		t.Fatal("paths.enabled should default to true")
+	}
 	if !cfg.History.Enabled {
 		t.Fatal("History.Enabled should default to true")
 	}
@@ -185,7 +192,11 @@ func TestLoad_MergesPartialConfigFile(t *testing.T) {
   },
   "candidates": {
     "enabled": true,
-    "limit": 5
+    "limit": 5,
+    "fzf": true
+  },
+  "paths": {
+    "enabled": false
   },
   "experimental": {
     "long_option_correction": {
@@ -216,6 +227,7 @@ func TestLoad_MergesPartialConfigFile(t *testing.T) {
 	if cfg.User.Candidates.Limit != 5 {
 		t.Fatalf("Candidates.Limit = %d, want 5", cfg.User.Candidates.Limit)
 	}
+	assertMergedCandidateAndPathConfig(t, cfg.User)
 	if cfg.User.History.Enabled {
 		t.Fatal("History.Enabled should be false")
 	}
@@ -302,6 +314,8 @@ func TestConfigSetGetAndReset(t *testing.T) {
 		"keyboard":             "colemak",
 		"candidates.enabled":   "true",
 		"candidates.limit":     "5",
+		"candidates.fzf":       "true",
+		"paths.enabled":        "false",
 		"rules.git.enabled":    "false",
 		"history.enabled":      "false",
 		"experimental.long-option-correction.enabled": "true",
@@ -321,6 +335,10 @@ func TestConfigSetGetAndReset(t *testing.T) {
 	assertListSetting(t, cfg.ListSettings(), "auto-learn-threshold", "5")
 	assertListSetting(t, cfg.ListSettings(), "candidates.enabled", "true")
 	assertListSetting(t, cfg.ListSettings(), "candidates.limit", "5")
+	assertConfigValue(t, cfg, "candidates.fzf", "true")
+	assertConfigValue(t, cfg, "paths.enabled", "false")
+	assertListSetting(t, cfg.ListSettings(), "candidates.fzf", "true")
+	assertListSetting(t, cfg.ListSettings(), "paths.enabled", "false")
 	assertListSetting(t, cfg.ListSettings(), "experimental.long-option-correction.enabled", "true")
 	assertResetConfig(t, cfg)
 }
@@ -382,6 +400,9 @@ func assertResetConfig(t *testing.T, cfg *Config) {
 	}
 	if cfg.User.Candidates.Limit != 3 {
 		t.Fatalf("Candidates.Limit after reset = %d, want 3", cfg.User.Candidates.Limit)
+	}
+	if cfg.User.Candidates.FZF || !cfg.User.Paths.Enabled {
+		t.Fatal("candidates.fzf and paths.enabled should reset to their defaults")
 	}
 	if !cfg.User.Rules["git"].Enabled {
 		t.Fatal("rules.git.enabled should reset to true")
@@ -846,5 +867,83 @@ func TestApplyFileConfig(t *testing.T) {
 	}
 	if !cfg.Rules["git"].Enabled {
 		t.Fatal("applyFileConfig() should leave git rule scope unchanged when enabled is nil")
+	}
+}
+
+func TestConfigSetConcurrentWritersKeepEveryUpdate(t *testing.T) {
+	dir := t.TempDir()
+	var wg sync.WaitGroup
+	errs := make(chan error, len(defaultRuleScopes))
+	for _, scope := range defaultRuleScopes {
+		wg.Add(1)
+		go func(scope string) {
+			defer wg.Done()
+			// Each writer starts from its own stale snapshot, like a separate CLI process.
+			cfg := &Config{ConfigDir: dir, User: DefaultUserConfig()}
+			errs <- cfg.Set("rules."+scope+".enabled", "false")
+		}(scope)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("Set failed: %v", err)
+		}
+	}
+
+	loaded := &Config{ConfigDir: dir, User: DefaultUserConfig()}
+	loaded.loadUserConfig()
+	for _, scope := range defaultRuleScopes {
+		if loaded.User.Rules[scope].Enabled {
+			t.Errorf("concurrent update for scope %s was lost", scope)
+		}
+	}
+}
+
+func TestConfigSetBuildsOnLatestFileContents(t *testing.T) {
+	dir := t.TempDir()
+	first := &Config{ConfigDir: dir, User: DefaultUserConfig()}
+	stale := &Config{ConfigDir: dir, User: DefaultUserConfig()}
+	if err := first.Set("keyboard", "dvorak"); err != nil {
+		t.Fatal(err)
+	}
+	if err := stale.Set("candidates.limit", "5"); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded := Load()
+	loaded.ConfigDir = dir
+	loaded.User = DefaultUserConfig()
+	loaded.loadUserConfig()
+	if loaded.User.Keyboard != "dvorak" || loaded.User.Candidates.Limit != 5 {
+		t.Fatalf("stale writer overwrote a newer key: keyboard=%s limit=%d", loaded.User.Keyboard, loaded.User.Candidates.Limit)
+	}
+}
+
+func TestConfigSubcommandsDiscoverUnknown(t *testing.T) {
+	cfg := &Config{ConfigDir: t.TempDir(), User: DefaultUserConfig()}
+	if got, _ := cfg.Get("subcommands.discover-unknown"); got != "false" {
+		t.Fatalf("expected default false, got %s", got)
+	}
+	if err := cfg.Set("subcommands.discover-unknown", "true"); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := &Config{ConfigDir: cfg.ConfigDir, User: DefaultUserConfig()}
+	reloaded.loadUserConfig()
+	if !reloaded.User.Subcommands.DiscoverUnknown {
+		t.Fatal("subcommands.discover-unknown was not persisted")
+	}
+	if err := cfg.Set("subcommands.discover-unknown", "maybe"); err == nil {
+		t.Fatal("expected invalid bool to be rejected")
+	}
+}
+
+func assertMergedCandidateAndPathConfig(t *testing.T, user itypes.UserConfig) {
+	t.Helper()
+	if !user.Candidates.FZF {
+		t.Fatal("candidates.fzf should be true")
+	}
+	if user.Paths.Enabled {
+		t.Fatal("paths.enabled should be false")
 	}
 }

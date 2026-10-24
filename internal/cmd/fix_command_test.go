@@ -25,6 +25,7 @@ func TestShouldRecordHistory(t *testing.T) {
 		{name: "not fixed", original: "git status", result: itypes.FixResult{Fixed: false}, want: false},
 		{name: "unchanged command", original: "git status", result: itypes.FixResult{Fixed: true, Command: "git status"}, want: false},
 		{name: "permission sudo parser", original: "mkdir 1", result: itypes.FixResult{Fixed: true, Command: "sudo mkdir 1", Kind: "permission_sudo"}, want: false},
+		{name: "path fix", original: "cat READNE.md", result: itypes.FixResult{Fixed: true, Command: "cat README.md", Kind: itypes.FixKindPath}, want: false},
 		{name: "parser assisted fix", original: "git remove -v", result: itypes.FixResult{Fixed: true, Command: "git remote -v", UsedParser: true}, want: false},
 		{name: "normal accepted fix", original: "gut status", result: itypes.FixResult{Fixed: true, Command: "git status"}, want: true},
 	}
@@ -38,36 +39,77 @@ func TestShouldRecordHistory(t *testing.T) {
 	}
 }
 
-func TestRunAutoLearnWithinTimeout(t *testing.T) {
+func TestRecordHistoryWithAutoLearnPassesTimeoutContext(t *testing.T) {
 	oldTimeout := autoLearnFixTimeout
-	oldRunner := autoLearnFromHistory
+	oldRecorder := recordFixHistory
 	defer func() {
 		autoLearnFixTimeout = oldTimeout
-		autoLearnFromHistory = oldRunner
+		recordFixHistory = oldRecorder
 	}()
 
 	autoLearnFixTimeout = 20 * time.Millisecond
-	started := make(chan struct{}, 1)
-	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) itypes.AutoLearnDebugInfo {
-		started <- struct{}{}
+	recordFixHistory = func(ctx context.Context, eng *engine.Engine, from, to string) (itypes.AutoLearnDebugInfo, error) {
 		<-ctx.Done()
-		return itypes.AutoLearnDebugInfo{Attempted: true, TimedOut: true, Reason: ctx.Err().Error()}
+		return itypes.AutoLearnDebugInfo{Attempted: true, TimedOut: true, Reason: ctx.Err().Error()}, nil
 	}
 
 	start := time.Now()
-	info := runAutoLearnWithinTimeout(engine.NewEngine(), "gut status", "git status")
+	info, err := recordHistoryWithAutoLearn(engine.NewEngine(), "gut status", "git status")
 	elapsed := time.Since(start)
-
-	select {
-	case <-started:
-	default:
-		t.Fatal("Expected auto learn worker to start")
+	if err != nil {
+		t.Fatalf("recordHistoryWithAutoLearn: %v", err)
 	}
 	if !info.Attempted || !info.TimedOut {
 		t.Fatalf("Expected timeout debug info, got %+v", info)
 	}
 	if elapsed >= 250*time.Millisecond {
 		t.Fatalf("Expected auto learn wait to stop at timeout, got %v", elapsed)
+	}
+}
+
+func TestRecordHistoryAndAutoLearnRecordsEvenWhenAutoLearnTimedOut(t *testing.T) {
+	dir := t.TempDir()
+	eng := engine.NewEngine(
+		engine.WithRules(engine.NewRules(dir)),
+		engine.WithHistory(engine.NewHistory(dir)),
+		engine.WithAutoLearnThreshold(1),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	info, err := eng.RecordHistoryAndAutoLearn(ctx, "gut status", "git status")
+	if err != nil {
+		t.Fatalf("RecordHistoryAndAutoLearn: %v", err)
+	}
+	if !info.Attempted || info.Persisted {
+		t.Fatalf("expected an attempted but unpersisted auto-learn, got %+v", info)
+	}
+	if _, ok := engine.NewHistory(dir).Lookup("gut status"); !ok {
+		t.Fatal("history must be recorded even when the auto-learn budget expired")
+	}
+	if _, ok := engine.NewRules(dir).MatchUser("gut status"); ok {
+		t.Fatal("expired auto-learn must not leave a promoted rule behind")
+	}
+}
+
+func TestRecordHistoryAndAutoLearnPromotesAtThreshold(t *testing.T) {
+	dir := t.TempDir()
+	eng := engine.NewEngine(
+		engine.WithRules(engine.NewRules(dir)),
+		engine.WithHistory(engine.NewHistory(dir)),
+		engine.WithAutoLearnThreshold(2),
+	)
+	for i := 0; i < 2; i++ {
+		if _, err := eng.RecordHistoryAndAutoLearn(context.Background(), "gut status", "git status"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rule, ok := engine.NewRules(dir).MatchUser("gut status"); !ok || rule.To != "git status" {
+		t.Fatalf("expected promoted rule, got %+v ok=%v", rule, ok)
+	}
+	entry, _ := engine.NewHistory(dir).Lookup("gut status")
+	if !entry.RuleApplied {
+		t.Fatalf("expected history pair to be marked rule-applied, got %+v", entry)
 	}
 }
 
@@ -1391,5 +1433,38 @@ func TestFixUsesGlobalHistoryDisabledConfig(t *testing.T) {
 	historyFile := filepath.Join(cfg.ConfigDir, "usage_history.json")
 	if _, err := os.Stat(historyFile); !os.IsNotExist(err) {
 		t.Fatalf("expected history file to stay absent, got %v", err)
+	}
+}
+
+func TestReadFixStderrKeepsOnlyTheTail(t *testing.T) {
+	previous := maxFixStderrBytes
+	maxFixStderrBytes = 32
+	t.Cleanup(func() { maxFixStderrBytes = previous })
+
+	path := filepath.Join(t.TempDir(), "stderr")
+	content := strings.Repeat("noise line\n", 20) + "fatal: last error\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readFixStderr(path)
+	if !strings.HasSuffix(got, "fatal: last error\n") {
+		t.Fatalf("tail lost the final error line: %q", got)
+	}
+	if int64(len(got)) > maxFixStderrBytes {
+		t.Fatalf("read %d bytes, want at most %d", len(got), maxFixStderrBytes)
+	}
+	if strings.HasPrefix(got, "oise") || strings.HasPrefix(got, "ine") {
+		t.Fatalf("tail starts with a partial line: %q", got)
+	}
+}
+
+func TestReadFixStderrSmallFileUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stderr")
+	if err := os.WriteFile(path, []byte("one\ntwo"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFixStderr(path); got != "one\ntwo" {
+		t.Fatalf("small stderr changed: %q", got)
 	}
 }

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -17,9 +19,10 @@ import (
 )
 
 var (
-	autoLearnFixTimeout  = 150 * time.Millisecond
-	autoLearnFromHistory = func(ctx context.Context, eng *engine.Engine, from, to string) itypes.AutoLearnDebugInfo {
-		return eng.MaybeAutoLearnFromHistory(ctx, from, to)
+	autoLearnFixTimeout = 150 * time.Millisecond
+	// recordFixHistory persists an accepted fix and runs auto-learn in one transaction.
+	recordFixHistory = func(ctx context.Context, eng *engine.Engine, from, to string) (itypes.AutoLearnDebugInfo, error) {
+		return eng.RecordHistoryAndAutoLearn(ctx, from, to)
 	}
 )
 
@@ -61,7 +64,7 @@ func cmdFix(args []string) int {
 
 	var result itypes.FixResult
 	if opts.selectMode && cfg.User.Candidates.Enabled {
-		selected, ok := selectFixResult(eng, input, cfg.User.Candidates.Limit)
+		selected, ok := selectFixResult(eng, input, cfg.User.Candidates.Limit, cfg.User.Candidates.FZF)
 		if !ok {
 			return 1
 		}
@@ -220,13 +223,37 @@ func shellSingleQuote(arg string) string {
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }
 
+// maxFixStderrBytes bounds how much captured stderr the parsers scan. Error hints
+// that drive corrections appear at the end of the output, so only the tail is kept.
+var maxFixStderrBytes int64 = 64 << 10
+
 func readFixStderr(stderrFile string) string {
 	if stderrFile == "" {
 		return ""
 	}
-	data, err := os.ReadFile(stderrFile)
+	file, err := os.Open(stderrFile)
 	if err != nil {
 		return ""
+	}
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
+	if err != nil {
+		return ""
+	}
+	offset := int64(0)
+	if info.Size() > maxFixStderrBytes {
+		offset = info.Size() - maxFixStderrBytes
+	}
+	data, err := io.ReadAll(io.NewSectionReader(file, offset, info.Size()-offset))
+	if err != nil {
+		return ""
+	}
+	if offset > 0 {
+		// Drop the partial first line so parsers never see a truncated message.
+		if newline := bytes.IndexByte(data, '\n'); newline >= 0 {
+			data = data[newline+1:]
+		}
 	}
 	return string(data)
 }
@@ -234,11 +261,12 @@ func readFixStderr(stderrFile string) string {
 func finishFixedCommand(startedAt time.Time, cfg *config.Config, eng *engine.Engine, opts fixOptions, result itypes.FixResult) int {
 	autoLearnDebug := skippedAutoLearnDebugInfo(cfg.User.History.Enabled, opts.noHistory, opts.command, result)
 	if cfg.User.History.Enabled && !opts.noHistory && shouldRecordHistory(opts.command, result) {
-		if err := eng.RecordHistory(opts.command, result.Command); err != nil {
+		info, err := recordHistoryWithAutoLearn(eng, opts.command, result.Command)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
-		autoLearnDebug = runAutoLearnWithinTimeout(eng, opts.command, result.Command)
+		autoLearnDebug = info
 	}
 	attachAutoLearnDebug(&result, autoLearnDebug)
 	attachTotalTimingDebug(&result, time.Since(startedAt))
@@ -263,7 +291,7 @@ func finishUnfixedCommand(startedAt time.Time, cfg *config.Config, opts fixOptio
 	return 1
 }
 
-func selectFixResult(eng *engine.Engine, input itypes.ParserContext, limit int) (itypes.FixResult, bool) {
+func selectFixResult(eng *engine.Engine, input itypes.ParserContext, limit int, useFZF bool) (itypes.FixResult, bool) {
 	candidates := eng.FixCandidatesWithContext(input, limit)
 	switch len(candidates) {
 	case 0:
@@ -271,7 +299,7 @@ func selectFixResult(eng *engine.Engine, input itypes.ParserContext, limit int) 
 	case 1:
 		return fixResultFromCandidate(candidates[0]), true
 	default:
-		selected, ok, err := chooseFixCandidateFromTerminalFunc(candidates)
+		selected, ok, err := chooseFixCandidate(candidates, useFZF)
 		if err != nil {
 			return fixResultFromCandidate(candidates[0]), true
 		}
@@ -298,41 +326,27 @@ func shouldRecordHistory(original string, result itypes.FixResult) bool {
 		return false
 	}
 
-	return result.Kind != itypes.FixKindPermissionSudo && !result.UsedParser
+	return result.Kind != itypes.FixKindPermissionSudo && result.Kind != itypes.FixKindPath && !result.UsedParser
 }
 
-func runAutoLearnWithinTimeout(eng *engine.Engine, from, to string) itypes.AutoLearnDebugInfo {
+// recordHistoryWithAutoLearn records history synchronously. The auto-learn step
+// observes autoLearnFixTimeout through its context, so no detached goroutine can
+// keep mutating state after the command has already printed its result.
+func recordHistoryWithAutoLearn(eng *engine.Engine, from, to string) (itypes.AutoLearnDebugInfo, error) {
 	startedAt := time.Now()
-	if eng == nil || autoLearnFixTimeout <= 0 {
-		if eng == nil {
-			return itypes.AutoLearnDebugInfo{Reason: "engine unavailable", Duration: time.Since(startedAt)}
-		}
-		return itypes.AutoLearnDebugInfo{Reason: "auto-learn timeout disabled", Duration: time.Since(startedAt)}
+	if eng == nil {
+		return itypes.AutoLearnDebugInfo{Reason: "engine unavailable"}, nil
+	}
+	if autoLearnFixTimeout <= 0 {
+		err := eng.RecordHistory(from, to)
+		return itypes.AutoLearnDebugInfo{Reason: "auto-learn timeout disabled", Duration: time.Since(startedAt)}, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), autoLearnFixTimeout)
 	defer cancel()
-
-	done := make(chan itypes.AutoLearnDebugInfo, 1)
-	go func() {
-		info := autoLearnFromHistory(ctx, eng, from, to)
-		info.Attempted = true
-		done <- info
-	}()
-
-	select {
-	case info := <-done:
-		info.Duration = time.Since(startedAt)
-		return info
-	case <-ctx.Done():
-		return itypes.AutoLearnDebugInfo{
-			Attempted: true,
-			TimedOut:  true,
-			Duration:  time.Since(startedAt),
-			Error:     ctx.Err().Error(),
-			Reason:    ctx.Err().Error(),
-		}
-	}
+	info, err := recordFixHistory(ctx, eng, from, to)
+	info.Duration = time.Since(startedAt)
+	return info, err
 }
 
 func attachAutoLearnDebug(result *itypes.FixResult, info itypes.AutoLearnDebugInfo) {
@@ -361,6 +375,8 @@ func skippedAutoLearnDebugInfo(historyEnabled bool, noHistory bool, original str
 		return itypes.AutoLearnDebugInfo{Reason: "unchanged command is not recorded"}
 	case result.Kind == itypes.FixKindPermissionSudo:
 		return itypes.AutoLearnDebugInfo{Reason: "permission sudo fixes are not auto-learned"}
+	case result.Kind == itypes.FixKindPath:
+		return itypes.AutoLearnDebugInfo{Reason: "path fixes depend on the filesystem and are not auto-learned"}
 	case result.UsedParser:
 		return itypes.AutoLearnDebugInfo{Reason: "parser-assisted fixes are not auto-learned"}
 	default:

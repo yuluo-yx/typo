@@ -78,6 +78,13 @@ func (e *Engine) FixCandidatesWithContext(input itypes.ParserContext, limit int)
 			break
 		}
 	}
+	// Ambiguous path arguments are offered as alternatives instead of guessed.
+	for _, candidate := range e.pathFixCandidates(input.Command, limit) {
+		addResult(candidate.result)
+		if len(candidates) >= limit {
+			break
+		}
+	}
 
 	return candidates
 }
@@ -190,6 +197,11 @@ func (e *Engine) fixOnePass(input itypes.ParserContext) itypes.FixResult {
 		}
 	}
 
+	// 10. Try path argument fix
+	if result := e.tryPathFix(cmd); isMeaningfulFix(cmd, result) {
+		return result
+	}
+
 	return itypes.FixResult{Fixed: false}
 }
 
@@ -200,60 +212,7 @@ func (e *Engine) FixCommand(cmd string) itypes.FixResult {
 		return itypes.FixResult{Fixed: false}
 	}
 
-	if lines, err := parseShellCommandLines(cmd); err == nil {
-		return e.fixCommandWordWithShell(lines)
-	}
-
-	// Split into command and args
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return itypes.FixResult{Fixed: false}
-	}
-
-	cmdWord := parts[0]
-	args := parts[1:]
-	// Incomplete shell input still needs its original argument bytes preserved.
-	rebuild := func(replacement, source string) itypes.FixResult {
-		return itypes.FixResult{Fixed: true, Command: replaceFirstField(cmd, cmdWord, replacement), Source: source}
-	}
-
-	// Try to fix just the command word
-	if result := e.tryUserRules(cmdWord); result.Fixed {
-		rebuilt := rebuild(result.Command, "rule")
-		if isMeaningfulFix(cmd, rebuilt) {
-			return rebuilt
-		}
-	}
-
-	if result := e.tryHistory(cmdWord); result.Fixed {
-		rebuilt := rebuild(result.Command, fixSourceHistory)
-		if isMeaningfulFix(cmd, rebuilt) {
-			return rebuilt
-		}
-	}
-
-	if replacement := e.findCommandTreeRootForArgs(cmdWord, args); replacement != "" {
-		rebuilt := rebuild(replacement, "tree")
-		if isMeaningfulFix(cmd, rebuilt) {
-			return rebuilt
-		}
-	}
-
-	if result := e.tryBuiltinRules(cmdWord); result.Fixed {
-		rebuilt := rebuild(result.Command, "rule")
-		if isMeaningfulFix(cmd, rebuilt) {
-			return rebuilt
-		}
-	}
-
-	if result := e.tryDistance(cmdWord); result.Fixed {
-		rebuilt := rebuild(result.Command, fixSourceDistance)
-		if isMeaningfulFix(cmd, rebuilt) {
-			return rebuilt
-		}
-	}
-
-	return itypes.FixResult{Fixed: false}
+	return e.fixCommandWordWithShell(commandLinesOrFields(cmd))
 }
 
 func (e *Engine) fixCommandWordWithShell(lines []*shellCommandLine) itypes.FixResult {
@@ -299,7 +258,7 @@ func (e *Engine) fixCommandWordWithShell(lines []*shellCommandLine) itypes.FixRe
 			}
 		}
 
-		if rule, ok := e.rules.MatchBuiltin(cmdWord); ok && !e.isAvailableCommand(cmdWord) {
+		if rule, ok := e.rules.MatchBuiltin(cmdWord); ok && !e.commandExists(cmdWord) {
 			result := itypes.FixResult{
 				Fixed:   true,
 				Command: line.replaceCommandWord(rule.To),

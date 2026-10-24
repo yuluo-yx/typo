@@ -291,6 +291,32 @@ func TestDiscoverCommandsWithinTimeout(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps partial results found before the timeout", func(t *testing.T) {
+		result := discoverCommandsWithinTimeout(func(ctx context.Context) []string {
+			<-ctx.Done()
+			return []string{"partial"}
+		}, 10*time.Millisecond)
+		if len(result) != 1 || result[0] != "partial" {
+			t.Fatalf("expected partial result after timeout, got %v", result)
+		}
+	})
+
+	t.Run("gives up when the loader ignores cancellation", func(t *testing.T) {
+		release := make(chan struct{})
+		defer close(release)
+		start := time.Now()
+		result := discoverCommandsWithinTimeout(func(ctx context.Context) []string {
+			<-release
+			return []string{"late"}
+		}, 10*time.Millisecond)
+		if result != nil {
+			t.Fatalf("expected nil when the loader is stuck, got %v", result)
+		}
+		if elapsed := time.Since(start); elapsed >= 500*time.Millisecond {
+			t.Fatalf("stuck loader delayed the fix for %v", elapsed)
+		}
+	})
+
 	t.Run("returns nil for nil loader", func(t *testing.T) {
 		if got := discoverCommandsWithinTimeout(nil, 10*time.Millisecond); got != nil {
 			t.Fatalf("expected nil loader result, got %v", got)

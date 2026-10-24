@@ -38,7 +38,8 @@ func (e *Engine) findClosestCommand(cmd string) string {
 }
 
 func (e *Engine) closestKnownCommand(cmd string) (string, int) {
-	if e.isAvailableCommand(cmd) {
+	// An exact executable always wins, even when it only exists in PATH.
+	if e.commandExists(cmd) {
 		return cmd, 0
 	}
 	matchCfg := e.distanceMatchConfig()
@@ -74,8 +75,8 @@ func (e *Engine) rankedKnownCommandCandidatesFrom(cmd string, knownCommands []co
 		}
 		seen[known.name] = true
 
-		d := distanceRunes(cmdRunes, known.runes, e.keyboard)
-		if !isGoodCommandDistanceMatch(cmd, known.name, d, matchCfg) {
+		d, within := distanceRunesWithin(cmdRunes, known.runes, e.keyboard, matchCfg.maxEditDistance)
+		if !within || !isGoodCommandDistanceMatch(cmd, known.name, d, matchCfg) {
 			continue
 		}
 		candidates = append(candidates, commandCandidate{
@@ -83,7 +84,7 @@ func (e *Engine) rankedKnownCommandCandidatesFrom(cmd string, knownCommands []co
 			distance:   d,
 			similarity: SimilarityFromDistance(len(cmdRunes), len(known.runes), d),
 			priority:   e.commandPriority(known.name),
-			transposed: isSingleAdjacentTransposition(cmd, known.name),
+			transposed: isSingleAdjacentTranspositionRunes(cmdRunes, known.runes),
 		})
 	}
 
@@ -96,19 +97,31 @@ func (e *Engine) closestKnownCommandFromCandidates(cmd string, knownCommands []c
 	matchCfg := e.distanceMatchConfig()
 	var best, rejected commandCandidate
 	hasBest, hasRejected := false, false
+	// The closest rejected match only feeds debug traces, so exact distances for
+	// far-away candidates are computed only when tracing is enabled.
+	traceRejected := e.debugTrace() != nil
 
 	for _, known := range knownCommands {
 		if known.name == "" {
 			continue
 		}
 
-		d := distanceRunes(cmdRunes, known.runes, e.keyboard)
+		var d int
+		if traceRejected {
+			d = distanceRunes(cmdRunes, known.runes, e.keyboard)
+		} else {
+			var within bool
+			d, within = distanceRunesWithin(cmdRunes, known.runes, e.keyboard, matchCfg.maxEditDistance)
+			if !within {
+				continue
+			}
+		}
 		candidate := commandCandidate{
 			name:       known.name,
 			distance:   d,
 			similarity: SimilarityFromDistance(len(cmdRunes), len(known.runes), d),
 			priority:   e.commandPriority(known.name),
-			transposed: isSingleAdjacentTransposition(cmd, known.name),
+			transposed: isSingleAdjacentTranspositionRunes(cmdRunes, known.runes),
 		}
 		if isGoodCommandDistanceMatch(cmd, known.name, d, matchCfg) {
 			if !hasBest || commandCandidateLess(candidate, best) {
@@ -145,11 +158,33 @@ func (e *Engine) isAvailableCommand(cmd string) bool {
 	return ok
 }
 
-func (e *Engine) hasKnownCommand(cmd string) bool {
+// commandExists reports whether cmd is a loaded command or, when a single-command
+// lookup is configured, an executable on PATH. It never scans every PATH directory.
+func (e *Engine) commandExists(cmd string) bool {
 	if e.isAvailableCommand(cmd) {
 		return true
 	}
-	if e.commandLoader == nil || e.commandsFullyLoad {
+	if e.commandLookup == nil || e.commandsFullyLoad || e.disabledCommands[cmd] {
+		return false
+	}
+	if found, ok := e.commandLookupCache[cmd]; ok {
+		return found
+	}
+	found := e.commandLookup(cmd)
+	if e.commandLookupCache == nil {
+		e.commandLookupCache = make(map[string]bool)
+	}
+	e.commandLookupCache[cmd] = found
+	return found
+}
+
+// hasKnownCommand is commandExists with a full PATH scan fallback when no
+// single-command lookup is configured.
+func (e *Engine) hasKnownCommand(cmd string) bool {
+	if e.commandExists(cmd) {
+		return true
+	}
+	if e.commandLookup != nil || e.commandLoader == nil || e.commandsFullyLoad {
 		return false
 	}
 

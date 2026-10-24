@@ -9,7 +9,9 @@ type UserConfig struct {
 	Keyboard            string                   `json:"keyboard"`
 	History             HistoryConfig            `json:"history"`
 	Candidates          CandidateConfig          `json:"candidates"`
+	Paths               PathConfig               `json:"paths"`
 	Experimental        ExperimentalConfig       `json:"experimental"`
+	Subcommands         SubcommandConfig         `json:"subcommands"`
 	Rules               map[string]RuleSetConfig `json:"rules"`
 }
 
@@ -22,6 +24,19 @@ type HistoryConfig struct {
 type CandidateConfig struct {
 	Enabled bool `json:"enabled"`
 	Limit   int  `json:"limit"`
+	// FZF renders the candidate menu with an installed fzf binary; the builtin menu is used otherwise.
+	FZF bool `json:"fzf"`
+}
+
+// PathConfig controls correction of missing path arguments.
+type PathConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SubcommandConfig controls dynamic subcommand discovery through tool help output.
+type SubcommandConfig struct {
+	// DiscoverUnknown allows running `<tool> --help` for tools outside the builtin allowlist.
+	DiscoverUnknown bool `json:"discover_unknown"`
 }
 
 // ExperimentalConfig groups opt-in experimental behavior switches.

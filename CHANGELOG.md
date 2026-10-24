@@ -2,9 +2,42 @@
 
 ## Unreleased
 
+### Features
+
+* Correct missing path arguments of read-only commands, such as `source ~/.zshcr` → `source ~/.zshrc` and `cd ~/.confg/nvim` → `cd ~/.config/nvim`. Equally close paths are offered in the candidate menu. Controlled by `paths.enabled` (default `true`) (#81).
+* Add the optional `candidates.fzf` setting (default `false`) to pick candidates with fzf; Typo falls back to the builtin menu when fzf is unavailable.
+
 ### Fixes
 
 * Fix `typo fix` losing required quoting when command arguments are passed separately, preventing commit messages and similar values from turning into bare options or split words after correction.
+* Stop subcommand discovery from executing arbitrary tools: only builtin tools are probed with `--help`, the positional `help` fallback is limited to tools where it is a real help subcommand (previously `rm help` could delete a file named `help`), probes run outside the working directory, and help output is capped at 1 MiB.
+* Remember empty help probes per executable (path, size, mtime) for 24 hours so tools without subcommands are no longer re-probed on every fix.
+* Serialize `typo config set/reset/gen` with a file lock and re-read the config inside the lock, so concurrent writers no longer drop each other's updates.
+* Keep the current command's stderr capture intact in zsh when a background job writes to stderr after the next command starts.
+* Read only the last 64 KiB of captured stderr, so very large error output no longer stalls `typo fix`.
+* Record fix history and auto-learn synchronously with a timeout instead of a detached goroutine that could be cut off at process exit.
+* Treat split arrow-key escape sequences and SS3 (`ESC O`) keys correctly in the interactive picker, and let a lone Esc time out.
+* Follow symlinks when discovering commands on `PATH`, skipping dangling links and directories.
+
+* Recognize localized Git output (for example zh_CN) for push/pull/branch upstream and divergent pull fixes by matching Git's untranslated suggested commands and verifying the current branch, instead of English-only messages.
+* Complete `git push origin` without upstream to `git push --set-upstream origin <branch>`.
+* Suggest `git pull --rebase && git push` when a push is rejected (`fetch first` / `non-fast-forward`) and the checked-out branch tracks the rejected branch.
+* Correct mistyped branch names in `git checkout` / `git switch` when exactly one existing local or remote branch is close.
+* Suggest the missing `git config --global user.name` / `user.email` key after "Author identity unknown"; the value is left for the user to type.
+
+### Performance
+
+* Avoid scanning every `PATH` entry when a rule, history, or subcommand match already resolves the command; single commands are checked with one lookup.
+* Bound edit-distance calculations by the maximum allowed distance and memoize shell parsing, removing allocations from candidate ranking.
+* Cap history at 1000 entries (least recently used are pruned) and write history as compact JSON.
+* Compile git, docker, npm, and permission parser patterns lazily once per process instead of on every registry construction, cutting eager engine construction from about 265 KB / 1318 allocations to about 47 KB / 36 allocations (fixes #272).
+
+### Behavior changes and migration
+
+* Unknown tools are no longer probed for subcommands. Set `subcommands.discover-unknown` to `true` (`typo config set subcommands.discover-unknown true`) to restore the previous behavior.
+* An invalid or older subcommand cache is now discarded and rebuilt instead of being backed up as `.corrupt-*`; existing backups can be deleted manually.
+* `typo rules list` output and the saved `rules.json` / `history.json` files are now sorted for stable diffs.
+* Path argument correction is on by default. Disable it with `typo config set paths.enabled false`; existing config files need no change.
 
 ## [1.9.5](https://github.com/yuluo-yx/typo/compare/v1.9.4...v1.9.5) (2026-10-18)
 

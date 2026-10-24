@@ -410,3 +410,33 @@ func createTestCommand(t *testing.T, dir, name string) {
 		t.Fatalf("Failed to create test command %q: %v", name, err)
 	}
 }
+
+func TestDiscoverNamesInDirFollowsSymlinks(t *testing.T) {
+	if runtime.GOOS == windowsOS {
+		t.Skip("symlink executable bits are Unix-specific")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, ".real-tool")
+	if err := os.WriteFile(target, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	plain := filepath.Join(dir, ".plain-file")
+	if err := os.WriteFile(plain, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for link, dest := range map[string]string{
+		"good-link":     target,
+		"dangling-link": filepath.Join(dir, "missing"),
+		"data-link":     plain,
+		"dir-link":      t.TempDir(),
+	} {
+		if err := os.Symlink(dest, filepath.Join(dir, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := discoverNamesInDir(dir)
+	if len(got) != 1 || got[0] != "good-link" {
+		t.Fatalf("expected only the executable symlink, got %v", got)
+	}
+}

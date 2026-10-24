@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -16,6 +17,7 @@ import (
 
 const (
 	configFileName             = "config.json"
+	configLockFileName         = ".config.lock"
 	defaultSimilarityThreshold = 0.6
 	defaultMaxEditDistance     = 2
 	defaultMaxFixPasses        = 32
@@ -77,7 +79,9 @@ type fileUserConfig struct {
 	Keyboard            *string                   `json:"keyboard,omitempty"`
 	History             *fileHistoryConfig        `json:"history,omitempty"`
 	Candidates          *fileCandidateConfig      `json:"candidates,omitempty"`
+	Paths               *filePathConfig           `json:"paths,omitempty"`
 	Experimental        *fileExperimentalConfig   `json:"experimental,omitempty"`
+	Subcommands         *fileSubcommandConfig     `json:"subcommands,omitempty"`
 	Rules               map[string]fileRuleConfig `json:"rules,omitempty"`
 }
 
@@ -88,6 +92,15 @@ type fileHistoryConfig struct {
 type fileCandidateConfig struct {
 	Enabled *bool `json:"enabled,omitempty"`
 	Limit   *int  `json:"limit,omitempty"`
+	FZF     *bool `json:"fzf,omitempty"`
+}
+
+type filePathConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type fileSubcommandConfig struct {
+	DiscoverUnknown *bool `json:"discover_unknown,omitempty"`
 }
 
 type fileExperimentalConfig struct {
@@ -126,6 +139,7 @@ func DefaultUserConfig() itypes.UserConfig {
 		Keyboard:            defaultKeyboardLayout,
 		History:             itypes.HistoryConfig{Enabled: true},
 		Candidates:          itypes.CandidateConfig{Enabled: false, Limit: defaultCandidateLimit},
+		Paths:               itypes.PathConfig{Enabled: true},
 		Experimental: itypes.ExperimentalConfig{
 			LongOptionCorrection: itypes.LongOptionCorrectionConfig{Enabled: false},
 		},
@@ -174,12 +188,9 @@ func (c *Config) Save() error {
 
 // Reset restores the user config to defaults and writes it back to disk.
 func (c *Config) Reset() error {
-	next := DefaultUserConfig()
-	if err := c.saveUserConfig(next); err != nil {
-		return err
-	}
-	c.User = next
-	return nil
+	return c.update(func(itypes.UserConfig) (itypes.UserConfig, error) {
+		return DefaultUserConfig(), nil
+	})
 }
 
 // Generate creates a default config file at the target location.
@@ -189,25 +200,22 @@ func (c *Config) Generate(force bool) error {
 		return nil
 	}
 
-	if !force {
-		if _, err := os.Stat(configFile); err == nil {
-			return fmt.Errorf("config already exists: %s (use --force to overwrite)", configFile)
-		} else if !os.IsNotExist(err) {
-			return err
+	return c.update(func(itypes.UserConfig) (itypes.UserConfig, error) {
+		// Check existence inside the lock so two concurrent gen calls cannot both succeed.
+		if !force {
+			if _, err := os.Stat(configFile); err == nil {
+				return itypes.UserConfig{}, fmt.Errorf("config already exists: %s (use --force to overwrite)", configFile)
+			} else if !os.IsNotExist(err) {
+				return itypes.UserConfig{}, err
+			}
 		}
-	}
-
-	next := DefaultUserConfig()
-	if err := c.saveUserConfig(next); err != nil {
-		return err
-	}
-	c.User = next
-	return nil
+		return DefaultUserConfig(), nil
+	})
 }
 
 // ListSettings returns config items for `typo config list`.
 func (c *Config) ListSettings() []Setting {
-	settings := make([]Setting, 0, 9+len(c.User.Rules))
+	settings := make([]Setting, 0, 12+len(c.User.Rules))
 	settings = append(settings,
 		Setting{Key: "similarity-threshold", Value: formatFloat(c.User.SimilarityThreshold)},
 		Setting{Key: "max-edit-distance", Value: strconv.Itoa(c.User.MaxEditDistance)},
@@ -217,10 +225,13 @@ func (c *Config) ListSettings() []Setting {
 		Setting{Key: "history.enabled", Value: strconv.FormatBool(c.User.History.Enabled)},
 		Setting{Key: "candidates.enabled", Value: strconv.FormatBool(c.User.Candidates.Enabled)},
 		Setting{Key: "candidates.limit", Value: strconv.Itoa(c.User.Candidates.Limit)},
+		Setting{Key: "candidates.fzf", Value: strconv.FormatBool(c.User.Candidates.FZF)},
+		Setting{Key: "paths.enabled", Value: strconv.FormatBool(c.User.Paths.Enabled)},
 		Setting{
 			Key:   "experimental.long-option-correction.enabled",
 			Value: strconv.FormatBool(c.User.Experimental.LongOptionCorrection.Enabled),
 		},
+		Setting{Key: "subcommands.discover-unknown", Value: strconv.FormatBool(c.User.Subcommands.DiscoverUnknown)},
 	)
 
 	for _, scope := range sortedRuleScopes(c.User.Rules) {
@@ -252,8 +263,14 @@ func (c *Config) Get(key string) (string, error) {
 		return strconv.FormatBool(c.User.Candidates.Enabled), nil
 	case "candidates.limit":
 		return strconv.Itoa(c.User.Candidates.Limit), nil
+	case "candidates.fzf":
+		return strconv.FormatBool(c.User.Candidates.FZF), nil
+	case "paths.enabled":
+		return strconv.FormatBool(c.User.Paths.Enabled), nil
 	case "experimental.long-option-correction.enabled":
 		return strconv.FormatBool(c.User.Experimental.LongOptionCorrection.Enabled), nil
+	case "subcommands.discover-unknown":
+		return strconv.FormatBool(c.User.Subcommands.DiscoverUnknown), nil
 	default:
 		scope, ok := parseRuleScopeKey(key)
 		if !ok {
@@ -269,15 +286,69 @@ func (c *Config) Get(key string) (string, error) {
 
 // Set updates the given config key and persists it to disk.
 func (c *Config) Set(key, value string) error {
-	next, err := c.updatedUserConfig(key, value)
+	return c.update(func(current itypes.UserConfig) (itypes.UserConfig, error) {
+		next := cloneUserConfig(current)
+		if err := applyUserConfigValue(&next, key, value); err != nil {
+			return itypes.UserConfig{}, err
+		}
+		return next, nil
+	})
+}
+
+// update runs one read-modify-write transaction under a cross-process lock.
+// The latest file contents are re-read inside the lock so concurrent CLI
+// processes changing different keys do not overwrite each other.
+func (c *Config) update(mutate func(current itypes.UserConfig) (itypes.UserConfig, error)) error {
+	apply := func() error {
+		next, err := mutate(c.lockedBaseConfig())
+		if err != nil {
+			return err
+		}
+		if err := c.saveUserConfig(next); err != nil {
+			return err
+		}
+		c.User = next
+		return nil
+	}
+	if c.ConfigDir == "" {
+		return apply()
+	}
+	if err := c.EnsureConfigDir(); err != nil {
+		return err
+	}
+	return storage.WithFileLock(context.Background(), filepath.Join(c.ConfigDir, configLockFileName), apply)
+}
+
+// lockedBaseConfig returns the newest valid on-disk config, falling back to the
+// in-memory snapshot when the file is missing or unusable.
+func (c *Config) lockedBaseConfig() itypes.UserConfig {
+	configFile := c.ConfigFilePath()
+	if configFile == "" {
+		return c.User
+	}
+	data, err := os.ReadFile(configFile)
 	if err != nil {
-		return err
+		return c.User
 	}
-	if err := c.saveUserConfig(next); err != nil {
-		return err
+	userCfg, err := parseUserConfig(data)
+	if err != nil {
+		return c.User
 	}
-	c.User = next
-	return nil
+	return userCfg
+}
+
+// parseUserConfig merges file contents over defaults without side effects.
+func parseUserConfig(data []byte) (itypes.UserConfig, error) {
+	var fileCfg fileUserConfig
+	if err := json.Unmarshal(data, &fileCfg); err != nil {
+		return itypes.UserConfig{}, err
+	}
+	userCfg := DefaultUserConfig()
+	applyFileConfig(&userCfg, fileCfg)
+	if err := ValidateUserConfig(userCfg); err != nil {
+		return itypes.UserConfig{}, err
+	}
+	return userCfg, nil
 }
 
 // SetValue updates the given config key in memory without persisting it.
@@ -360,9 +431,21 @@ func applyBooleanConfigValue(next *itypes.UserConfig, key, value string) (bool, 
 		parsed, err := parseConfigBoolValue(value, key)
 		next.Candidates.Enabled = parsed
 		return true, err
+	case "candidates.fzf":
+		parsed, err := parseConfigBoolValue(value, key)
+		next.Candidates.FZF = parsed
+		return true, err
+	case "paths.enabled":
+		parsed, err := parseConfigBoolValue(value, key)
+		next.Paths.Enabled = parsed
+		return true, err
 	case "experimental.long-option-correction.enabled":
 		parsed, err := parseConfigBoolValue(value, key)
 		next.Experimental.LongOptionCorrection.Enabled = parsed
+		return true, err
+	case "subcommands.discover-unknown":
+		parsed, err := parseConfigBoolValue(value, key)
+		next.Subcommands.DiscoverUnknown = parsed
 		return true, err
 	default:
 		return false, nil
@@ -524,11 +607,20 @@ func applyFileNestedConfig(dst *itypes.UserConfig, src fileUserConfig) {
 		if src.Candidates.Limit != nil {
 			dst.Candidates.Limit = *src.Candidates.Limit
 		}
+		if src.Candidates.FZF != nil {
+			dst.Candidates.FZF = *src.Candidates.FZF
+		}
+	}
+	if src.Paths != nil && src.Paths.Enabled != nil {
+		dst.Paths.Enabled = *src.Paths.Enabled
 	}
 	if src.Experimental != nil &&
 		src.Experimental.LongOptionCorrection != nil &&
 		src.Experimental.LongOptionCorrection.Enabled != nil {
 		dst.Experimental.LongOptionCorrection.Enabled = *src.Experimental.LongOptionCorrection.Enabled
+	}
+	if src.Subcommands != nil && src.Subcommands.DiscoverUnknown != nil {
+		dst.Subcommands.DiscoverUnknown = *src.Subcommands.DiscoverUnknown
 	}
 }
 

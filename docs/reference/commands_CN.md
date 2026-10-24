@@ -31,6 +31,10 @@ Typo 会在终端中打开候选菜单，最多展示 `candidates.limit` 条。�
 最终选中的命令，因此 shell buffer 只会被替换成一条命令。没有可交互终端时，Typo 会退回
 最佳候选。
 
+设置 `candidates.fzf=true` 后，候选菜单改用 [fzf](https://github.com/junegunn/fzf) 选择。
+fzf 是可选依赖：未安装、无法启动或异常退出时，Typo 会自动退回内置菜单，不影响修正。
+在 fzf 中按 Esc 会取消选择。
+
 如果执行 `typo fix --select ...` 时只输出最佳修正而没有出现菜单，请先检查
 `typo config get candidates.enabled`。当值为 `false` 时，Typo 会向 stderr 写入提示，
 并继续让 stdout 只输出最佳修正。可通过 `typo config set candidates.enabled true`
@@ -112,7 +116,10 @@ typo config gen --force
 - `history.enabled`
 - `candidates.enabled` *（默认：`false`）*
 - `candidates.limit` *（默认：`3`，合法范围：`1..10`；这是最大数量，不是必须凑满的数量）*
+- `candidates.fzf` *（默认：`false`；使用已安装的 fzf 选择候选，不可用时退回内置菜单）*
+- `paths.enabled` *（默认：`true`；修正不存在的路径参数，例如 `source ~/.zshcr` → `source ~/.zshrc`）*
 - `experimental.long-option-correction.enabled` *（实验性；默认：`false`）*
+- `subcommands.discover-unknown` *（默认：`false`；对内置列表以外的工具运行 `<tool> --help`）*
 - `rules.<scope>.enabled`
 
 ## `typo rules`

@@ -87,6 +87,8 @@ func (e *Engine) markDebugFeature(stage string) {
 		debug.UsedEnv = true
 	case "option":
 		debug.UsedOption = true
+	case fixSourcePath:
+		debug.UsedPath = true
 	}
 }
 

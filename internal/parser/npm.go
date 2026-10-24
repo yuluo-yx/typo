@@ -3,23 +3,33 @@ package parser
 import (
 	"regexp"
 	"strings"
+	"sync"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // NpmParser parses npm command errors.
-type NpmParser struct {
+type NpmParser struct{}
+
+// npmPatterns holds the compiled patterns of NpmParser.
+type npmPatterns struct {
 	notFoundRegex   *regexp.Regexp
 	didYouMeanRegex *regexp.Regexp
 }
 
 // NewNpmParser creates a new NpmParser.
 func NewNpmParser() *NpmParser {
-	return &NpmParser{
+	return &NpmParser{}
+}
+
+// npmRegexes compiles the patterns on first use, so constructing a parser is cheap
+// and patterns of parsers that never see matching input are never compiled.
+var npmRegexes = sync.OnceValue(func() *npmPatterns {
+	return &npmPatterns{
 		notFoundRegex:   regexp.MustCompile(`(?s)npm ERR!.*command\s+([^\s]+)\s+not found`),
 		didYouMeanRegex: regexp.MustCompile(`(?s)npm ERR!.*Did you mean\s+([\w][\w-]*)[?!.]?(?:\s|$)`),
 	}
-}
+})
 
 // Name returns the parser name.
 func (p *NpmParser) Name() string {
@@ -36,11 +46,11 @@ func (p *NpmParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	}
 
 	// Try "command not found" pattern
-	matches := p.notFoundRegex.FindStringSubmatch(stderr)
+	matches := npmRegexes().notFoundRegex.FindStringSubmatch(stderr)
 	if len(matches) >= 2 {
 		wrongCmd := matches[1]
 		// Try to find "did you mean" suggestion
-		suggestMatches := p.didYouMeanRegex.FindStringSubmatch(stderr)
+		suggestMatches := npmRegexes().didYouMeanRegex.FindStringSubmatch(stderr)
 		if len(suggestMatches) >= 2 {
 			suggested := suggestMatches[1]
 			call, err := parseShellCall(cmd)
@@ -60,7 +70,7 @@ func (p *NpmParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	}
 
 	// Try just "did you mean" pattern
-	matches = p.didYouMeanRegex.FindStringSubmatch(stderr)
+	matches = npmRegexes().didYouMeanRegex.FindStringSubmatch(stderr)
 	if len(matches) >= 2 {
 		suggested := matches[1]
 		call, err := parseShellCall(cmd)

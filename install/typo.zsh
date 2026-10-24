@@ -67,20 +67,25 @@ zle -N _typo_fix_command
 # Esc+Esc to fix command
 bindkey '\e\e' _typo_fix_command
 
+# Kept for compatibility; hooks compare against $$ directly to avoid a fork per command.
 _typo_current_shell_id() {
     print -r -- "$$"
 }
 
+# Builtin unlink and exclusive create let preexec rotate the cache without forking.
+zmodload -F zsh/files b:zf_rm 2>/dev/null
+zmodload -F zsh/system b:sysopen 2>/dev/null
+
 _typo_owns_stderr_cache() {
-    [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+    [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" == "$$" ]]
 }
 
 _typo_owns_alias_context() {
-    [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+    [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" == "$$" ]]
 }
 
 _typo_owns_original_stderr_fd() {
-    [[ -n "${TYPO_ORIG_STDERR_FD:-}" && "${TYPO_ORIG_STDERR_FD_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+    [[ -n "${TYPO_ORIG_STDERR_FD:-}" && "${TYPO_ORIG_STDERR_FD_OWNER:-}" == "$$" ]]
 }
 
 # Initialize the stderr cache file for the current shell session.
@@ -89,7 +94,7 @@ _typo_init_stderr_cache() {
     local shell_id
     local stderr_cache=""
 
-    shell_id="$(_typo_current_shell_id)"
+    shell_id="$$"
 
     if [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" != "$shell_id" ]]; then
         unset TYPO_STDERR_CACHE
@@ -124,7 +129,7 @@ _typo_init_alias_context() {
     local shell_id
     local alias_context=""
 
-    shell_id="$(_typo_current_shell_id)"
+    shell_id="$$"
 
     if [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" != "$shell_id" ]]; then
         unset TYPO_ALIAS_CONTEXT
@@ -355,13 +360,17 @@ _typo_append_alias_context_entry() {
 _typo_append_env_context() {
     emulate -L zsh
 
-    local line=""
     local name=""
-    while IFS= read -r line; do
-        name="${line%%=*}"
+    local -a names
+
+    # Read exported parameter names from the shell itself instead of forking env.
+    for name in ${(k)parameters[(R)*export*]}; do
         [[ "$name" =~ '^[A-Za-z_][A-Za-z0-9_]*$' ]] || continue
-        printf 'zsh\tenv\t%s\t%s\n' "$name" "$name" >> "$TYPO_ALIAS_CONTEXT"
-    done < <(env 2>/dev/null)
+        names+=("$name")
+    done
+    (( $#names > 0 )) || return 0
+    # Write every entry with one append instead of reopening the file per variable.
+    printf 'zsh\tenv\t%s\t%s\n' "${names[@]:^names}" >> "$TYPO_ALIAS_CONTEXT"
 }
 
 _typo_write_alias_context() {
@@ -390,7 +399,7 @@ _typo_write_alias_context() {
 _typo_save_original_stderr() {
     local shell_id
 
-    shell_id="$(_typo_current_shell_id)"
+    shell_id="$$"
 
     if [[ -n "${TYPO_ORIG_STDERR_FD:-}" && "${TYPO_ORIG_STDERR_FD_OWNER:-}" != "$shell_id" ]]; then
         unset TYPO_ORIG_STDERR_FD
@@ -417,11 +426,34 @@ _typo_release_original_stderr() {
     unset TYPO_ORIG_STDERR_FD_OWNER
 }
 
+# Replace the cache inode for every command. A background job from an earlier
+# command may still write through its old tee; after rotation those writes land
+# in the unlinked inode instead of corrupting the current command's capture.
+_typo_rotate_stderr_cache() {
+    local cache="$TYPO_STDERR_CACHE"
+    local fd
+
+    if (( ${+builtins[zf_rm]} && ${+builtins[sysopen]} )); then
+        zf_rm -f -- "$cache" 2>/dev/null
+        # O_EXCL refuses any file or symlink planted between unlink and create.
+        if sysopen -w -m 600 -o excl,creat -u fd -- "$cache" 2>/dev/null; then
+            exec {fd}>&-
+            return 0
+        fi
+    else
+        command rm -f -- "$cache" 2>/dev/null
+    fi
+
+    # Fall back to a fresh randomly named cache when in-place rotation is unavailable.
+    unset TYPO_STDERR_CACHE TYPO_STDERR_CACHE_OWNER
+    _typo_init_stderr_cache
+}
+
 _typo_preexec() {
     unset _TYPO_LAST_COMMAND _TYPO_LAST_COMMAND_PWD
     _typo_init_stderr_cache || return
     _typo_save_original_stderr || return
-    : >| "$TYPO_STDERR_CACHE" || return
+    _typo_rotate_stderr_cache || return
     # Keep the exact executed input and repository context for recalled fixes.
     _TYPO_LAST_COMMAND="${1:-}"
     _TYPO_LAST_COMMAND_PWD="$PWD"

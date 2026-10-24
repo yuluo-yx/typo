@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/term"
@@ -18,12 +18,70 @@ import (
 
 var chooseFixCandidateFromTerminalFunc = chooseFixCandidateFromTerminal
 
+// escapeSequenceTimeout is how long a lone ESC waits for the rest of an arrow-key
+// sequence. Terminals and SSH links may deliver ESC and "[B" in separate reads.
+var escapeSequenceTimeout = 50 * time.Millisecond
+
+// timedByteReader feeds input bytes through a channel so escape parsing can wait a
+// bounded time for follow-up bytes instead of guessing from the current buffer.
+type timedByteReader struct {
+	ch <-chan byteRead
+}
+
+type byteRead struct {
+	b   byte
+	err error
+}
+
+func newTimedByteReader(input io.Reader) *timedByteReader {
+	ch := make(chan byteRead, 64)
+	go func() {
+		defer close(ch)
+		buf := make([]byte, 64)
+		for {
+			n, err := input.Read(buf)
+			for _, b := range buf[:n] {
+				ch <- byteRead{b: b}
+			}
+			if err != nil {
+				ch <- byteRead{err: err}
+				return
+			}
+		}
+	}()
+	return &timedByteReader{ch: ch}
+}
+
+// ReadByte blocks until the next byte or input error.
+func (r *timedByteReader) ReadByte() (byte, error) {
+	read, ok := <-r.ch
+	if !ok {
+		return 0, io.EOF
+	}
+	return read.b, read.err
+}
+
+// readByteWithin returns ok=false when no byte arrives before the timeout.
+func (r *timedByteReader) readByteWithin(timeout time.Duration) (byte, bool) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case read, ok := <-r.ch:
+		if !ok || read.err != nil {
+			return 0, false
+		}
+		return read.b, true
+	case <-timer.C:
+		return 0, false
+	}
+}
+
 func selectFixCandidate(candidates []itypes.FixCandidate, input io.Reader, output io.Writer) (itypes.FixCandidate, bool, error) {
 	if len(candidates) == 0 {
 		return itypes.FixCandidate{}, false, nil
 	}
 
-	reader := bufio.NewReader(input)
+	reader := newTimedByteReader(input)
 	selected := 0
 	if err := drawFixCandidateMenu(output, candidates, selected); err != nil {
 		return itypes.FixCandidate{}, false, err
@@ -89,7 +147,7 @@ func selectedIndex(selected int, count int, direction int) int {
 	return (selected + 1) % count
 }
 
-func readFixSelectionKey(reader *bufio.Reader) (fixSelectionKey, error) {
+func readFixSelectionKey(reader *timedByteReader) (fixSelectionKey, error) {
 	b, err := reader.ReadByte()
 	if err != nil {
 		return fixSelectionKey{}, err
@@ -109,16 +167,14 @@ func readFixSelectionKey(reader *bufio.Reader) (fixSelectionKey, error) {
 	}
 }
 
-func readEscapeSelectionKey(reader *bufio.Reader) fixSelectionKey {
-	if reader.Buffered() == 0 {
+func readEscapeSelectionKey(reader *timedByteReader) fixSelectionKey {
+	next, ok := reader.readByteWithin(escapeSequenceTimeout)
+	// CSI ("ESC [") and SS3 ("ESC O", application cursor mode) both carry arrow keys.
+	if !ok || (next != '[' && next != 'O') {
 		return fixSelectionKey{cancel: true}
 	}
-	next, err := reader.ReadByte()
-	if err != nil || next != '[' {
-		return fixSelectionKey{cancel: true}
-	}
-	code, err := reader.ReadByte()
-	if err != nil {
+	code, ok := reader.readByteWithin(escapeSequenceTimeout)
+	if !ok {
 		return fixSelectionKey{cancel: true}
 	}
 	switch code {

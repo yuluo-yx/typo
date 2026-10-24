@@ -54,20 +54,21 @@ _typo_fix_command() {
     fi
 }
 
+# Kept for compatibility; hooks compare against $$ directly to avoid a fork per command.
 _typo_current_shell_id() {
     printf '%s\n' "$$"
 }
 
 _typo_owns_stderr_cache() {
-    [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+    [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" == "$$" ]]
 }
 
 _typo_owns_alias_context() {
-    [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+    [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" == "$$" ]]
 }
 
 _typo_owns_original_stderr_fd() {
-    [[ -n "${TYPO_ORIG_STDERR_FD:-}" && "${TYPO_ORIG_STDERR_FD_OWNER:-}" == "$(_typo_current_shell_id)" ]]
+    [[ -n "${TYPO_ORIG_STDERR_FD:-}" && "${TYPO_ORIG_STDERR_FD_OWNER:-}" == "$$" ]]
 }
 
 # Initialize stderr cache file and FIFO for this shell session.
@@ -76,7 +77,7 @@ _typo_init_stderr_cache() {
     local shell_id
     local stderr_cache=""
 
-    shell_id="$(_typo_current_shell_id)"
+    shell_id="$$"
 
     if [[ -n "${TYPO_STDERR_CACHE:-}" && "${TYPO_STDERR_CACHE_OWNER:-}" != "$shell_id" ]]; then
         unset TYPO_STDERR_CACHE
@@ -132,7 +133,7 @@ _typo_init_alias_context() {
     local shell_id
     local alias_context=""
 
-    shell_id="$(_typo_current_shell_id)"
+    shell_id="$$"
 
     if [[ -n "${TYPO_ALIAS_CONTEXT:-}" && "${TYPO_ALIAS_CONTEXT_OWNER:-}" != "$shell_id" ]]; then
         unset TYPO_ALIAS_CONTEXT
@@ -430,7 +431,7 @@ _typo_save_original_stderr() {
     local shell_id
     local available_fd
 
-    shell_id="$(_typo_current_shell_id)"
+    shell_id="$$"
 
     if [[ -n "${TYPO_ORIG_STDERR_FD:-}" && "${TYPO_ORIG_STDERR_FD_OWNER:-}" != "$shell_id" ]]; then
         unset TYPO_ORIG_STDERR_FD

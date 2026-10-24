@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"strings"
-
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
@@ -19,57 +17,7 @@ func (e *Engine) tryCommandTreeFix(cmd string) itypes.FixResult {
 		return itypes.FixResult{Fixed: false}
 	}
 
-	if result, parsed := e.tryCommandTreeFixWithShell(cmd); parsed {
-		return result
-	}
-
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return itypes.FixResult{Fixed: false}
-	}
-
-	tree, rootToken, ok := e.matchCommandTreeRoot(parts[0])
-	if !ok || tree == nil {
-		return itypes.FixResult{Fixed: false}
-	}
-
-	rootChanged := rootToken != parts[0]
-	matchedTokens, matchedChildren := e.matchCommandTreeTokens(parts[1:], tree.Node)
-	if rootChanged && len(parts) > 1 && matchedChildren == 0 {
-		return itypes.FixResult{Fixed: false}
-	}
-
-	changed := false
-	if rootChanged {
-		parts[0] = rootToken
-		changed = true
-	}
-	for i, token := range matchedTokens {
-		if token == parts[i+1] {
-			continue
-		}
-		parts[i+1] = token
-		changed = true
-	}
-
-	if !changed {
-		return itypes.FixResult{Fixed: false}
-	}
-
-	return itypes.FixResult{
-		Fixed:   true,
-		Command: strings.Join(parts, " "),
-		Source:  "tree",
-	}
-}
-
-func (e *Engine) tryCommandTreeFixWithShell(cmd string) (itypes.FixResult, bool) {
-	lines, err := parseShellCommandLines(cmd)
-	if err != nil {
-		return itypes.FixResult{Fixed: false}, false
-	}
-
-	for _, line := range lines {
+	for _, line := range commandLinesOrFields(cmd) {
 		replacements := e.commandTreeReplacementsForLine(line)
 		if len(replacements) == 0 {
 			continue
@@ -79,10 +27,10 @@ func (e *Engine) tryCommandTreeFixWithShell(cmd string) (itypes.FixResult, bool)
 			Fixed:   true,
 			Command: line.replaceWords(replacements...),
 			Source:  "tree",
-		}, true
+		}
 	}
 
-	return itypes.FixResult{Fixed: false}, true
+	return itypes.FixResult{Fixed: false}
 }
 
 func (e *Engine) commandTreeReplacementsForLine(line *shellCommandLine) []shellWordReplacement {
@@ -141,11 +89,6 @@ func (e *Engine) matchCommandTreeRoot(token string) (*itypes.CommandTree, string
 		}
 	}
 
-	// Do not rewrite to the typo command tree when the first command is already executable.
-	if e.hasKnownCommand(token) {
-		return nil, "", false
-	}
-
 	best := commandTreeTokenCandidate{distance: 999, similarity: -1}
 	var bestTree *itypes.CommandTree
 	matchCfg := e.distanceMatchConfig()
@@ -168,6 +111,12 @@ func (e *Engine) matchCommandTreeRoot(token string) (*itypes.CommandTree, string
 	}
 
 	if bestTree == nil {
+		return nil, "", false
+	}
+
+	// Do not rewrite to a command tree when the first command is already executable.
+	// This check runs last because it may consult PATH, which most inputs never need.
+	if e.hasKnownCommand(token) {
 		return nil, "", false
 	}
 

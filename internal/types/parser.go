@@ -33,6 +33,8 @@ type AliasContextEntry struct {
 const (
 	// FixKindPermissionSudo identifies fixes that prepend sudo after a permission error.
 	FixKindPermissionSudo = "permission_sudo"
+	// FixKindPath identifies fixes that rewrite a missing path argument to an existing path.
+	FixKindPath = "path"
 )
 
 // Parser defines the interface for error output parsers.

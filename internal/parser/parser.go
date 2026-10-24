@@ -19,7 +19,11 @@ type parserRoute struct {
 
 // NewRegistry creates a new parser registry with default parsers.
 func NewRegistry() *Registry {
-	r := &Registry{}
+	// Size for the default parsers: five entries, three with a dedicated command.
+	r := &Registry{
+		parsers:   make([]itypes.Parser, 0, 5),
+		byCommand: make(map[string]parserRoute, 3),
+	}
 	r.Register(NewGitParser())
 	r.Register(NewDockerParser())
 	r.Register(NewNpmParser())

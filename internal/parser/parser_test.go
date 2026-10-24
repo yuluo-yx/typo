@@ -638,10 +638,10 @@ func TestPermissionParser_Helpers(t *testing.T) {
 	if !p.shouldSkipStderr("[sudo] password for user:") {
 		t.Fatal("Expected password prompt stderr to be skipped")
 	}
-	if !p.matchesAny("git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n", p.remoteAuthPatterns) {
+	if !p.matchesAny("git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n", permissionRegexes().remoteAuthPatterns) {
 		t.Fatal("Expected remote auth pattern to match")
 	}
-	if p.matchesAny("plain error", p.remoteAuthPatterns) {
+	if p.matchesAny("plain error", permissionRegexes().remoteAuthPatterns) {
 		t.Fatal("Did not expect unrelated stderr to match remote auth patterns")
 	}
 
@@ -1363,8 +1363,28 @@ func TestGitParser_ParsePushNoUpstream(t *testing.T) {
 			wantFix: false,
 		},
 		{
-			name:    "existing positional argument is not duplicated",
+			name:    "remote-only push is completed in place",
 			cmd:     "git push origin",
+			stderr:  stderr,
+			wantFix: true,
+			wantCmd: "git push --set-upstream origin feature/topic",
+		},
+		{
+			name:    "remote-only push keeps flags and redirects",
+			cmd:     "git push -q origin > 'push log'",
+			stderr:  stderr,
+			wantFix: true,
+			wantCmd: "git push -q --set-upstream origin feature/topic > 'push log'",
+		},
+		{
+			name:    "different remote is not replaced",
+			cmd:     "git push upstream",
+			stderr:  stderr,
+			wantFix: false,
+		},
+		{
+			name:    "remote and refspec are not rewritten",
+			cmd:     "git push origin HEAD",
 			stderr:  stderr,
 			wantFix: false,
 		},

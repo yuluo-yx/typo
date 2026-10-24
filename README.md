@@ -115,9 +115,16 @@ When `git pull` has no upstream, typo preserves the pull and its options and add
 `--set-upstream <remote> <branch>` using verified repository references. When Git
 reports divergent branches without a reconciliation strategy, typo suggests
 `git pull --rebase`, preserving existing arguments. Explicit `--rebase`, `-r`,
-`--no-rebase`, and `--ff-only` choices are kept. Suggestions are placed in the
-command buffer for you to execute; generating one does not change Git history or
-repository configuration.
+`--no-rebase`, and `--ff-only` choices are kept. A push rejected because the
+tracked remote branch moved ahead becomes `git pull --rebase && git push`, a
+`git push origin` without upstream is completed with `--set-upstream`, a
+mistyped branch in `git checkout`/`git switch` is replaced with the single
+closest existing branch, and "Author identity unknown" suggests the unset
+`git config --global user.name`/`user.email` key for you to fill in. These
+corrections recognize localized Git output by matching Git's untranslated
+suggested commands and verifying the repository state. Suggestions are placed
+in the command buffer for you to execute; generating one does not change Git
+history or repository configuration.
 
 ## CLI Commands
 

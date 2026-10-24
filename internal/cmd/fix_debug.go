@@ -94,7 +94,7 @@ func printFixDebug(w io.Writer, result itypes.FixResult) {
 		debug.AliasContextEntries,
 	)
 	writef(
-		"typo:   features alias=%s parser=%s history=%s rule=%s tree=%s subcommand=%s distance=%s env=%s option=%s\n",
+		"typo:   features alias=%s parser=%s history=%s rule=%s tree=%s subcommand=%s distance=%s env=%s option=%s path=%s\n",
 		yesNo(debug.UsedAlias),
 		yesNo(debug.UsedParser),
 		yesNo(debug.UsedHistory),
@@ -104,6 +104,7 @@ func printFixDebug(w io.Writer, result itypes.FixResult) {
 		yesNo(debug.UsedDistance),
 		yesNo(debug.UsedEnv),
 		yesNo(debug.UsedOption),
+		yesNo(debug.UsedPath),
 	)
 	writef(
 		"typo:   path-commands-loaded=%s discovered=%d\n",
@@ -306,6 +307,7 @@ func marshalFixDebugJSON(result itypes.FixResult) ([]byte, error) {
 			Distance:    debug.UsedDistance,
 			Env:         debug.UsedEnv,
 			Option:      debug.UsedOption,
+			Path:        debug.UsedPath,
 		},
 		PathCommands: fixDebugPathCommandsJSON{
 			Loaded:     debug.LoadedPATHCommands,
@@ -367,6 +369,7 @@ type fixDebugFeaturesJSON struct {
 	Distance    bool `json:"distance"`
 	Env         bool `json:"env"`
 	Option      bool `json:"option"`
+	Path        bool `json:"path"`
 }
 
 type fixDebugPathCommandsJSON struct {
