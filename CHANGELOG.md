@@ -39,6 +39,26 @@
 * `typo rules list` output and the saved `rules.json` / `history.json` files are now sorted for stable diffs.
 * Path argument correction is on by default. Disable it with `typo config set paths.enabled false`; existing config files need no change.
 
+## [1.10.0](https://github.com/yuluo-yx/typo/compare/v1.9.5...v1.10.0) (2026-10-24)
+
+
+### Features
+
+* add optional `candidates.fzf` to pick candidates with fzf, falling back to the builtin menu ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
+* correct missing path arguments of read-only commands such as `source ~/.zshcr` ([#81](https://github.com/yuluo-yx/typo/issues/81)) ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
+
+
+### Bug Fixes
+
+* make git workflow fixes locale independent and fix `git push origin`, rejected pushes, unknown identity, and mistyped branch names ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
+* restrict subcommand discovery to builtin tools, lock config writes, and fix correction and shell integration issues found in the audit ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
+
+
+### Performance Improvements
+
+* avoid full PATH scans, bound edit-distance work, memoize shell parsing, and cap history size ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
+* compile parser patterns lazily once per process ([#272](https://github.com/yuluo-yx/typo/issues/272)) ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
+
 ## [1.9.5](https://github.com/yuluo-yx/typo/compare/v1.9.4...v1.9.5) (2026-10-18)
 
 
