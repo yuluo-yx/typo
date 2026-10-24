@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [1.10.0](https://github.com/yuluo-yx/typo/compare/v1.9.5...v1.10.0) (2026-10-24)
 
 ### Features
 
@@ -9,7 +9,6 @@
 
 ### Fixes
 
-* Fix `typo fix` losing required quoting when command arguments are passed separately, preventing commit messages and similar values from turning into bare options or split words after correction.
 * Stop subcommand discovery from executing arbitrary tools: only builtin tools are probed with `--help`, the positional `help` fallback is limited to tools where it is a real help subcommand (previously `rm help` could delete a file named `help`), probes run outside the working directory, and help output is capped at 1 MiB.
 * Remember empty help probes per executable (path, size, mtime) for 24 hours so tools without subcommands are no longer re-probed on every fix.
 * Serialize `typo config set/reset/gen` with a file lock and re-read the config inside the lock, so concurrent writers no longer drop each other's updates.
