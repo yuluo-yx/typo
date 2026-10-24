@@ -15,6 +15,10 @@ import (
 
 const usageHistoryFileName = "usage_history.json"
 
+// maxHistoryEntries bounds the history file. Every fix loads and rewrites the whole
+// file, so an unbounded history turns each correction into O(n) disk work.
+var maxHistoryEntries = 1000
+
 // History manages correction history.
 type History struct {
 	mu        sync.RWMutex
@@ -304,18 +308,48 @@ func (h *History) save() error {
 		return err
 	}
 
+	h.pruneLocked()
 	entries := make([]itypes.HistoryEntry, 0, len(h.entries))
 	for _, entry := range h.entries {
 		entries = append(entries, entry)
 	}
+	// Stable order keeps the file diff-friendly across saves.
+	sort.Slice(entries, func(i, j int) bool { return entries[i].From < entries[j].From })
 
-	data, err := json.MarshalIndent(entries, "", "  ")
+	// Compact JSON: the file is machine state rewritten on every accepted fix.
+	data, err := json.Marshal(entries)
 	if err != nil {
 		return err
 	}
 
 	historyFile := filepath.Join(h.configDir, usageHistoryFileName)
 	return storage.WriteFileAtomic(historyFile, data, 0600)
+}
+
+// pruneLocked drops the least recently used entries beyond maxHistoryEntries.
+// Callers must hold h.mu for writing.
+func (h *History) pruneLocked() {
+	if maxHistoryEntries <= 0 || len(h.entries) <= maxHistoryEntries {
+		return
+	}
+
+	entries := make([]itypes.HistoryEntry, 0, len(h.entries))
+	for _, entry := range h.entries {
+		entries = append(entries, entry)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Timestamp != entries[j].Timestamp {
+			return entries[i].Timestamp > entries[j].Timestamp
+		}
+		if entries[i].Count != entries[j].Count {
+			return entries[i].Count > entries[j].Count
+		}
+		return entries[i].From < entries[j].From
+	})
+	for _, entry := range entries[maxHistoryEntries:] {
+		delete(h.entries, entry.From)
+	}
+	h.rebuildTargets()
 }
 
 func historyEntryMatchesCommandWord(raw, target string) bool {

@@ -20,9 +20,16 @@
   },
 
   // Whether to show multiple candidates during interactive correction and their maximum count.
+  // Set fzf to true to pick candidates with an installed fzf; the builtin menu is used when fzf is missing or fails.
   "candidates": {
     "enabled": false,
-    "limit": 3
+    "limit": 3,
+    "fzf": false
+  },
+
+  // Whether to rewrite missing path arguments of read-only commands (source, cd, cat, cp, ...) to the closest existing path.
+  "paths": {
+    "enabled": true
   },
 
   // Experimental features are disabled by default; review release notes before enabling them after upgrades.
@@ -31,6 +38,12 @@
     "long_option_correction": {
       "enabled": false
     }
+  },
+
+  // Subcommand discovery runs `<tool> --help` to learn subcommands. Only builtin tools are probed
+  // by default; enable discover_unknown to also probe other executables found in PATH.
+  "subcommands": {
+    "discover_unknown": false
   },
 
   // Built-in rule scope toggles; disabling a scope stops its tool-specific built-in correction rules.

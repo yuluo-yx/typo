@@ -33,6 +33,11 @@ menu is written to the terminal; stdout still contains only the selected command
 so shell buffers are updated with one command. If no interactive terminal is
 available, Typo falls back to the best candidate.
 
+Set `candidates.fzf=true` to pick candidates with [fzf](https://github.com/junegunn/fzf)
+instead of the builtin menu. fzf is optional: when it is not installed, fails to
+start, or exits with an error, Typo uses the builtin menu, so corrections keep
+working. Pressing Esc in fzf cancels the selection.
+
 If `typo fix --select ...` prints only the best correction and no menu appears,
 check `typo config get candidates.enabled`. When it is `false`, Typo writes a
 stderr hint and keeps stdout limited to the best correction. Enable the menu with
@@ -101,7 +106,10 @@ The current configurable keys are:
 - `history.enabled`
 - `candidates.enabled` *(default: `false`)*
 - `candidates.limit` *(default: `3`, valid range: `1..10`; this is a maximum, not a quota)*
+- `candidates.fzf` *(default: `false`; use an installed fzf for the candidate menu, falling back to the builtin menu)*
+- `paths.enabled` *(default: `true`; correct missing path arguments such as `source ~/.zshcr` → `source ~/.zshrc`)*
 - `experimental.long-option-correction.enabled` *(Experimental; default: `false`)*
+- `subcommands.discover-unknown` *(default: `false`; runs `<tool> --help` for tools outside the builtin list)*
 - `rules.<scope>.enabled`
 
 ## `typo rules`

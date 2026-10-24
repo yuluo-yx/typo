@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -177,6 +178,13 @@ func (r *Rules) ListRules() []itypes.Rule {
 		rules = append(rules, rule)
 	}
 
+	// Map iteration is random; keep listings stable for users and scripts.
+	sort.SliceStable(rules, func(i, j int) bool {
+		if rules[i].Scope != rules[j].Scope {
+			return rules[i].Scope < rules[j].Scope
+		}
+		return rules[i].From < rules[j].From
+	})
 	return rules
 }
 
@@ -503,6 +511,7 @@ func (r *Rules) saveUserRules() error {
 	for _, rule := range r.user {
 		rules = append(rules, rule)
 	}
+	sort.Slice(rules, func(i, j int) bool { return rules[i].From < rules[j].From })
 
 	data, err := json.MarshalIndent(rules, "", "  ")
 	if err != nil {

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+	"unicode"
 
 	"mvdan.cc/sh/v3/syntax"
 
@@ -22,7 +24,42 @@ type shellWordReplacement struct {
 	value string
 }
 
+// maxShellParseCacheEntries bounds the parse memo. One correction re-parses the
+// same few strings in every stage and pass, so a small cache removes most parses.
+const maxShellParseCacheEntries = 128
+
+type shellParseResult struct {
+	lines []*shellCommandLine
+	err   error
+}
+
+var (
+	shellParseCacheMu sync.Mutex
+	shellParseCache   = make(map[string]shellParseResult)
+)
+
+// parseShellCommandLines parses raw into executable command lines. Results are
+// memoized; callers must treat the returned lines and syntax nodes as read-only.
 func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
+	shellParseCacheMu.Lock()
+	cached, ok := shellParseCache[raw]
+	shellParseCacheMu.Unlock()
+	if ok {
+		return cached.lines, cached.err
+	}
+
+	lines, err := parseShellCommandLinesUncached(raw)
+
+	shellParseCacheMu.Lock()
+	if len(shellParseCache) >= maxShellParseCacheEntries {
+		clear(shellParseCache)
+	}
+	shellParseCache[raw] = shellParseResult{lines: lines, err: err}
+	shellParseCacheMu.Unlock()
+	return lines, err
+}
+
+func parseShellCommandLinesUncached(raw string) ([]*shellCommandLine, error) {
 	// Interactive input may be incomplete; recover one syntax error to preserve original word ranges.
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.RecoverErrors(1))
 	file, err := parser.Parse(strings.NewReader(raw+"\n"), "")
@@ -66,6 +103,58 @@ func parseShellCommandLines(raw string) ([]*shellCommandLine, error) {
 	})
 
 	return lines, nil
+}
+
+// commandLinesOrFields returns the parsed shell command lines of raw. When raw is
+// not valid shell (for example an unterminated quote while typing), it returns one
+// literal line built from whitespace-separated fields. Every correction stage then
+// runs the same line-based logic instead of a parallel string-splitting path.
+func commandLinesOrFields(raw string) []*shellCommandLine {
+	if lines, err := parseShellCommandLines(raw); err == nil {
+		return lines
+	}
+	if line := fieldCommandLine(raw); line != nil {
+		return []*shellCommandLine{line}
+	}
+	return nil
+}
+
+// fieldCommandLine splits raw like strings.Fields while keeping byte offsets, so
+// replacements preserve the original spacing of the unparsed input. The first
+// field is the command word; wrappers are not skipped because the input could not
+// be parsed reliably.
+func fieldCommandLine(raw string) *shellCommandLine {
+	args := make([]*syntax.Word, 0, 4)
+	start := -1
+	for i, r := range raw {
+		if unicode.IsSpace(r) {
+			if start >= 0 {
+				args = append(args, literalWord(raw[start:i], start, i))
+				start = -1
+			}
+			continue
+		}
+		if start < 0 {
+			start = i
+		}
+	}
+	if start >= 0 {
+		args = append(args, literalWord(raw[start:], start, len(raw)))
+	}
+	if len(args) == 0 {
+		return nil
+	}
+	return &shellCommandLine{raw: raw, args: args}
+}
+
+func literalWord(value string, start, end int) *syntax.Word {
+	// #nosec G115 -- offsets come from ranging over a string and are never negative.
+	startPos, endPos := uint(start), uint(end)
+	return &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{
+		ValuePos: syntax.NewPos(startPos, 1, startPos+1),
+		ValueEnd: syntax.NewPos(endPos, 1, endPos+1),
+		Value:    value,
+	}}}
 }
 
 func shellWordRangesValid(args []*syntax.Word, rawLen int) bool {

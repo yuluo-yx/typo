@@ -41,6 +41,7 @@ type FixDebugInfo struct {
 	UsedDistance           bool
 	UsedEnv                bool
 	UsedOption             bool
+	UsedPath               bool
 	Events                 []FixDebugEvent
 	RejectedCandidates     []FixDebugCandidate
 	AutoLearn              AutoLearnDebugInfo

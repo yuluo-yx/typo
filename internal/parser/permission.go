@@ -3,23 +3,53 @@ package parser
 import (
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/yuluo-yx/typo/internal/commands"
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // PermissionParser adds a sudo prefix when stderr shows a permission error.
-type PermissionParser struct {
+type PermissionParser struct{}
+
+// genericPermissionCmds lists commands whose plain "permission denied" usually
+// means the target path needs elevated privileges. It is read-only.
+var genericPermissionCmds = map[string]bool{
+	"mkdir":          true,
+	"touch":          true,
+	"rm":             true,
+	"cp":             true,
+	"mv":             true,
+	"install":        true,
+	"ln":             true,
+	"chmod":          true,
+	"chown":          true,
+	"cat":            true,
+	"tee":            true,
+	"dd":             true,
+	"tar":            true,
+	"unzip":          true,
+	"zip":            true,
+	parserNameDocker: true,
+}
+
+// permissionPatterns holds the compiled patterns of PermissionParser.
+type permissionPatterns struct {
 	strongPermissionPatterns []*regexp.Regexp
 	genericPermissionDenied  *regexp.Regexp
 	remoteAuthPatterns       []*regexp.Regexp
-	genericPermissionCmds    map[string]bool
 	passwordPrompt           *regexp.Regexp
 }
 
 // NewPermissionParser creates a parser for permission-related command failures.
 func NewPermissionParser() *PermissionParser {
-	return &PermissionParser{
+	return &PermissionParser{}
+}
+
+// permissionRegexes compiles the patterns on first use, so constructing a parser is cheap
+// and patterns of parsers that never see matching input are never compiled.
+var permissionRegexes = sync.OnceValue(func() *permissionPatterns {
+	return &permissionPatterns{
 		strongPermissionPatterns: []*regexp.Regexp{
 			regexp.MustCompile(`(?im)\boperation not permitted\b`),
 			regexp.MustCompile(`(?im)\b(?:EACCES|EPERM)\b`),
@@ -37,27 +67,9 @@ func NewPermissionParser() *PermissionParser {
 			regexp.MustCompile(`(?im)\bunauthorized\b`),
 			regexp.MustCompile(`(?im)\bforbidden\b`),
 		},
-		genericPermissionCmds: map[string]bool{
-			"mkdir":          true,
-			"touch":          true,
-			"rm":             true,
-			"cp":             true,
-			"mv":             true,
-			"install":        true,
-			"ln":             true,
-			"chmod":          true,
-			"chown":          true,
-			"cat":            true,
-			"tee":            true,
-			"dd":             true,
-			"tar":            true,
-			"unzip":          true,
-			"zip":            true,
-			parserNameDocker: true,
-		},
 		passwordPrompt: regexp.MustCompile(`(?im)^\s*(?:\[sudo\]\s*)?password(?: for [^:]+)?:\s*$`),
 	}
-}
+})
 
 // Name returns the parser name.
 func (p *PermissionParser) Name() string {
@@ -80,15 +92,15 @@ func (p *PermissionParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 		return itypes.ParserResult{Fixed: false}
 	}
 
-	if p.matchesAny(stderr, p.remoteAuthPatterns) {
+	if p.matchesAny(stderr, permissionRegexes().remoteAuthPatterns) {
 		return itypes.ParserResult{Fixed: false}
 	}
 
-	if p.matchesAny(stderr, p.strongPermissionPatterns) {
+	if p.matchesAny(stderr, permissionRegexes().strongPermissionPatterns) {
 		return p.sudoResult(ctx.Command)
 	}
 
-	if p.genericPermissionDenied.MatchString(stderr) && p.genericPermissionCmds[cmdWord] {
+	if permissionRegexes().genericPermissionDenied.MatchString(stderr) && genericPermissionCmds[cmdWord] {
 		return p.sudoResult(ctx.Command)
 	}
 
@@ -105,7 +117,7 @@ func (p *PermissionParser) shouldSkipContext(ctx itypes.ParserContext) bool {
 }
 
 func (p *PermissionParser) shouldSkipStderr(stderr string) bool {
-	return stderr == "" || p.passwordPrompt.MatchString(stderr)
+	return stderr == "" || permissionRegexes().passwordPrompt.MatchString(stderr)
 }
 
 func (p *PermissionParser) matchesAny(stderr string, patterns []*regexp.Regexp) bool {

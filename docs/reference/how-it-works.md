@@ -15,8 +15,21 @@ Typo corrects commands in this order:
 7. Edit-distance matching
 8. Environment variable repair
 9. Tool option repair
+10. Path argument repair
 
 In practice, this means real command output and explicit user overrides win before fuzzy matching runs.
+
+Path argument repair only touches commands that read existing paths: `source`,
+`.`, `cd`, `pushd`, `cat`, `bat`, `less`, `more`, `head`, `tail`, `wc`, `stat`,
+`file`, `ls`, `du`, `diff`, and the source arguments of `cp`/`mv`. Commands that
+can create files, such as editors, `touch`, or `mkdir`, are never rewritten. A
+static argument that does not exist is resolved segment by segment against the
+real directory entries (hidden names only match hidden input, at most two
+segments change, directories with more than 4096 entries are skipped). A unique
+closest path is applied directly; equally close paths are offered through the
+candidate menu instead of guessed. Path fixes depend on the current filesystem,
+so they are never recorded in history or auto-learned. Disable the stage with
+`typo config set paths.enabled false`.
 
 ## Shell correction context
 
@@ -63,7 +76,7 @@ Typo can extract suggestions from real `stderr` output when available.
 
 Currently documented parser coverage:
 
-- `git`: `did you mean...`, explicit push upstream hints, divergent pull rebase, and related suggestions
+- `git`: `did you mean...`, push/pull/branch upstream hints, divergent pull rebase, rejected push (`git pull --rebase && git push`), checkout/switch branch typos, and missing identity config. Localized Git output is recognized through untranslated suggested commands plus read-only repository checks (current branch, upstream, branch list, config), and only when the command failed
 - `docker`: unknown command suggestions
 - `npm`: command-not-found suggestions
 
@@ -96,7 +109,10 @@ Notes:
 - Built-in tree-shaped subcommands cover common `git`, `docker`, and `kubectl` nested commands even before dynamic discovery runs.
 - Typo caches discovered subcommands in `~/.typo/subcommands.json` using `schema_version: 3`.
 - Hierarchical subcommand discovery is supported for `git`, `docker`, `aws`, `gcloud`, and `az`; `kubectl` resource correction uses a conservative built-in resource tree.
-- Older subcommand cache files without `schema_version: 3` are moved aside automatically and regenerated.
+- Older subcommand cache files without `schema_version: 3` are discarded and regenerated.
+- Dynamic discovery runs `<tool> --help` only for builtin subcommand tools. The positional `<tool> help` fallback is limited to tools whose `help` argument is a real help subcommand. Probes run in the system temporary directory, never in the current project.
+- Set `subcommands.discover-unknown` to `true` to also probe other executables found in PATH.
+- A probe that finds no subcommands is recorded in the optional `negative` list of the cache for 24 hours, keyed by executable path, size, and modification time, so typo does not re-run the same help command on every correction.
 
 ### Subcommand cache version 3
 
@@ -140,11 +156,11 @@ Node fields have these meanings:
 - `long_options`: known `--long-option` tokens visible at this node
 - `long_options_with_values`: known `--long-option` tokens that consume the next argument
 
-If typo finds an older cache format, including version 2 or files without a
-schema version, it renames that file to
-`subcommands.json.corrupt-<timestamp>` and rebuilds a fresh version 3 cache on
-next use. The file only contains discovered command metadata and option
-metadata, so no user rules, history, or configuration are lost.
+If typo finds an older or unreadable cache, including version 2 or files without
+a schema version, it ignores that file and overwrites it with a fresh version 3
+cache on next save. No backup is kept because the file only contains discovered
+command metadata and option metadata; no user rules, history, or configuration
+are lost.
 
 ## Local files
 

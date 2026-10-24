@@ -3,8 +3,10 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yuluo-yx/typo/internal/engine"
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -144,7 +146,7 @@ func TestSelectFixResultUsesTerminalSelection(t *testing.T) {
 		return candidates[1], true, nil
 	}
 
-	result, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2)
+	result, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2, false)
 	if !ok {
 		t.Fatal("selectFixResult should accept terminal selection")
 	}
@@ -165,7 +167,7 @@ func TestSelectFixResultCancel(t *testing.T) {
 		return itypes.FixCandidate{}, false, nil
 	}
 
-	if _, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2); ok {
+	if _, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2, false); ok {
 		t.Fatal("selectFixResult should report cancellation")
 	}
 }
@@ -182,7 +184,7 @@ func TestSelectFixResultFallsBackToFirstCandidateWhenTerminalFails(t *testing.T)
 		return itypes.FixCandidate{}, false, errors.New("terminal unavailable")
 	}
 
-	result, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2)
+	result, ok := selectFixResult(eng, itypes.ParserContext{Command: "gti status"}, 2, false)
 	if !ok {
 		t.Fatal("selectFixResult should fall back when terminal selection fails")
 	}
@@ -218,5 +220,51 @@ func TestFixSelectWarnsWhenCandidateSelectionDisabled(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "typo config set candidates.enabled true") {
 		t.Fatalf("stderr should include the enabling command, got %q", stderr)
+	}
+}
+
+func TestSelectFixCandidateWaitsForSplitArrowSequence(t *testing.T) {
+	candidates := []itypes.FixCandidate{
+		{Command: "git status"},
+		{Command: "cut status"},
+	}
+	reader, writer := io.Pipe()
+	go func() {
+		defer func() { _ = writer.Close() }()
+		// Deliver ESC and the rest of the Down sequence in separate writes.
+		_, _ = writer.Write([]byte{0x1b})
+		time.Sleep(escapeSequenceTimeout / 3)
+		_, _ = writer.Write([]byte("[B\r"))
+	}()
+
+	selected, ok, err := selectFixCandidate(candidates, reader, &bytes.Buffer{})
+	if err != nil || !ok {
+		t.Fatalf("selectFixCandidate = ok %v err %v, want a selection", ok, err)
+	}
+	if selected.Command != "cut status" {
+		t.Fatalf("split arrow sequence was treated as cancel; selected %q", selected.Command)
+	}
+}
+
+func TestSelectFixCandidateLoneEscCancelsAfterTimeout(t *testing.T) {
+	candidates := []itypes.FixCandidate{{Command: "git status"}, {Command: "cut status"}}
+	reader, writer := io.Pipe()
+	defer func() { _ = writer.Close() }()
+	go func() { _, _ = writer.Write([]byte{0x1b}) }()
+
+	started := time.Now()
+	if _, ok, err := selectFixCandidate(candidates, reader, &bytes.Buffer{}); err != nil || ok {
+		t.Fatalf("lone Esc = ok %v err %v, want cancel", ok, err)
+	}
+	if elapsed := time.Since(started); elapsed > 10*escapeSequenceTimeout {
+		t.Fatalf("lone Esc took %s to cancel", elapsed)
+	}
+}
+
+func TestSelectFixCandidateSupportsApplicationCursorKeys(t *testing.T) {
+	candidates := []itypes.FixCandidate{{Command: "git status"}, {Command: "cut status"}}
+	selected, ok, err := selectFixCandidate(candidates, strings.NewReader("\x1bOB\r"), &bytes.Buffer{})
+	if err != nil || !ok || selected.Command != "cut status" {
+		t.Fatalf("SS3 Down = %q ok %v err %v, want cut status", selected.Command, ok, err)
 	}
 }

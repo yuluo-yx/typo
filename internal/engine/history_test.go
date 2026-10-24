@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
@@ -523,5 +524,81 @@ func TestHistory_RemoveEntriesForCommandWord_Empty(t *testing.T) {
 
 	if _, ok := h.Lookup("gut status"); !ok {
 		t.Fatal("Expected history entry to remain after empty removal")
+	}
+}
+
+func TestHistoryPrunesLeastRecentlyUsedEntries(t *testing.T) {
+	previous := maxHistoryEntries
+	maxHistoryEntries = 3
+	t.Cleanup(func() { maxHistoryEntries = previous })
+
+	dir := t.TempDir()
+	h := NewHistory(dir)
+	h.mu.Lock()
+	for i, from := range []string{"a1", "a2", "a3", "a4"} {
+		h.entries[from] = itypes.HistoryEntry{From: from, To: "x", Timestamp: int64(100 + i), Count: 1}
+	}
+	h.mu.Unlock()
+	if err := h.Record("a5", "x"); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := NewHistory(dir)
+	if reloaded.Count() != 3 {
+		t.Fatalf("expected history capped at 3 entries, got %d", reloaded.Count())
+	}
+	for _, dropped := range []string{"a1", "a2"} {
+		if _, ok := reloaded.Lookup(dropped); ok {
+			t.Errorf("oldest entry %s should have been pruned", dropped)
+		}
+	}
+	for _, kept := range []string{"a3", "a4", "a5"} {
+		if _, ok := reloaded.Lookup(kept); !ok {
+			t.Errorf("recent entry %s was pruned", kept)
+		}
+	}
+}
+
+func TestHistorySaveIsCompactAndSorted(t *testing.T) {
+	dir := t.TempDir()
+	h := NewHistory(dir)
+	for _, from := range []string{"zz", "aa", "mm"} {
+		if err := h.Record(from, "git"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dir, usageHistoryFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "\n") {
+		t.Fatalf("expected compact JSON, got %q", data)
+	}
+	if a, m, z := strings.Index(string(data), `"aa"`), strings.Index(string(data), `"mm"`), strings.Index(string(data), `"zz"`); a >= m || m >= z {
+		t.Fatalf("expected entries sorted by from, got %s", data)
+	}
+}
+
+func TestListRulesIsSorted(t *testing.T) {
+	r := NewRules(t.TempDir())
+	for _, from := range []string{"zz", "aa"} {
+		if err := r.AddUserRule(itypes.Rule{From: from, To: "git"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := r.ListRules()
+	for i := 0; i < 5; i++ {
+		again := r.ListRules()
+		for j := range first {
+			if first[j].From != again[j].From {
+				t.Fatalf("ListRules order changed between calls at %d: %s vs %s", j, first[j].From, again[j].From)
+			}
+		}
+	}
+	for i := 1; i < len(first); i++ {
+		a, b := first[i-1], first[i]
+		if a.Scope > b.Scope || (a.Scope == b.Scope && a.From > b.From) {
+			t.Fatalf("ListRules not sorted: %+v before %+v", a, b)
+		}
 	}
 }

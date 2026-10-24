@@ -23,20 +23,39 @@ func Distance(a, b string, weights KeyboardWeights) int {
 }
 
 func distanceRunes(runesA, runesB []rune, weights KeyboardWeights) int {
-	// Shared boundaries do not contribute to weighted Levenshtein distance.
-	for len(runesA) > 0 && len(runesB) > 0 && runesA[0] == runesB[0] {
-		runesA, runesB = runesA[1:], runesB[1:]
+	distance, _ := weightedDistance(runesA, runesB, weights, math.Inf(1))
+	return int(math.Round(distance))
+}
+
+// distanceRunesWithin returns the distance when it is at most limit. It stops as
+// soon as every cell of a DP row exceeds the limit, which skips most of the work
+// for unrelated candidates; ok=false means the distance is larger than limit.
+func distanceRunesWithin(runesA, runesB []rune, weights KeyboardWeights, limit int) (int, bool) {
+	if limit < 0 {
+		return 0, false
 	}
-	for len(runesA) > 0 && len(runesB) > 0 && runesA[len(runesA)-1] == runesB[len(runesB)-1] {
-		runesA, runesB = runesA[:len(runesA)-1], runesB[:len(runesB)-1]
+	// Any raw value at or above limit+0.5 rounds to more than limit.
+	distance, ok := weightedDistance(runesA, runesB, weights, float64(limit)+0.5)
+	if !ok {
+		return 0, false
 	}
+	rounded := int(math.Round(distance))
+	return rounded, rounded <= limit
+}
+
+// weightedDistance computes the raw keyboard-weighted Levenshtein distance. It
+// returns ok=false early once the distance is known to be >= cutoff.
+func weightedDistance(runesA, runesB []rune, weights KeyboardWeights, cutoff float64) (float64, bool) {
+	runesA, runesB = trimSharedBoundaries(runesA, runesB)
 	lenA := len(runesA)
 	lenB := len(runesB)
-	if lenA == 0 {
-		return lenB
+	if lenA == 0 || lenB == 0 {
+		distance := float64(lenA + lenB)
+		return distance, distance < cutoff
 	}
-	if lenB == 0 {
-		return lenA
+	// Each length difference costs at least one insertion or deletion.
+	if float64(absInt(lenA-lenB)) >= cutoff {
+		return 0, false
 	}
 
 	bufLen := 2 * (lenB + 1)
@@ -54,25 +73,53 @@ func distanceRunes(runesA, runesB []rune, weights KeyboardWeights) int {
 		prev[j] = float64(j)
 	}
 
+	release := func() {
+		if cap(buf) <= maxPooledDistanceBufferLen {
+			*bufPtr = buf[:0]
+			distanceBufferPool.Put(bufPtr)
+		}
+	}
+
 	for i := 1; i <= lenA; i++ {
-		curr[0] = float64(i)
-		for j := 1; j <= lenB; j++ {
-			cost := substitutionCost(runesA[i-1], runesB[j-1], weights)
-			curr[j] = min(
-				prev[j]+1.0,    // deletion
-				curr[j-1]+1.0,  // insertion
-				prev[j-1]+cost, // substitution
-			)
+		// Row minima never decrease, so the final distance is at least rowMin.
+		if rowMin := fillDistanceRow(prev, curr, i, runesA[i-1], runesB, weights); rowMin >= cutoff {
+			release()
+			return 0, false
 		}
 		prev, curr = curr, prev
 	}
 
-	result := int(math.Round(prev[lenB]))
-	if cap(buf) <= maxPooledDistanceBufferLen {
-		*bufPtr = buf[:0]
-		distanceBufferPool.Put(bufPtr)
+	result := prev[lenB]
+	release()
+	return result, result < cutoff
+}
+
+// trimSharedBoundaries drops the common prefix and suffix, which never
+// contribute to the weighted Levenshtein distance.
+func trimSharedBoundaries(runesA, runesB []rune) ([]rune, []rune) {
+	for len(runesA) > 0 && len(runesB) > 0 && runesA[0] == runesB[0] {
+		runesA, runesB = runesA[1:], runesB[1:]
 	}
-	return result
+	for len(runesA) > 0 && len(runesB) > 0 && runesA[len(runesA)-1] == runesB[len(runesB)-1] {
+		runesA, runesB = runesA[:len(runesA)-1], runesB[:len(runesB)-1]
+	}
+	return runesA, runesB
+}
+
+// fillDistanceRow computes DP row i from prev into curr and returns the row minimum.
+func fillDistanceRow(prev, curr []float64, i int, charA rune, runesB []rune, weights KeyboardWeights) float64 {
+	curr[0] = float64(i)
+	rowMin := curr[0]
+	for j := 1; j <= len(runesB); j++ {
+		cost := substitutionCost(charA, runesB[j-1], weights)
+		curr[j] = min(
+			prev[j]+1.0,    // deletion
+			curr[j-1]+1.0,  // insertion
+			prev[j-1]+cost, // substitution
+		)
+		rowMin = min(rowMin, curr[j])
+	}
+	return rowMin
 }
 
 // substitutionCost returns the cost of substituting one character for another.

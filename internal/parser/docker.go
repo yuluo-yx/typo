@@ -3,23 +3,33 @@ package parser
 import (
 	"regexp"
 	"strings"
+	"sync"
 
 	itypes "github.com/yuluo-yx/typo/internal/types"
 )
 
 // DockerParser parses docker command errors.
-type DockerParser struct {
+type DockerParser struct{}
+
+// dockerPatterns holds the compiled patterns of DockerParser.
+type dockerPatterns struct {
 	didYouMeanRegex *regexp.Regexp
 	notFoundRegex   *regexp.Regexp
 }
 
 // NewDockerParser creates a new DockerParser.
 func NewDockerParser() *DockerParser {
-	return &DockerParser{
+	return &DockerParser{}
+}
+
+// dockerRegexes compiles the patterns on first use, so constructing a parser is cheap
+// and patterns of parsers that never see matching input are never compiled.
+var dockerRegexes = sync.OnceValue(func() *dockerPatterns {
+	return &dockerPatterns{
 		didYouMeanRegex: regexp.MustCompile(`(?s)docker: '([^']+)' is not a docker command\..*Similar command:\s+([\w][\w-]*)[?!.]?(?:\s|$)`),
 		notFoundRegex:   regexp.MustCompile(`(?s)unknown command:\s+([^\s]+).*Did you mean:\s+([\w][\w-]*)[?!.]?(?:\s|$)`),
 	}
-}
+})
 
 // Name returns the parser name.
 func (p *DockerParser) Name() string {
@@ -36,7 +46,7 @@ func (p *DockerParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	}
 
 	// Try "did you mean" pattern
-	matches := p.didYouMeanRegex.FindStringSubmatch(stderr)
+	matches := dockerRegexes().didYouMeanRegex.FindStringSubmatch(stderr)
 	if len(matches) >= 3 {
 		wrongCmd := matches[1]
 		suggested := matches[2]
@@ -56,7 +66,7 @@ func (p *DockerParser) Parse(ctx itypes.ParserContext) itypes.ParserResult {
 	}
 
 	// Try alternative "unknown command" pattern
-	matches = p.notFoundRegex.FindStringSubmatch(stderr)
+	matches = dockerRegexes().notFoundRegex.FindStringSubmatch(stderr)
 	if len(matches) >= 3 {
 		wrongCmd := matches[1]
 		suggested := matches[2]

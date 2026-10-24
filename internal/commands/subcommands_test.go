@@ -272,12 +272,13 @@ func TestLoadCache_InvalidJSON(t *testing.T) {
 		t.Fatalf("Expected invalid JSON load to keep explicit cache empty, got %d", len(r.trees))
 	}
 
+	// The cache is regenerable: invalid data is a cache miss, not a quarantined backup.
 	matches, err := filepath.Glob(cacheFile + ".corrupt-*")
 	if err != nil {
 		t.Fatalf("Glob failed: %v", err)
 	}
-	if len(matches) != 1 {
-		t.Fatalf("Expected one quarantined cache file, got %v", matches)
+	if len(matches) != 0 {
+		t.Fatalf("Expected no quarantined cache backups, got %v", matches)
 	}
 }
 
@@ -313,8 +314,8 @@ func TestLoadCache_LegacyArrayCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Glob failed: %v", err)
 	}
-	if len(matches) != 1 {
-		t.Fatalf("Expected one quarantined legacy cache file, got %v", matches)
+	if len(matches) != 0 {
+		t.Fatalf("Expected legacy cache to be replaced without backups, got %v", matches)
 	}
 }
 
@@ -1433,7 +1434,7 @@ func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 		}
 	}()
 
-	toolPath := filepath.Join(tmpDir, "mytool")
+	toolPath := filepath.Join(tmpDir, "go")
 	script := "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  exit 1\nfi\nif [ \"$1\" = \"help\" ]; then\n  echo fallback-help\n  exit 0\nfi\nexit 1\n"
 	if err := os.WriteFile(toolPath, []byte(script), 0755); err != nil {
 		t.Fatalf("Failed to write tool stub: %v", err)
@@ -1443,7 +1444,7 @@ func TestGetHelpOutput_FallsBackToHelpSubcommand(t *testing.T) {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
 	r := &ToolTreeRegistry{helpTimeout: 10 * time.Second}
-	output, err := r.getHelpOutput("mytool")
+	output, err := r.getHelpOutput("go")
 	if err != nil {
 		t.Fatalf("getHelpOutput failed: %v", err)
 	}
@@ -1693,9 +1694,10 @@ func TestFetchSubcommands_DefaultParserWithStub(t *testing.T) {
 		t.Fatalf("Setenv PATH failed: %v", err)
 	}
 	r := &ToolTreeRegistry{
-		cacheDir:    "",
-		cacheExpiry: 7 * 24 * time.Hour,
-		helpTimeout: 10 * time.Second,
+		cacheDir:        "",
+		cacheExpiry:     7 * 24 * time.Hour,
+		helpTimeout:     10 * time.Second,
+		discoverUnknown: true,
 	}
 
 	subcommands := r.fetchSubcommands("mytool")

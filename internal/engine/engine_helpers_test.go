@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yuluo-yx/typo/internal/commands"
@@ -22,6 +23,11 @@ func TestTryMatch(t *testing.T) {
 		}
 	}
 
+	eng := NewEngine()
+	tryMatch := func(cmd, source string, match matchFunc) itypes.FixResult {
+		return eng.tryMatchOnCommand(cmd, source, match)
+	}
+
 	if got := tryMatch("gut status", "rule", match); !got.Fixed || got.Command != "git status" {
 		t.Fatalf("Expected full command match, got %+v", got)
 	}
@@ -39,6 +45,7 @@ func TestTryMatch(t *testing.T) {
 	}
 }
 
+// TestFindSubcommandIndex covers the field-split line used when shell parsing fails.
 func TestFindSubcommandIndex(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -59,8 +66,9 @@ func TestFindSubcommandIndex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := findSubcommandIndex(tt.mainCmd, tt.parts); got != tt.wantIdx {
-				t.Fatalf("findSubcommandIndex() = %d, want %d", got, tt.wantIdx)
+			line := fieldCommandLine(strings.Join(tt.parts, " "))
+			if got := findSubcommandWordIndex(tt.mainCmd, line); got != tt.wantIdx {
+				t.Fatalf("findSubcommandWordIndex() on field line = %d, want %d", got, tt.wantIdx)
 			}
 		})
 	}
@@ -612,14 +620,6 @@ func TestEngine_AvailableCommandsRefreshesAfterCommandSetChange(t *testing.T) {
 	}
 }
 
-func misspelledLongVersionOption() string {
-	return "--ver" + "soin"
-}
-
-func mixedPrefixVersionOption() string {
-	return "-ver" + "soin"
-}
-
 func misspelledLongAmendOption() string {
 	return "--am" + "mend"
 }
@@ -714,25 +714,6 @@ func TestToolOptionHelpers(t *testing.T) {
 		if name != tt.wantName || suffix != tt.wantSuffix || ok != tt.wantOption {
 			t.Fatalf("splitToolOptionToken(%q) = (%q, %q, %v), want (%q, %q, %v)", tt.arg, name, suffix, ok, tt.wantName, tt.wantSuffix, tt.wantOption)
 		}
-	}
-
-	matchCfg := distanceMatchConfig{
-		keyboard:            NewQWERTYKeyboard(),
-		maxEditDistance:     2,
-		similarityThreshold: 0.6,
-	}
-
-	if got := closestToolOption("cargo", misspelledLongVersionOption(), matchCfg); got != "--version" {
-		t.Fatalf("closestToolOption() = %q, want --version", got)
-	}
-	if got := closestToolOption("cargo", "-V", matchCfg); got != "-V" {
-		t.Fatalf("closestToolOption() short exact = %q, want -V", got)
-	}
-	if got := closestToolOption("cargo", mixedPrefixVersionOption(), matchCfg); got != "" {
-		t.Fatalf("closestToolOption() mixed prefix = %q, want empty", got)
-	}
-	if got := closestToolOption("unknown", misspelledLongVersionOption(), matchCfg); got != "" {
-		t.Fatalf("closestToolOption() unknown command = %q, want empty", got)
 	}
 
 	if name, suffix, ok := splitLongOptionToken("--detach=false"); !ok || name != "--detach" || suffix != "=false" {
@@ -1112,10 +1093,7 @@ func TestEngine_TrySubcommandFixWithShell_ContinuesUntilLaterFix(t *testing.T) {
 	eng := newEngineWithCommonToolSubcommands(t)
 	eng.addCommands("mytool")
 
-	got, parsed := eng.trySubcommandFixWithShell("unknown biuld && mytool isntall && docker build && docker zzzz && git stattus")
-	if !parsed {
-		t.Fatal("Expected shell subcommand fixer to parse the compound command")
-	}
+	got := eng.trySubcommandFix("unknown biuld && mytool isntall && docker build && docker zzzz && git stattus")
 	if !got.Fixed || got.Command != "unknown biuld && mytool isntall && docker build && docker zzzz && git status" {
 		t.Fatalf("Expected later git subcommand fix after continue branches, got %+v", got)
 	}

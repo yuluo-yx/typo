@@ -2,7 +2,6 @@ package commands
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -167,6 +166,14 @@ type ToolTreeRegistry struct {
 	cacheDir    string
 	cacheExpiry time.Duration
 	helpTimeout time.Duration
+
+	// discoverUnknown allows probing tools outside the builtin allowlist.
+	discoverUnknown bool
+	// probed records tool paths already probed in this process.
+	probed map[string]bool
+	// negative remembers probes that produced no subcommands across processes.
+	negative    map[string]NegativeProbe
+	negativeTTL time.Duration
 }
 
 const (
@@ -206,11 +213,17 @@ func (r *ToolTreeRegistry) GetChildren(tool string, prefix []string) []string {
 		return cached
 	}
 
+	builtin := builtinChildrenForPath(tool, prefix)
+	if !r.canProbeTool(tool) || !r.claimProbe(tool, prefix) {
+		return append([]string(nil), builtin...)
+	}
+
 	fetched := r.fetchSubcommands(tool, prefix...)
-	children := utils.MergeUniqueStrings(fetched, builtinChildrenForPath(tool, prefix)...)
-	if len(children) == 0 {
+	if len(fetched) == 0 && len(builtin) == 0 {
+		r.recordNegativeProbe(tool, prefix)
 		return nil
 	}
+	children := utils.MergeUniqueStrings(fetched, builtin...)
 
 	r.storeChildren(tool, prefix, children)
 	return append([]string(nil), children...)
@@ -537,8 +550,8 @@ func ensureTreePath(root *TreeNode, tool string, prefix []string) *TreeNode {
 
 // fetchSubcommands dynamically fetches tool subcommands and caches results in ~/.typo/subcommands.json.
 func (r *ToolTreeRegistry) fetchSubcommands(tool string, prefix ...string) []string {
-	// Check if tool exists in PATH
-	if GetPath(tool) == "" {
+	// Probing executes the tool, so only allowlisted tools run unless the user opted in.
+	if !r.canProbeTool(tool) || GetPath(tool) == "" {
 		return nil
 	}
 
@@ -616,10 +629,10 @@ func (r *ToolTreeRegistry) getHelpOutput(tool string) (string, error) {
 	// Try --help first
 	output, err := r.runHelpCommand(tool, "--help")
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) || !helpSubcommandTools[tool] {
 			return "", err
 		}
-		// Try help subcommand
+		// Only tools with a real help subcommand get the positional fallback.
 		output, err = r.runHelpCommand(tool, "help")
 		if err != nil {
 			return "", err
@@ -667,10 +680,13 @@ func (r *ToolTreeRegistry) runHelpCommand(tool string, args ...string) (string, 
 
 	cmd := exec.Command(tool, args...)
 	configureHelpCommand(cmd)
+	// Run outside the user's working directory so a tool that treats arguments as
+	// paths cannot touch project files. A nil Stdin is already the null device.
+	cmd.Dir = os.TempDir()
 
-	var output bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &output
+	output := &cappedBuffer{limit: maxHelpOutputBytes}
+	cmd.Stdout = output
+	cmd.Stderr = output
 
 	if err := cmd.Start(); err != nil {
 		return "", err
@@ -702,26 +718,10 @@ func (r *ToolTreeRegistry) loadCache() {
 		return
 	}
 
-	var header CacheHeader
-	if err := json.Unmarshal(data, &header); err != nil {
-		storage.QuarantineInvalidJSON(cacheFile, err)
-		return
-	}
-	if header.SchemaVersion != subcommandCacheSchemaVersion {
-		storage.QuarantineInvalidJSON(cacheFile, errors.New("unsupported subcommands cache schema version"))
-		return
-	}
-
-	var wrapper struct {
-		SchemaVersion int              `json:"schema_version"`
-		Tools         []*ToolTreeCache `json:"tools"`
-	}
-	if err := json.Unmarshal(data, &wrapper); err != nil {
-		storage.QuarantineInvalidJSON(cacheFile, err)
-		return
-	}
-	if wrapper.SchemaVersion != subcommandCacheSchemaVersion {
-		storage.QuarantineInvalidJSON(cacheFile, errors.New("unsupported subcommands cache schema version"))
+	// The cache is fully regenerable, so unreadable or foreign-schema data is treated
+	// as a cache miss. The next save overwrites it instead of piling up backups.
+	var wrapper subcommandCacheFile
+	if err := json.Unmarshal(data, &wrapper); err != nil || wrapper.SchemaVersion != subcommandCacheSchemaVersion {
 		return
 	}
 
@@ -735,6 +735,23 @@ func (r *ToolTreeRegistry) loadCache() {
 		cache.Tree.refreshChildTokens()
 		r.trees[cache.Tool] = cache
 	}
+	for _, entry := range wrapper.Negative {
+		if entry.Tool == "" {
+			continue
+		}
+		if r.negative == nil {
+			r.negative = make(map[string]NegativeProbe, len(wrapper.Negative))
+		}
+		r.negative[probeKey(entry.Tool, entry.Prefix)] = entry
+	}
+}
+
+// subcommandCacheFile is the on-disk layout of subcommands.json. Negative probes are
+// optional, so older binaries with the same schema version simply ignore them.
+type subcommandCacheFile struct {
+	SchemaVersion int              `json:"schema_version"`
+	Tools         []*ToolTreeCache `json:"tools"`
+	Negative      []NegativeProbe  `json:"negative,omitempty"`
 }
 
 func (r *ToolTreeRegistry) saveCache() {
@@ -764,14 +781,21 @@ func (r *ToolTreeRegistry) saveCache() {
 			UpdatedAt: cache.UpdatedAt,
 		})
 	}
+	negativeKeys := make([]string, 0, len(r.negative))
+	for key := range r.negative {
+		negativeKeys = append(negativeKeys, key)
+	}
+	sort.Strings(negativeKeys)
+	negative := make([]NegativeProbe, 0, len(negativeKeys))
+	for _, key := range negativeKeys {
+		negative = append(negative, r.negative[key])
+	}
 	r.mu.RUnlock()
 
-	wrapper := struct {
-		SchemaVersion int              `json:"schema_version"`
-		Tools         []*ToolTreeCache `json:"tools"`
-	}{
+	wrapper := subcommandCacheFile{
 		SchemaVersion: subcommandCacheSchemaVersion,
 		Tools:         tools,
+		Negative:      negative,
 	}
 
 	data, err := json.MarshalIndent(wrapper, "", "  ")

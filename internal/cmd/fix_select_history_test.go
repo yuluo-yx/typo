@@ -85,11 +85,11 @@ func TestFixSelectPreservesHistoryPolicy(t *testing.T) {
 			}
 
 			learned := make(chan struct{}, 1)
-			oldRunner := autoLearnFromHistory
-			t.Cleanup(func() { autoLearnFromHistory = oldRunner })
-			autoLearnFromHistory = func(context.Context, *engine.Engine, string, string) itypes.AutoLearnDebugInfo {
+			oldRecorder := recordFixHistory
+			t.Cleanup(func() { recordFixHistory = oldRecorder })
+			recordFixHistory = func(ctx context.Context, eng *engine.Engine, from, to string) (itypes.AutoLearnDebugInfo, error) {
 				learned <- struct{}{}
-				return itypes.AutoLearnDebugInfo{}
+				return oldRecorder(ctx, eng, from, to)
 			}
 
 			args := []string{"typo", "fix", "--select", "--exit-code", "1", "-s", stderrFile}
@@ -148,7 +148,7 @@ func TestSelectFixResultPreservesCorrectionContext(t *testing.T) {
 			input := itypes.ParserContext{
 				Command: "gti status", Stderr: "root privileges are required\n", ExitCode: 1,
 			}
-			result, ok := selectFixResult(eng, input, tt.limit)
+			result, ok := selectFixResult(eng, input, tt.limit, false)
 			if !ok || !result.Fixed || result.Command != tt.want {
 				t.Fatalf("selection = %+v, ok=%v, want %q", result, ok, tt.want)
 			}

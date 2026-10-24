@@ -132,15 +132,23 @@ func discoverNamesInDir(dir string) []string {
 			continue
 		}
 
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
 		name := entry.Name()
 		// Skip hidden files
 		if strings.HasPrefix(name, ".") {
 			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		// Symlinks report their own 0777 mode; judge the target instead, and skip
+		// dangling links or links to directories.
+		if info.Mode()&os.ModeSymlink != 0 {
+			info, err = os.Stat(filepath.Join(dir, name))
+			if err != nil || info.IsDir() {
+				continue
+			}
 		}
 
 		if runtime.GOOS == windowsOS {

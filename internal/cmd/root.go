@@ -182,6 +182,7 @@ Config keys:
   candidates.limit                           Number of candidates to show
   experimental.long-option-correction.enabled
                                               Enable experimental --long-option fixes
+  subcommands.discover-unknown               Run <tool> --help for tools outside the builtin list
 
 Shell setup:
   zsh:        eval "$(typo init zsh)"
@@ -253,9 +254,24 @@ func discoverCommandsWithinTimeout(loader func(ctx context.Context) []string, ti
 	case result := <-resultCh:
 		return result
 	case <-ctx.Done():
+	}
+
+	// The loader observes ctx and returns what it found so far. Keep those partial
+	// results: the engine marks PATH as loaded once, so returning nil here would hide
+	// every discovered command for the rest of the process.
+	grace := time.NewTimer(commandDiscoveryGrace)
+	defer grace.Stop()
+	select {
+	case result := <-resultCh:
+		return result
+	case <-grace.C:
 		return nil
 	}
 }
+
+// commandDiscoveryGrace bounds the wait for partial results after the discovery
+// timeout, covering loaders blocked in a slow directory read.
+const commandDiscoveryGrace = 25 * time.Millisecond
 
 // createEngine creates a new engine with the given config.
 func createEngine(cfg *config.Config) *engine.Engine {
@@ -276,6 +292,7 @@ func createEngine(cfg *config.Config) *engine.Engine {
 	}
 
 	toolTreeRegistry := commands.NewToolTreeRegistry(cfg.ConfigDir)
+	toolTreeRegistry.SetDiscoverUnknownTools(cfg.User.Subcommands.DiscoverUnknown)
 	commandTreeRegistry := commands.NewCommandTreeRegistry()
 
 	return engine.NewEngine(
@@ -285,12 +302,16 @@ func createEngine(cfg *config.Config) *engine.Engine {
 		engine.WithMaxFixPasses(cfg.User.MaxFixPasses),
 		engine.WithAutoLearnThreshold(cfg.User.AutoLearnThreshold),
 		engine.WithExperimentalLongOptionFix(cfg.User.Experimental.LongOptionCorrection.Enabled),
+		engine.WithPathCorrection(cfg.User.Paths.Enabled),
 		engine.WithDisabledCommands(disabledCommands),
 		engine.WithRules(rules),
 		engine.WithHistory(engine.NewHistory(cfg.ConfigDir)),
 		engine.WithCommands(seedCommands),
 		engine.WithCommandLoader(func() []string {
 			return discoverCommandsWithinTimeout(commands.DiscoverContext, CommandDiscoveryTimeout)
+		}),
+		engine.WithCommandLookup(func(name string) bool {
+			return commands.GetPath(name) != ""
 		}),
 		engine.WithToolTrees(toolTreeRegistry),
 		engine.WithCommandTrees(commandTreeRegistry),
