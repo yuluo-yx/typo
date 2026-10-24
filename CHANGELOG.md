@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [1.10.0](https://github.com/yuluo-yx/typo/compare/v1.9.5...v1.10.0) (2026-10-24)
 
 ### Features
 
@@ -9,7 +9,6 @@
 
 ### Fixes
 
-* Fix `typo fix` losing required quoting when command arguments are passed separately, preventing commit messages and similar values from turning into bare options or split words after correction.
 * Stop subcommand discovery from executing arbitrary tools: only builtin tools are probed with `--help`, the positional `help` fallback is limited to tools where it is a real help subcommand (previously `rm help` could delete a file named `help`), probes run outside the working directory, and help output is capped at 1 MiB.
 * Remember empty help probes per executable (path, size, mtime) for 24 hours so tools without subcommands are no longer re-probed on every fix.
 * Serialize `typo config set/reset/gen` with a file lock and re-read the config inside the lock, so concurrent writers no longer drop each other's updates.
@@ -38,26 +37,6 @@
 * An invalid or older subcommand cache is now discarded and rebuilt instead of being backed up as `.corrupt-*`; existing backups can be deleted manually.
 * `typo rules list` output and the saved `rules.json` / `history.json` files are now sorted for stable diffs.
 * Path argument correction is on by default. Disable it with `typo config set paths.enabled false`; existing config files need no change.
-
-## [1.10.0](https://github.com/yuluo-yx/typo/compare/v1.9.5...v1.10.0) (2026-10-24)
-
-
-### Features
-
-* add optional `candidates.fzf` to pick candidates with fzf, falling back to the builtin menu ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
-* correct missing path arguments of read-only commands such as `source ~/.zshcr` ([#81](https://github.com/yuluo-yx/typo/issues/81)) ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
-
-
-### Bug Fixes
-
-* make git workflow fixes locale independent and fix `git push origin`, rejected pushes, unknown identity, and mistyped branch names ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
-* restrict subcommand discovery to builtin tools, lock config writes, and fix correction and shell integration issues found in the audit ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
-
-
-### Performance Improvements
-
-* avoid full PATH scans, bound edit-distance work, memoize shell parsing, and cap history size ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
-* compile parser patterns lazily once per process ([#272](https://github.com/yuluo-yx/typo/issues/272)) ([3c076e9](https://github.com/yuluo-yx/typo/commit/3c076e9f8c4c0094ba10f7e7776a850e0eec525e))
 
 ## [1.9.5](https://github.com/yuluo-yx/typo/compare/v1.9.4...v1.9.5) (2026-10-18)
 
