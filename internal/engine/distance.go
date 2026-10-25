@@ -19,6 +19,9 @@ var distanceBufferPool = sync.Pool{
 // It uses keyboard-aware weights for substitution operations.
 // Only two rows of the DP matrix are kept at a time to reduce allocations.
 func Distance(a, b string, weights KeyboardWeights) int {
+	if a == b {
+		return 0
+	}
 	return distanceRunes([]rune(a), []rune(b), weights)
 }
 
@@ -43,6 +46,10 @@ func distanceRunesWithin(runesA, runesB []rune, weights KeyboardWeights, limit i
 	return rounded, rounded <= limit
 }
 
+// stackDistanceRowLen is the longest DP row kept on the stack. Command words and
+// path segments almost always fit, so the common case never touches the pool.
+const stackDistanceRowLen = 32
+
 // weightedDistance computes the raw keyboard-weighted Levenshtein distance. It
 // returns ok=false early once the distance is known to be >= cutoff.
 func weightedDistance(runesA, runesB []rune, weights KeyboardWeights, cutoff float64) (float64, bool) {
@@ -58,39 +65,59 @@ func weightedDistance(runesA, runesB []rune, weights KeyboardWeights, cutoff flo
 		return 0, false
 	}
 
-	bufLen := 2 * (lenB + 1)
+	if lenB < stackDistanceRowLen {
+		var rows [2 * stackDistanceRowLen]float64
+		return distanceRows(runesA, runesB, weights, cutoff, rows[:2*(lenB+1)])
+	}
+
 	bufPtr := distanceBufferPool.Get().(*[]float64)
 	buf := *bufPtr
-	if cap(buf) < bufLen {
+	if bufLen := 2 * (lenB + 1); cap(buf) < bufLen {
 		buf = make([]float64, bufLen)
 	} else {
 		buf = buf[:bufLen]
 	}
+	distance, ok := distanceRows(runesA, runesB, weights, cutoff, buf)
+	if cap(buf) <= maxPooledDistanceBufferLen {
+		*bufPtr = buf[:0]
+		distanceBufferPool.Put(bufPtr)
+	}
+	return distance, ok
+}
+
+// distanceRows runs the two-row DP over buf, which must hold 2*(len(runesB)+1) values.
+func distanceRows(runesA, runesB []rune, weights KeyboardWeights, cutoff float64, buf []float64) (float64, bool) {
+	lenB := len(runesB)
 	prev := buf[:lenB+1]
 	curr := buf[lenB+1:]
-
-	for j := 0; j <= lenB; j++ {
+	for j := range prev {
 		prev[j] = float64(j)
 	}
 
-	release := func() {
-		if cap(buf) <= maxPooledDistanceBufferLen {
-			*bufPtr = buf[:0]
-			distanceBufferPool.Put(bufPtr)
-		}
-	}
-
-	for i := 1; i <= lenA; i++ {
+	for i, charA := range runesA {
+		curr[0] = float64(i + 1)
 		// Row minima never decrease, so the final distance is at least rowMin.
-		if rowMin := fillDistanceRow(prev, curr, i, runesA[i-1], runesB, weights); rowMin >= cutoff {
-			release()
+		rowMin := curr[0]
+		for j, charB := range runesB {
+			cost := 0.0
+			if charA != charB {
+				cost = substitutionCost(charA, charB, weights)
+			}
+			value := min(
+				prev[j+1]+1.0, // deletion
+				curr[j]+1.0,   // insertion
+				prev[j]+cost,  // substitution
+			)
+			curr[j+1] = value
+			rowMin = min(rowMin, value)
+		}
+		if rowMin >= cutoff {
 			return 0, false
 		}
 		prev, curr = curr, prev
 	}
 
 	result := prev[lenB]
-	release()
 	return result, result < cutoff
 }
 
@@ -104,22 +131,6 @@ func trimSharedBoundaries(runesA, runesB []rune) ([]rune, []rune) {
 		runesA, runesB = runesA[:len(runesA)-1], runesB[:len(runesB)-1]
 	}
 	return runesA, runesB
-}
-
-// fillDistanceRow computes DP row i from prev into curr and returns the row minimum.
-func fillDistanceRow(prev, curr []float64, i int, charA rune, runesB []rune, weights KeyboardWeights) float64 {
-	curr[0] = float64(i)
-	rowMin := curr[0]
-	for j := 1; j <= len(runesB); j++ {
-		cost := substitutionCost(charA, runesB[j-1], weights)
-		curr[j] = min(
-			prev[j]+1.0,    // deletion
-			curr[j-1]+1.0,  // insertion
-			prev[j-1]+cost, // substitution
-		)
-		rowMin = min(rowMin, curr[j])
-	}
-	return rowMin
 }
 
 // substitutionCost returns the cost of substituting one character for another.
@@ -139,6 +150,9 @@ func substitutionCost(a, b rune, weights KeyboardWeights) float64 {
 
 // Similarity calculates the similarity ratio between two strings (0-1).
 func Similarity(a, b string, weights KeyboardWeights) float64 {
+	if a == b {
+		return 1.0
+	}
 	runesA := []rune(a)
 	runesB := []rune(b)
 	if len(runesA) == 0 && len(runesB) == 0 {
