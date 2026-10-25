@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"math"
+	"strings"
 	"testing"
 )
 
@@ -126,5 +128,40 @@ func TestSubstitutionCost(t *testing.T) {
 				t.Errorf("substitutionCost(%q, %q) = %f, want %f", tt.a, tt.b, result, tt.expected)
 			}
 		})
+	}
+}
+
+// TestDistanceLongInputsUsePooledRows covers rows longer than the stack buffer,
+// including oversized buffers that are not returned to the pool.
+func TestDistanceLongInputsUsePooledRows(t *testing.T) {
+	kb := NewQWERTYKeyboard()
+	for _, size := range []int{stackDistanceRowLen, maxPooledDistanceBufferLen} {
+		a := strings.Repeat("ab", size) + "x"
+		b := "y" + strings.Repeat("ab", size)
+		if got := Distance(a, b, kb); got != 2 {
+			t.Fatalf("Distance(len %d) = %d, want 2", len(a), got)
+		}
+		if _, ok := distanceRunesWithin([]rune(a), []rune(b), kb, 1); ok {
+			t.Fatalf("distanceRunesWithin(len %d, 1) accepted distance 2", len(a))
+		}
+		if got, ok := distanceRunesWithin([]rune(a), []rune(b), kb, 2); !ok || got != 2 {
+			t.Fatalf("distanceRunesWithin(len %d, 2) = %d, %v", len(a), got, ok)
+		}
+	}
+}
+
+// TestDistanceStackAndPooledRowsAgree checks both row buffers on the same inputs.
+func TestDistanceStackAndPooledRowsAgree(t *testing.T) {
+	kb := NewQWERTYKeyboard()
+	for _, pair := range [][2]string{{"dcoker", "docker"}, {"kubernete", "kubernetes"}, {"abc", "xyz"}, {"gut", "git"}} {
+		a, b := []rune(pair[0]), []rune(pair[1])
+		stack, stackOK := distanceRows(a, b, kb, math.Inf(1), make([]float64, 2*(len(b)+1)))
+		want, _ := weightedDistance(a, b, kb, math.Inf(1))
+		if !stackOK || int(math.Round(stack)) != Distance(pair[0], pair[1], kb) || stack < want {
+			t.Fatalf("%q/%q: rows=%v weighted=%v", pair[0], pair[1], stack, want)
+		}
+	}
+	if got := Similarity("same", "same", kb); got != 1.0 {
+		t.Fatalf("Similarity(same) = %v, want 1", got)
 	}
 }
