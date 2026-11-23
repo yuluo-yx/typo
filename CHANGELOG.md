@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.1](https://github.com/yuluo-yx/typo/compare/v1.10.0...v1.10.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **ci:** trust the local Homebrew formula before validation ([f71cb87](https://github.com/yuluo-yx/typo/commit/f71cb874fbfd700255c5a8fe4fdb1e6f26ea7f23))
+
+
+### Performance Improvements
+
+* **engine:** remove fixed overhead from short edit-distance calls ([#276](https://github.com/yuluo-yx/typo/issues/276)) ([188a47f](https://github.com/yuluo-yx/typo/commit/188a47f31f5fe9494e1bb98f25449da3539ea52f)), closes [#275](https://github.com/yuluo-yx/typo/issues/275)
+
 ## [1.10.0](https://github.com/yuluo-yx/typo/compare/v1.9.5...v1.10.0) (2026-10-24)
 
 ### Features
