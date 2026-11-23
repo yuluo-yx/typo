@@ -36,7 +36,10 @@ jobs:
 
       - name: Tap local checkout
         # Validate the formula from this commit instead of the remote tap checkout.
-        run: brew tap yuluo-yx/typo "$GITHUB_WORKSPACE"
+        run: |
+          brew tap yuluo-yx/typo "$GITHUB_WORKSPACE"
+          # Homebrew requires explicit trust before loading third-party formulae.
+          brew trust --formula yuluo-yx/typo/typo
 
       - name: Audit formula
         run: brew audit --strict --online yuluo-yx/typo/typo
